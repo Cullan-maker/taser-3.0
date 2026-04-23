@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taser 7 - Elite Tactical v7.44</title>
+    <title>Taser 7 - Elite Tactical v7.45</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -184,6 +184,7 @@
             box-shadow: 0 2px 0 #1a252f, inset 0 1px 0 rgba(255,255,255,0.1); text-transform: uppercase; letter-spacing: 1px;
         }
         button.action-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; }
+        
         .btn-grid-compact { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 4px; }
         .btn-grid-compact .action-btn { margin-bottom: 0; }
         
@@ -193,6 +194,7 @@
             box-shadow: 0 4px 0 #7b241c, inset 0 1px 0 rgba(255,255,255,0.2); margin-top: 5px !important; margin-bottom: 10px !important; width: 100%;
         }
         .btn-trigger:active { box-shadow: 0 0 0 #7b241c; transform: translateY(4px); }
+        
         .btn-warn { border-color: rgba(241, 196, 15, 0.5) !important; color: #f1c40f !important; }
         .btn-info { background: linear-gradient(to bottom, #2980b9 0%, #2471a3 100%) !important; border-color: #1a252f !important; margin-bottom: 6px !important; font-size: 10px !important; padding: 6px !important;}
         .btn-clothing { background: linear-gradient(to bottom, #8e44ad 0%, #732d91 100%) !important; border-color: #5b2272 !important; }
@@ -201,13 +203,18 @@
         .status-box { background: #050505; padding: 4px; text-align: center; border-radius: 3px; font-size: 9px; font-weight: bold; border: 1px solid rgba(231, 76, 60, 0.5); color: #e74c3c; letter-spacing: 1px; text-transform: uppercase;}
         .status-box.ok { border-color: rgba(46, 204, 113, 0.5); color: #2ecc71; }
         .status-box.stealth { border-color: rgba(155, 89, 182, 0.5); color: #9b59b6; grid-column: span 2;}
+        
         .btn-kontaktstot { 
             background: linear-gradient(to bottom, #e67e22 0%, #d35400 100%) !important; border-color: #ba4a00 !important; 
             font-size: 12px !important; padding: 10px !important; display: none; box-shadow: 0 3px 0 #ba4a00, inset 0 1px 0 rgba(255,255,255,0.2); margin-bottom: 10px !important; width: 100%;
         }
         .btn-kontaktstot:active { box-shadow: 0 0 0 #ba4a00; transform: translateY(3px); }
         .log-box { background-color: #050505; color: #00ff00; font-family: 'Courier New', monospace; font-size: 9px; height: 60px; overflow-y: auto; padding: 6px; border-radius: 5px; margin-top: 8px; border: 1px solid #1a1a1a; box-shadow: inset 0 0 10px rgba(0,0,0,1);}
+
+        /* Fäll ihop-animation för sekundära knappar (Combat Mode) */
         #secondary-controls { display: block; transition: all 0.3s ease; }
+
+        /* ----- PLACERINGS-UI ----- */
         #placement-controls { display: none; text-align: center; padding-top: 10px; }
         .btn-confirm { 
             width: 100%; padding: 15px; background: linear-gradient(to bottom, #27ae60 0%, #219653 100%) !important; 
@@ -230,6 +237,7 @@
         .modal-close { position: absolute; top: 5px; right: 15px; font-size: 28px; color: #e74c3c; cursor: pointer; background: none; border: none; font-weight: bold; padding: 0;}
         .modal-content h2 { margin-top: 0; color: #f1c40f; border-bottom: 1px solid #1a252f; padding-bottom: 8px; font-size: 16px;}
         .modal-content p, .modal-content li { font-size: 11px; line-height: 1.4; color: #bdc3c7;}
+        
         .scenario-btn { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #1a252f; background: linear-gradient(to bottom, #34495e, #2c3e50); color: white; font-weight: bold; cursor: pointer; text-align: left; box-shadow: 0 2px 0 #1a252f;}
         .scenario-btn:hover, .scenario-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; border-color: #f1c40f;}
         .scenario-btn span { display: block; font-size: 10px; font-weight: normal; color: #bdc3c7; margin-top: 4px; }
@@ -362,9 +370,9 @@
         <div class="modal-content">
             <button class="modal-close" onclick="window.closeModal('info-modal')">×</button>
             <h2>Lathund: Taser 7 Elite Tactical</h2>
-            <p><strong>Hot-Eskalering (NY!):</strong> Målet kommer börja skrika åt dig (slå på ljudet!). Efter ca 10 sekunder drar han kniv, vilket kräver omedelbar respons.</p>
-            <p><strong>Wire Dynamics (Snören):</strong> Fysiska kablar dras ut och fäster i figuren. De följer med figuren om den faller eller rör sig!</p>
-            <p><strong>Väggträffar:</strong> Missar du fäster pilarna (och kablarna) i väggen eller golvet istället för på figuren.</p>
+            <p><strong>Hot-Eskalering (NY!):</strong> Målet kommer börja skrika åt dig (slå på ljudet!). Efter ca 10 sekunder drar han en metallisk kniv, vilket kräver omedelbar respons.</p>
+            <p><strong>Sensorfix:</strong> Gyrot är nu stenhårt kalibrerat och gubben kan inte längre försvinna när du startar det i svart läge.</p>
+            <p><strong>Wire Dynamics (Snören):</strong> Knivskarpa fysiska kablar dras ut och fäster i figuren. De följer med figuren om den faller!</p>
             <p><strong>Ballistik:</strong> Pilarna är nu påverkade av gravitation. På avstånd över 3 meter måste du kompensera (den undre pilen droppar extra mycket).</p>
         </div>
     </div>
@@ -385,7 +393,7 @@
             entry.className = 'log-entry'; entry.innerHTML = `> ${msg}`;
             logBox.prepend(entry);
         }
-        window.log("Simulator v7.44 (Threat Escalation) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
+        window.log("Simulator v7.45 (Sensor Fix & Threat Polish) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
 
         document.querySelector('.main-container').addEventListener('beforexrselect', e => e.preventDefault());
         document.querySelector('.hud-overlay').addEventListener('beforexrselect', e => e.preventDefault());
@@ -406,13 +414,19 @@
         
         window.placeMode = false; window.figureLocked = true; window.invertMouseY = false; 
         window.currentDistance = 3.0; window.cameraAngle = 0; window.aimX = 50; window.aimY = 50; 
-        window.gyroEnabled = false; window.lastTiltTime = 0; window.figureFallen = false;
+        
+        // --- GYRO FIX START ---
+        window.gyroEnabled = false; 
+        window.lastTiltTime = 0; 
+        window.figureFallen = false;
+        window.calibAlpha = null; 
+        window.calibBeta = null;
+        // --- GYRO FIX END ---
         
         window.nmiTimer = null; 
         window.activeWires = []; 
         window.activeDarts = []; 
         
-        // Hotsystem variabler
         window.threatLevel = 0;
         window.threatInterval = null;
         
@@ -477,7 +491,7 @@
             setTimeout(() => { document.getElementById('warn-left').classList.remove('active-press'); document.getElementById('warn-right').classList.remove('active-press'); }, 200);
         }
 
-        // ----- HOTESKALERING (TALSYSNTES OCH KNIV) -----
+        // ----- HOTESKALERING -----
         window.suspectSpeak = function(text) {
             const subtitle = document.getElementById('subtitle-overlay');
             subtitle.textContent = `MÅL: "${text}"`;
@@ -486,11 +500,9 @@
 
             try {
                 const msg = new SpeechSynthesisUtterance(text);
-                msg.lang = 'sv-SE';
-                msg.pitch = 0.6; // Mörkare aggressiv röst
-                msg.rate = 1.15; 
+                msg.lang = 'sv-SE'; msg.pitch = 0.6; msg.rate = 1.15; 
                 window.speechSynthesis.speak(msg);
-            } catch(e) { console.log("SpeechSynthesis ej stöttad"); }
+            } catch(e) {}
         }
 
         window.startThreatEscalation = function() {
@@ -512,7 +524,7 @@
                 } else if(window.threatLevel === 3) {
                     window.suspectSpeak("Jag sprättar dig! Jag svär!");
                     
-                    if(window.knifeMesh) window.knifeMesh.visible = true;
+                    if(window.knifeMesh) window.knifeMesh.visible = true; // Visa stora kniven
                     
                     window.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit kniv! Omedelbar respons krävs!</span>");
                     document.getElementById('target-label').textContent = "PERSON: BEVÄPNAD";
@@ -582,8 +594,6 @@
             document.getElementById('standard-controls').style.display = 'block';
             document.getElementById('placement-controls').style.display = 'none';
             window.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
-            
-            // Starta hoteskaleringen
             window.startThreatEscalation();
         }
 
@@ -599,7 +609,7 @@
                     btnCamera.innerHTML = "📷 Avbryt AR"; btnCamera.classList.add('active-cam');
                     window.show3DModel = false; if (window.set3DVisibility) window.set3DVisibility(false);
                     document.getElementById('target-label').textContent = "PERSON (LIVE)";
-                    if(window.threatInterval) clearInterval(window.threatInterval); // Inga hotskrik på Live person
+                    if(window.threatInterval) clearInterval(window.threatInterval); 
                     window.log("<span style='color:#f1c40f'>Kamera AR aktiverad. 3D-figur dold.</span>");
                 } catch (err) { window.log("<span style='color:red'>Kunde inte starta kamera.</span>"); }
             } else {
@@ -675,6 +685,7 @@
         }
         function enableGyro() {
             if(window.gyroEnabled) return;
+            window.calibAlpha = null; window.calibBeta = null; // STENHÅRD NOLLSTÄLLNING FÖR BUGG-FIX
             window.addEventListener('deviceorientation', handleOrientation);
             window.gyroEnabled = true; window.log("Rörelsesensor aktiverad!");
             document.getElementById('btn-gyro').style.display = 'none';
@@ -697,7 +708,9 @@
             if (window.xrSession || !event.alpha) return;
 
             let alpha = event.alpha; let beta = event.beta;
-            if (window.calibBeta === null) { window.calibAlpha = alpha; window.calibBeta = beta; }
+            if (window.calibAlpha === null || window.calibBeta === null) { 
+                window.calibAlpha = alpha; window.calibBeta = beta; 
+            }
             let deltaX = alpha - window.calibAlpha; if (deltaX > 180) deltaX -= 360; if (deltaX < -180) deltaX += 360;
             let deltaY = beta - window.calibBeta;
             
@@ -722,6 +735,7 @@
             scaleFactor = Math.min(Math.max(scaleFactor, 0.1), 5.0); 
             let visualDropPx = ((window.activeChamber === 1) ? 141.7 : 40.7) * scaleFactor; 
             
+            // LÅS FAST LASRAR (FÖRHINDRA ATT DE FÖRSVINNER UTANFÖR BILD)
             visualDropPx = Math.min(visualDropPx, 140);
             
             document.getElementById('laser-red').style.top = `calc(50% + ${visualDropPx}px)`; 
@@ -849,10 +863,9 @@
                         window.showNMIOverlay(true, nmiResult.reason, nmiResult.spreadCm);
                         window.runCycle("NMI påbörjad...", true); 
                         
-                        // Stäng av hotskrik när NMI uppnås
                         if(window.threatInterval) clearInterval(window.threatInterval);
                         document.getElementById('subtitle-overlay').style.display = 'none';
-                        window.suspectSpeak("Aaaargh!"); // Smärtljud
+                        window.suspectSpeak("Aaaargh!"); 
 
                         if(window.show3DModel && window.taserGroup && !window.figureFallen) {
                             window.figureFallen = true;
@@ -907,11 +920,11 @@
             
             window.log("♻️ <span style='color:#3498db; font-weight:bold;'>SOFT RESET: Vapnet laddat och mål återställt.</span>");
             window.updateDisplay(); 
-            window.startThreatEscalation(); // Starta om hotet
+            window.startThreatEscalation(); 
         }
 
         window.updateDisplay(); // Init
-        window.startThreatEscalation(); // Starta hot timer direkt vid boot
+        window.startThreatEscalation(); 
     </script>
 
     <script type="module">
@@ -978,15 +991,20 @@
             taserGroup.add(dummy);
             taserGroup.userData.startPos = new THREE.Vector3(0,0,0);
 
-            // Kniv
-            const knifeGeo = new THREE.BoxGeometry(0.05, 0.3, 0.02);
-            const knifeMat = new THREE.MeshStandardMaterial({color: 0xcccccc, metalness: 0.8, roughness: 0.2});
-            const knifeMesh = new THREE.Mesh(knifeGeo, knifeMat);
-            knifeMesh.position.set(0.3, 1.0, 0.3); // Position i handen (ca)
-            knifeMesh.rotation.x = Math.PI / 4;
-            knifeMesh.visible = false; 
-            window.knifeMesh = knifeMesh;
-            taserGroup.add(knifeMesh);
+            // UPPGRADERAD KNIV 
+            const knifeGroup = new THREE.Group();
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), new THREE.MeshStandardMaterial({color: 0x111111, roughness: 0.9}));
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.25, 0.05), new THREE.MeshStandardMaterial({color: 0xffffff, metalness: 1.0, roughness: 0.1}));
+            blade.position.y = 0.18;
+            knifeGroup.add(handle); knifeGroup.add(blade);
+            
+            knifeGroup.position.set(0.35, 1.1, 0.3); // Placerad framåt i handen
+            knifeGroup.rotation.x = Math.PI / 2; // Peka framåt
+            knifeGroup.rotation.z = -Math.PI / 8; // Vinklad något
+            knifeGroup.visible = false; 
+            
+            window.knifeMesh = knifeGroup;
+            taserGroup.add(knifeGroup);
 
             const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.8, emissive: 0xf1c40f, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.8 });
             
@@ -1096,7 +1114,8 @@
                 spawnSparks(hit1.point);
                 spawnSparks(hit2.point);
 
-                const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+                // SKARPARE OCH TYDLIGARE TRÅDAR
+                const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
                 
                 const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
                 const wire1 = new THREE.Line(geo1, wireMat);
