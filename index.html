@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taser 7 - Elite Tactical v7.45</title>
+    <title>Taser 7 - Elite Tactical v7.46</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -51,7 +51,7 @@
         .lightning::before, .lightning::after { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background: #fff; box-shadow: 0 0 15px #a8eb12, 0 0 30px #a8eb12; animation: electricity 0.05s infinite alternate; }
         .lightning::after { transform: rotate(15deg); }
 
-        /* ----- NMI RUTA (KOMPAKT & HÖGST UPP) ----- */
+        /* ----- NMI RUTA ----- */
         #nmi-overlay {
             display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.85); border: 2px solid rgba(46, 204, 113, 0.8); border-radius: 8px;
@@ -250,7 +250,7 @@
         
         <div class="viewport" id="viewport">
             <div id="three-canvas"></div>
-            <video id="camera-feed" class="camera-feed" autoplay playsinline></video>
+            <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
             
             <div class="fixed-aim-layer">
                 <div class="crosshair"></div>
@@ -371,9 +371,9 @@
             <button class="modal-close" onclick="window.closeModal('info-modal')">×</button>
             <h2>Lathund: Taser 7 Elite Tactical</h2>
             <p><strong>Hot-Eskalering (NY!):</strong> Målet kommer börja skrika åt dig (slå på ljudet!). Efter ca 10 sekunder drar han en metallisk kniv, vilket kräver omedelbar respons.</p>
-            <p><strong>Sensorfix:</strong> Gyrot är nu stenhårt kalibrerat och gubben kan inte längre försvinna när du startar det i svart läge.</p>
-            <p><strong>Wire Dynamics (Snören):</strong> Knivskarpa fysiska kablar dras ut och fäster i figuren. De följer med figuren om den faller!</p>
-            <p><strong>Ballistik:</strong> Pilarna är nu påverkade av gravitation. På avstånd över 3 meter måste du kompensera (den undre pilen droppar extra mycket).</p>
+            <p><strong>Sensorfix:</strong> Gyrot är nu stenhårt kalibrerat och kameran kan inte längre försvinna ut i den svarta rymden när du startar det.</p>
+            <p><strong>Kamera AR-fix:</strong> Kameran har fått tvångsattribut så att mobil-webbläsare (iOS) släpper igenom videon utan problem.</p>
+            <p><strong>Ballistik:</strong> Pilarna är påverkade av gravitation. På avstånd över 3 meter måste du kompensera (den undre pilen droppar extra mycket).</p>
         </div>
     </div>
 
@@ -393,7 +393,7 @@
             entry.className = 'log-entry'; entry.innerHTML = `> ${msg}`;
             logBox.prepend(entry);
         }
-        window.log("Simulator v7.45 (Sensor Fix & Threat Polish) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
+        window.log("Simulator v7.46 (The Ironclad Update) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
 
         document.querySelector('.main-container').addEventListener('beforexrselect', e => e.preventDefault());
         document.querySelector('.hud-overlay').addEventListener('beforexrselect', e => e.preventDefault());
@@ -415,13 +415,10 @@
         window.placeMode = false; window.figureLocked = true; window.invertMouseY = false; 
         window.currentDistance = 3.0; window.cameraAngle = 0; window.aimX = 50; window.aimY = 50; 
         
-        // --- GYRO FIX START ---
+        // GYRO FIX
         window.gyroEnabled = false; 
-        window.lastTiltTime = 0; 
-        window.figureFallen = false;
-        window.calibAlpha = null; 
-        window.calibBeta = null;
-        // --- GYRO FIX END ---
+        window.lastTiltTime = 0; window.figureFallen = false;
+        window.calibAlpha = null; window.calibBeta = null;
         
         window.nmiTimer = null; 
         window.activeWires = []; 
@@ -455,6 +452,8 @@
             window.aimX = ((e.clientX - rect.left) / rect.width) * 100;
             let yPct = ((e.clientY - rect.top) / rect.height) * 100;
             window.aimY = window.invertMouseY ? 100 - yPct : yPct;
+            // Sanitize
+            if (isNaN(window.aimX)) window.aimX = 50; if (isNaN(window.aimY)) window.aimY = 50;
             window.aimX = Math.max(0, Math.min(100, window.aimX)); window.aimY = Math.max(0, Math.min(100, window.aimY));
             window.updateAimVisuals();
         });
@@ -524,7 +523,7 @@
                 } else if(window.threatLevel === 3) {
                     window.suspectSpeak("Jag sprättar dig! Jag svär!");
                     
-                    if(window.knifeMesh) window.knifeMesh.visible = true; // Visa stora kniven
+                    if(window.knifeMesh) window.knifeMesh.visible = true; 
                     
                     window.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit kniv! Omedelbar respons krävs!</span>");
                     document.getElementById('target-label').textContent = "PERSON: BEVÄPNAD";
@@ -594,10 +593,14 @@
             document.getElementById('standard-controls').style.display = 'block';
             document.getElementById('placement-controls').style.display = 'none';
             window.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
+            
             window.startThreatEscalation();
         }
 
+        // AR KAMERA FIX (Muted + Fallback)
         window.toggleCamera = async function() {
+            if (!navigator.mediaDevices) { window.log("<span style='color:red'>AR-Kamera stöds ej (Kräver HTTPS).</span>"); return; }
+            
             const cameraFeed = document.getElementById('camera-feed');
             const btnCamera = document.getElementById('btn-camera');
             if (window.xrSession) { await window.endXRSession(); }
@@ -605,13 +608,18 @@
             if (!window.useCamera) {
                 try {
                     window.videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                    cameraFeed.srcObject = window.videoStream; cameraFeed.style.display = 'block'; window.useCamera = true;
-                    btnCamera.innerHTML = "📷 Avbryt AR"; btnCamera.classList.add('active-cam');
-                    window.show3DModel = false; if (window.set3DVisibility) window.set3DVisibility(false);
-                    document.getElementById('target-label').textContent = "PERSON (LIVE)";
-                    if(window.threatInterval) clearInterval(window.threatInterval); 
-                    window.log("<span style='color:#f1c40f'>Kamera AR aktiverad. 3D-figur dold.</span>");
-                } catch (err) { window.log("<span style='color:red'>Kunde inte starta kamera.</span>"); }
+                } catch (err) { 
+                    // Fallback om mobilen bråkar med facingMode
+                    try { window.videoStream = await navigator.mediaDevices.getUserMedia({ video: true }); }
+                    catch(e) { window.log("<span style='color:red'>Kunde inte starta kamera.</span>"); return; }
+                }
+                
+                cameraFeed.srcObject = window.videoStream; cameraFeed.style.display = 'block'; window.useCamera = true;
+                btnCamera.innerHTML = "📷 Avbryt AR"; btnCamera.classList.add('active-cam');
+                window.show3DModel = false; if (window.set3DVisibility) window.set3DVisibility(false);
+                document.getElementById('target-label').textContent = "PERSON (LIVE)";
+                if(window.threatInterval) clearInterval(window.threatInterval); 
+                window.log("<span style='color:#f1c40f'>Kamera AR aktiverad. 3D-figur dold.</span>");
             } else {
                 if (window.videoStream) { window.videoStream.getTracks().forEach(track => track.stop()); }
                 cameraFeed.style.display = 'none'; window.useCamera = false;
@@ -685,7 +693,10 @@
         }
         function enableGyro() {
             if(window.gyroEnabled) return;
-            window.calibAlpha = null; window.calibBeta = null; // STENHÅRD NOLLSTÄLLNING FÖR BUGG-FIX
+            // STENHÅRD NOLLSTÄLLNING AV SENSORVÄRDEN
+            window.calibAlpha = null; window.calibBeta = null; 
+            window.aimX = 50; window.aimY = 50; 
+            
             window.addEventListener('deviceorientation', handleOrientation);
             window.gyroEnabled = true; window.log("Rörelsesensor aktiverad!");
             document.getElementById('btn-gyro').style.display = 'none';
@@ -716,6 +727,11 @@
             
             window.aimX = 50 + (deltaX * -1.0); 
             window.aimY = 50 + (deltaY * -1.5); 
+            
+            // SANITIZER: Förhindra NaN
+            if (isNaN(window.aimX)) window.aimX = 50;
+            if (isNaN(window.aimY)) window.aimY = 50;
+
             window.aimX = Math.max(10, Math.min(90, window.aimX)); 
             window.aimY = Math.max(10, Math.min(90, window.aimY));
             window.updateAimVisuals();
@@ -723,19 +739,19 @@
 
         window.updateAimVisuals = function() {
             let angle = (window.activeChamber === 1) ? 12 : 3.5;
+            // SANITIZER: Förhindra att distance kraschar matematiken
+            if (isNaN(window.currentDistance) || window.currentDistance < 0.5) window.currentDistance = 3.0;
+
             let spreadMeters = window.currentDistance * Math.tan(angle * Math.PI / 180);
             let spreadCm = spreadMeters * 100;
             document.getElementById('dist-label').textContent = `${window.currentDistance.toFixed(1)} M`;
             document.getElementById('spread-label').textContent = `SPRIDNING: ${spreadCm.toFixed(1)} CM`;
             
-            let safeDist = Math.max(0.5, window.currentDistance);
-            if(isNaN(safeDist)) safeDist = 3.0;
-            
-            let baseScale = 0.5; let scaleFactor = (3.0 / safeDist) * baseScale; 
+            let baseScale = 0.5; let scaleFactor = (3.0 / window.currentDistance) * baseScale; 
             scaleFactor = Math.min(Math.max(scaleFactor, 0.1), 5.0); 
             let visualDropPx = ((window.activeChamber === 1) ? 141.7 : 40.7) * scaleFactor; 
             
-            // LÅS FAST LASRAR (FÖRHINDRA ATT DE FÖRSVINNER UTANFÖR BILD)
+            // LÅS FAST LASRAR
             visualDropPx = Math.min(visualDropPx, 140);
             
             document.getElementById('laser-red').style.top = `calc(50% + ${visualDropPx}px)`; 
@@ -899,6 +915,10 @@
             window.initAudio();
             window.hideNMIOverlay();
             
+            // RESET MÅL & MATEMATIK DIREKT
+            window.currentDistance = 3.0; window.aimX = 50; window.aimY = 50;
+            window.calibAlpha = null; window.calibBeta = null; // Tvinga ny kalibrering
+
             window.chamber1 = "loaded"; window.chamber2 = "loaded"; window.activeChamber = 1;
             document.getElementById('stat-cassette').textContent = "⏏️ Kassetter i"; document.getElementById('stat-cassette').classList.add('ok');
             document.querySelectorAll('.dart-spark').forEach(el => el.remove());
@@ -910,7 +930,7 @@
                 window.activeDarts.forEach(d => { if(d.parent) d.parent.remove(d); }); window.activeDarts = [];
             }
 
-            if(window.figureFallen && window.taserGroup) { 
+            if(window.taserGroup) { 
                 window.taserGroup.rotation.x = 0; window.figureFallen = false; 
                 if (window.scenario === 'charging' && window.taserGroup.userData.startPos) {
                     window.taserGroup.position.copy(window.taserGroup.userData.startPos);
@@ -923,8 +943,6 @@
             window.startThreatEscalation(); 
         }
 
-        window.updateDisplay(); // Init
-        window.startThreatEscalation(); 
     </script>
 
     <script type="module">
@@ -967,13 +985,36 @@
         scene.add(dirLight);
 
         let taserGroup = new THREE.Group(); scene.add(taserGroup); window.taserGroup = taserGroup;
+        taserGroup.userData.startPos = new THREE.Vector3(0,0,0);
         
         window.set3DVisibility = function(isVisible) { 
             if (window.taserGroup) window.taserGroup.visible = isVisible; 
         };
 
+        // --- FALLBACK DUMMY ---
+        // (Visas direkt om GLB-filen laddar långsamt eller saknas!)
+        const dummyBody = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.4, 0.3), new THREE.MeshStandardMaterial({color: 0x219653, roughness: 0.5}));
+        dummyBody.position.set(0, 0.7, 0); dummyBody.castShadow = true; dummyBody.name = "Godkand_Zon";
+        taserGroup.add(dummyBody); window.dummyBody = dummyBody;
+
+        // HIT ZONES
+        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.8, emissive: 0xf1c40f, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.8 });
+        const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), yellowMat); headMesh.position.set(0, 1.65, 0.0); headMesh.name = "Huvud/Hals"; headMesh.castShadow = true; taserGroup.add(headMesh);
+        const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.2), yellowMat); chestMesh.position.set(0, 1.35, 0.08); chestMesh.name = "Hjärttrakten"; chestMesh.castShadow = true; taserGroup.add(chestMesh);
+        const groinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), yellowMat); groinMesh.position.set(0, 0.85, 0.08); groinMesh.name = "Genitalier"; groinMesh.castShadow = true; taserGroup.add(groinMesh);
+
+        // KNIFE
+        const knifeGroup = new THREE.Group();
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), new THREE.MeshStandardMaterial({color: 0x111111, roughness: 0.9}));
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.25, 0.05), new THREE.MeshStandardMaterial({color: 0xffffff, metalness: 1.0, roughness: 0.1}));
+        blade.position.y = 0.18;
+        knifeGroup.add(handle); knifeGroup.add(blade);
+        knifeGroup.position.set(0.35, 1.1, 0.3); 
+        knifeGroup.rotation.x = Math.PI / 2; knifeGroup.rotation.z = -Math.PI / 8; 
+        knifeGroup.visible = false; window.knifeMesh = knifeGroup; taserGroup.add(knifeGroup);
+
+        // LADDA GLB (Ersätter Fallback Dummy)
         const loader = new GLTFLoader();
-        
         loader.load('ue_mannequin_retopology.glb', (gltf) => {
             let dummy = gltf.scene;
             dummy.updateMatrixWorld(true);
@@ -989,31 +1030,9 @@
                 if (child.isMesh) { child.material = new THREE.MeshStandardMaterial({ color: 0x219653, roughness: 0.5, metalness: 0.3 }); child.name = "Godkand_Zon"; child.castShadow = true; child.receiveShadow = true; }
             });
             taserGroup.add(dummy);
-            taserGroup.userData.startPos = new THREE.Vector3(0,0,0);
-
-            // UPPGRADERAD KNIV 
-            const knifeGroup = new THREE.Group();
-            const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), new THREE.MeshStandardMaterial({color: 0x111111, roughness: 0.9}));
-            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.25, 0.05), new THREE.MeshStandardMaterial({color: 0xffffff, metalness: 1.0, roughness: 0.1}));
-            blade.position.y = 0.18;
-            knifeGroup.add(handle); knifeGroup.add(blade);
-            
-            knifeGroup.position.set(0.35, 1.1, 0.3); // Placerad framåt i handen
-            knifeGroup.rotation.x = Math.PI / 2; // Peka framåt
-            knifeGroup.rotation.z = -Math.PI / 8; // Vinklad något
-            knifeGroup.visible = false; 
-            
-            window.knifeMesh = knifeGroup;
-            taserGroup.add(knifeGroup);
-
-            const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.8, emissive: 0xf1c40f, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.8 });
-            
-            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), yellowMat); headMesh.position.set(0, 1.65, 0.0); headMesh.name = "Huvud/Hals"; headMesh.castShadow = true; taserGroup.add(headMesh);
-            const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.2), yellowMat); chestMesh.position.set(0, 1.35, 0.08); chestMesh.name = "Hjärttrakten"; chestMesh.castShadow = true; taserGroup.add(chestMesh);
-            const groinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), yellowMat); groinMesh.position.set(0, 0.85, 0.08); groinMesh.name = "Genitalier"; groinMesh.castShadow = true; taserGroup.add(groinMesh);
-
+            if(window.dummyBody) window.dummyBody.visible = false; // Göm fallbacken!
             window.log("<span style='color:#2ecc71'>3D-Gubbe (Tactical) inladdad!</span>");
-        }, undefined, (e) => { window.log("<span style='color:red'>Laddningsfel (GLB).</span>"); });
+        }, undefined, (e) => { window.log("<span style='color:red'>Hittade ingen .glb-fil. Använder Fallback-figur.</span>"); });
 
         const placementGround = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.ShadowMaterial({ opacity: 0.5 }));
         placementGround.rotation.x = -Math.PI / 2; placementGround.receiveShadow = true; placementGround.name = "Environment"; scene.add(placementGround);
@@ -1114,7 +1133,6 @@
                 spawnSparks(hit1.point);
                 spawnSparks(hit2.point);
 
-                // SKARPARE OCH TYDLIGARE TRÅDAR
                 const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
                 
                 const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
@@ -1163,6 +1181,9 @@
                 }
             }
         });
+
+        window.updateDisplay(); // Init Display
+        window.startThreatEscalation(); // Start timer
 
         renderer.setAnimationLoop((timestamp, frame) => {
             if (window.placeMode && renderer.xr.isPresenting && frame) {
@@ -1227,6 +1248,12 @@
 
             if (!renderer.xr.isPresenting) {
                 if(window.useCamera) { scene.background = null; } else { scene.background = new THREE.Color(0x0a0a0a); }
+                
+                // SANITIZER: Tvinga distans om NaN
+                if(isNaN(window.currentDistance) || window.currentDistance < 0.5) window.currentDistance = 3.0;
+                if(isNaN(window.aimX)) window.aimX = 50;
+                if(isNaN(window.aimY)) window.aimY = 50;
+
                 let targetPos = window.taserGroup ? window.taserGroup.position.clone() : new THREE.Vector3(0,0,0);
                 targetPos.y += 1.35; 
                 let camZ = targetPos.z + window.currentDistance;
