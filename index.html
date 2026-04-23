@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taser 7 - Ultimate AR & WebXR v7.41</title>
+    <title>Taser 7 - Ultimate AR & WebXR v7.42</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -87,10 +87,9 @@
         }
         .place-hint.visible { opacity: 1; }
         
-        /* ----- VAPEN OCH KONTROLLER (DEN GULA HUD:EN ÄR TILLBAKA) ----- */
+        /* ----- VAPEN OCH KONTROLLER (GUL) ----- */
         .main-container { display: flex; flex-direction: column; align-items: center; width: 100%; position: relative; z-index: 50; transition: all 0.3s ease; }
 
-        /* TAKTIL TEXTUR FÖR VAPEN */
         .taser-device { 
             width: 300px; 
             background: linear-gradient(to bottom, #333 0%, #222 40%, #e1c028 40%, #f1c40f 100%); 
@@ -105,7 +104,6 @@
         .sights { display: flex; justify-content: center; gap: 40px; padding-top: 10px; }
         .sight-dot { width: 10px; height: 10px; background-color: #fff; border-radius: 50%; box-shadow: inset 0 -2px 4px rgba(0,0,0,0.5); }
         
-        /* DISPLAY BEZEL (REALISTISK REFLEKTION) */
         .display-bezel { 
             background-color: #050505; margin: 15px auto; width: 180px; height: 70px; border-radius: 10px; border: 3px solid #000; 
             display: flex; justify-content: center; align-items: center; 
@@ -360,10 +358,10 @@
         <div class="modal-content">
             <button class="modal-close" onclick="window.closeModal('info-modal')">×</button>
             <h2>Lathund: Taser 7 Elite Tactical</h2>
-            <p><strong>Väggträffar (WebXR):</strong> Om du missar gubben fäster sig kablarna nu i väggen eller golvet bakom.</p>
-            <p><strong>Tjocka Kläder:</strong> Aktiverar du denna knapp simuleras 20% risk att en perfekt träff orsakar disconnect på grund av plaggens tjocklek.</p>
-            <p><strong>Ballistik:</strong> Pilarna är nu påverkade av gravitation. På avstånd över 3 meter måste du kompensera för att den undre pilen droppar extra mycket.</p>
-            <p><strong>Scenarion:</strong> Tryck på WebXR för att välja mellan statiskt, sidledes eller anfallande mål.</p>
+            <p><strong>Wire Dynamics (Snören):</strong> Fysiska kablar dras ut och fäster i figuren. De följer med figuren om den faller eller rör sig!</p>
+            <p><strong>Väggträffar:</strong> Missar du fäster pilarna (och kablarna) i väggen eller golvet istället för på figuren.</p>
+            <p><strong>Tjocka Kläder:</strong> Aktiverar du denna knapp simuleras risk att en perfekt träff orsakar disconnect på grund av kläder.</p>
+            <p><strong>Ballistik:</strong> Pilarna är nu påverkade av gravitation. På avstånd över 3 meter måste du kompensera (den undre pilen droppar extra mycket).</p>
         </div>
     </div>
 
@@ -383,7 +381,7 @@
             entry.className = 'log-entry'; entry.innerHTML = `> ${msg}`;
             logBox.prepend(entry);
         }
-        window.log("Simulator v7.41 (Elite Tactical) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
+        window.log("Simulator v7.42 (The Dynamic Wire Update) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
 
         document.querySelector('.main-container').addEventListener('beforexrselect', e => e.preventDefault());
         document.querySelector('.hud-overlay').addEventListener('beforexrselect', e => e.preventDefault());
@@ -408,6 +406,7 @@
         
         window.nmiTimer = null; 
         window.activeWires = []; 
+        window.activeDarts = []; 
         
         let audioCtx = null; let isAudioInit = false; let soundInterval = null;
         let pannerNode = null;
@@ -446,7 +445,7 @@
                     const AudioContext = window.AudioContext || window.webkitAudioContext; 
                     if (AudioContext) { 
                         audioCtx = new AudioContext(); 
-                        pannerNode = audioCtx.createStereoPanner(); // Enkel panorering för Web Audio
+                        pannerNode = audioCtx.createStereoPanner(); 
                         pannerNode.connect(audioCtx.destination);
                     } 
                 } catch (e) {} 
@@ -479,12 +478,11 @@
                 window.log("<span style='color:#f1c40f'>Tjocka kläder aktiverade. Risk för disconnect ökad.</span>");
             } else {
                 btn.innerHTML = "🧥 Kläder: NORMAL";
-                btn.style.borderColor = "#5b2272";
+                btn.style.borderColor = "#1a252f";
                 window.log("Normala kläder aktiverade.");
             }
         }
 
-        // ----- NMI RUTA -----
         window.showNMIOverlay = function(success, reason, spreadCm) {
             const overlay = document.getElementById('nmi-overlay');
             const title = document.getElementById('nmi-title');
@@ -526,7 +524,6 @@
             window.placeMode = false; window.figureLocked = true;
             if (window.taserGroup && window.placeMarker.visible) {
                 window.taserGroup.position.copy(window.placeMarker.position); window.taserGroup.visible = true;
-                // Spara ursprunglig position för scenarios
                 window.taserGroup.userData.startPos = window.taserGroup.position.clone();
             }
             if (window.show3DModel && window.set3DVisibility) { window.set3DVisibility(true); }
@@ -711,10 +708,14 @@
                 cEl.textContent = "⏏️ Kassetter ur"; cEl.classList.remove('ok'); window.log("Kassetter urtagna."); 
                 document.querySelectorAll('.dart-spark').forEach(el => el.remove());
                 
-                // Rensa kablar
+                // Rensa kablar och pilar
                 if(window.activeWires && window.scene) {
                     window.activeWires.forEach(w => window.scene.remove(w.line));
                     window.activeWires = [];
+                }
+                if(window.activeDarts) {
+                    window.activeDarts.forEach(d => { if(d.parent) d.parent.remove(d); });
+                    window.activeDarts = [];
                 }
 
                 if(window.figureFallen && window.taserGroup) {
@@ -834,10 +835,13 @@
                 window.activeWires.forEach(w => window.scene.remove(w.line));
                 window.activeWires = [];
             }
+            if(window.activeDarts) {
+                window.activeDarts.forEach(d => { if(d.parent) d.parent.remove(d); });
+                window.activeDarts = [];
+            }
 
             if(window.figureFallen && window.taserGroup) { 
                 window.taserGroup.rotation.x = 0; window.figureFallen = false; 
-                // Om gubben laddade emot dig, sätt tillbaka honom till start
                 if (window.scenario === 'charging' && window.taserGroup.userData.startPos) {
                     window.taserGroup.position.copy(window.taserGroup.userData.startPos);
                 }
@@ -858,7 +862,7 @@
 
         const canvasContainer = document.getElementById('three-canvas');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0a0a); // Mörkare bakgrund
+        scene.background = new THREE.Color(0x0a0a0a);
 
         const camera = new THREE.PerspectiveCamera(45, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 100);
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -866,20 +870,35 @@
         renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
         renderer.setClearColor(0x000000, 0); 
         renderer.xr.enabled = true;
-        canvasContainer.appendChild(renderer.domElement);
         
-        // PBR & Shadows
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.0;
-
+        
+        canvasContainer.appendChild(renderer.domElement);
+        
         window.renderer = renderer; window.camera = camera; window.scene = scene;
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0); dirLight.position.set(5, 10, 7); dirLight.castShadow = true; scene.add(dirLight);
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); 
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.5); 
+        dirLight.position.set(5, 10, 7);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.top = 2; dirLight.shadow.camera.bottom = -2;
+        dirLight.shadow.camera.left = -2; dirLight.shadow.camera.right = 2;
+        dirLight.shadow.camera.near = 0.1; dirLight.shadow.camera.far = 40;
+        scene.add(dirLight);
 
         let taserGroup = new THREE.Group(); scene.add(taserGroup); window.taserGroup = taserGroup;
+        
+        // ARRAY FÖR ATT HÅLLA KOLL PÅ TRÅDAR OCH PILAR
+        window.activeWires = [];
+        window.activeDarts = [];
         
         window.set3DVisibility = function(isVisible) { 
             if (window.taserGroup) window.taserGroup.visible = isVisible; 
@@ -913,7 +932,6 @@
             window.log("<span style='color:#2ecc71'>3D-Gubbe (Tactical) inladdad!</span>");
         }, undefined, (e) => { window.log("<span style='color:red'>Laddningsfel (GLB).</span>"); });
 
-        // SHADOW PLANE (fungerar också som miljö/vägg för bommar)
         const placementGround = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.ShadowMaterial({ opacity: 0.5 }));
         placementGround.rotation.x = -Math.PI / 2; placementGround.receiveShadow = true; placementGround.name = "Environment"; scene.add(placementGround);
         
@@ -925,7 +943,6 @@
 
         const placementRaycaster = new THREE.Raycaster();
 
-        // SPARK PARTIKEL EFFEKT
         function spawnSparks(point) {
             const sparkGroup = new THREE.Group();
             scene.add(sparkGroup);
@@ -944,7 +961,7 @@
                 lifetime++;
                 sparkGroup.children.forEach(spark => {
                     spark.position.add(spark.userData.velocity);
-                    spark.userData.velocity.y -= 0.005; // Gravitation
+                    spark.userData.velocity.y -= 0.005; 
                     spark.scale.multiplyScalar(0.95); 
                 });
                 if (lifetime > 30) { clearInterval(sparkInt); scene.remove(sparkGroup); }
@@ -972,7 +989,6 @@
             let visualDropPx = (chamber === 1) ? 141.7 : 40.7; 
             visualDropPx = visualDropPx * scaleFactor; 
 
-            // BALLISTIK: Pilen droppar extra pga gravitation på långt avstånd (>3m)
             let ballisticDrop = (window.currentDistance > 3.0) ? Math.pow(window.currentDistance - 3.0, 2) * 0.002 : 0;
             let ndcDrop = (visualDropPx / (rect.height / 2)) + ballisticDrop;
 
@@ -995,26 +1011,40 @@
                 let hit1 = hits1[0]; let hit2 = hits2[0];
                 document.querySelectorAll('.dart-spark').forEach(el => el.remove());
                 
-                const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6); const dartMat = new THREE.MeshStandardMaterial({color: 0x7f8c8d, metalness: 1, roughness: 0.2 });
-                const d1 = new THREE.Mesh(dartGeo, dartMat); d1.position.copy(hit1.point); d1.rotation.x = Math.PI/2; scene.add(d1); setTimeout(() => scene.remove(d1), 5000);
-                const d2 = new THREE.Mesh(dartGeo, dartMat); d2.position.copy(hit2.point); d2.rotation.x = Math.PI/2; scene.add(d2); setTimeout(() => scene.remove(d2), 5000);
+                // SKAPA FYSISKA PILAR (Fäst i gubben så de rör sig med honom)
+                const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6); 
+                const dartMat = new THREE.MeshStandardMaterial({color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+                
+                let attachGroup1 = hitWall1 ? scene : taserGroup;
+                const d1 = new THREE.Mesh(dartGeo, dartMat); 
+                d1.position.copy(attachGroup1.worldToLocal(hit1.point.clone())); 
+                d1.lookAt(attachGroup1.worldToLocal(activeCamera.position.clone()));
+                attachGroup1.add(d1);
+                window.activeDarts.push(d1);
+
+                let attachGroup2 = hitWall2 ? scene : taserGroup;
+                const d2 = new THREE.Mesh(dartGeo, dartMat); 
+                d2.position.copy(attachGroup2.worldToLocal(hit2.point.clone())); 
+                d2.lookAt(attachGroup2.worldToLocal(activeCamera.position.clone()));
+                attachGroup2.add(d2);
+                window.activeDarts.push(d2);
 
                 spawnSparks(hit1.point);
                 spawnSparks(hit2.point);
 
-                // --- TRÅDAR (WIRES) ---
-                const wireMat = new THREE.LineBasicMaterial({ color: 0xbdc3c7, transparent: true, opacity: 0.6 });
+                // --- TRÅDAR (Följer pilarna) ---
+                const wireMat = new THREE.LineBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 1.0 });
+                
                 const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
                 const wire1 = new THREE.Line(geo1, wireMat);
                 scene.add(wire1);
-                window.activeWires.push({ line: wire1, chamber: chamber, target: hit1.point.clone() });
+                window.activeWires.push({ line: wire1, chamber: chamber, dart: d1 });
                 
                 const geo2 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit2.point.clone()]);
                 const wire2 = new THREE.Line(geo2, wireMat);
                 scene.add(wire2);
-                window.activeWires.push({ line: wire2, chamber: chamber, target: hit2.point.clone() });
+                window.activeWires.push({ line: wire2, chamber: chamber, dart: d2 });
 
-                // Om någon pil träffar väggen -> MISS
                 if(hitWall1 || hitWall2) return { success: false, reason: "En eller båda pilarna missade kroppen (Vägg/Golv).", spreadCm: null };
 
                 let distCm = hit1.point.distanceTo(hit2.point) * 100;
@@ -1029,7 +1059,6 @@
                 
                 if (distCm < minSpreadCm) return { success: false, reason: `För tät spridning. Krävs ${minSpreadCm.toFixed(1)} cm.`, spreadCm: distCm };
                 
-                // DISCONNECT RISK (TJOCKA KLÄDER)
                 if(window.heavyClothing && Math.random() > 0.8) {
                     return { success: false, reason: `DISCONNECT: Kläder blockerar kontakt.`, spreadCm: distCm };
                 }
@@ -1087,13 +1116,10 @@
 
             const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
 
-            // SCENARIO RÖRELSER (Rörlig eller Anstormande)
             if (window.taserGroup && window.taserGroup.visible && !window.figureFallen) {
                 if (window.scenario === 'moving') {
-                    // Strafe left/right
                     window.taserGroup.position.x = window.taserGroup.userData.startPos.x + Math.sin(timestamp * 0.001) * 1.2;
                 } else if (window.scenario === 'charging') {
-                    // Gå emot kameran (På XZ planet)
                     let dir = new THREE.Vector3().subVectors(activeCamera.position, window.taserGroup.position);
                     dir.y = 0; 
                     if (dir.length() > 1.5) {
@@ -1112,7 +1138,6 @@
                 }
             }
 
-            // PULSERANDE GLÖD UPDATE
             if(window.taserGroup && window.taserGroup.children[1]) {
                 const pulse = Math.sin(timestamp * 0.005) * 0.3 + 0.5; 
                 window.taserGroup.children[1].material.emissiveIntensity = pulse;
@@ -1135,15 +1160,21 @@
                 camera.lookAt(lookTarget);
             }
 
-            // UPPDATERA DYNAMISKA TRÅDAR
+            // UPPDATERA DYNAMISKA TRÅDAR OCH PILAR
             if (window.activeWires && window.activeWires.length > 0) {
                 window.activeWires.forEach(wire => {
+                    // Startpunkt: Kameran (Vapnet)
                     let offset = new THREE.Vector3(wire.chamber === 1 ? -0.05 : 0.05, -0.15, -0.3);
                     offset.applyQuaternion(activeCamera.quaternion);
                     let origin = activeCamera.position.clone().add(offset);
                     
+                    // Slutpunkt: Exakt där pilen befinner sig i 3D världen (följer med när gubben faller!)
+                    let targetPos = new THREE.Vector3();
+                    wire.dart.getWorldPosition(targetPos);
+
                     const positions = wire.line.geometry.attributes.position.array;
                     positions[0] = origin.x; positions[1] = origin.y; positions[2] = origin.z;
+                    positions[3] = targetPos.x; positions[4] = targetPos.y; positions[5] = targetPos.z;
                     wire.line.geometry.attributes.position.needsUpdate = true;
                 });
             }
