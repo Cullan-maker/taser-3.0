@@ -3,142 +3,852 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taser 7 - Elite Tactical v7.40</title>
+    <title>Taser 7 - Ultimate AR & WebXR v7.41</title>
     <style>
         * { box-sizing: border-box; }
-        body { 
-            font-family: 'Segoe UI', sans-serif; background-color: #050505; color: #ecf0f1; 
-            display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; min-height: 100vh; overflow: hidden; 
-        }
-        h1.main-title { color: #f1c40f; margin: 5px; font-size: 16px; letter-spacing: 3px; text-transform: uppercase; }
 
-        /* ----- VIEWPORT ----- */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #050505; color: #ecf0f1; 
+            display: flex; flex-direction: column; align-items: center;
+            padding: 15px 10px; margin: 0; min-height: 100vh; overflow-x: hidden; 
+        }
+
+        h1.main-title {
+            color: #f1c40f; margin: 0 0 10px 0; font-size: 18px; letter-spacing: 3px;
+            text-align: center; text-transform: uppercase; text-shadow: 0 2px 5px rgba(0,0,0,0.9);
+        }
+
+        /* ----- VY FRAMÅT (MÅLBILDEN) ----- */
         .viewport {
             width: 100%; height: 320px; border: 3px solid #1a1a1a; border-radius: 12px;
-            position: relative; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.9);
-            background-color: #0a0a0a; transition: all 0.3s ease;
+            position: relative; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 50px rgba(0,0,0,0.5);
+            background-color: #0a0a0a; cursor: crosshair; touch-action: none; margin-bottom: 15px; transition: all 0.3s ease;
         }
+
         #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; }
         .camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; display: none; }
 
-        /* ----- HUD ----- */
+        .camera-feed.flash, #three-canvas.flash { animation: strobe 0.1s infinite alternate; }
+        @keyframes strobe { 0% { filter: brightness(2.5); } 100% { filter: brightness(0.5); } }
+
+        .camera-feed.fail-flash, #three-canvas.fail-flash { animation: redStrobe 0.2s 3; }
+        @keyframes redStrobe { 0% { filter: sepia(1) hue-rotate(-50deg) saturate(5) brightness(1.2); } 100% { filter: none; } }
+
+        /* ----- SIKTET (FASTLÅST I MITTEN) ----- */
         .fixed-aim-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9000; }
-        .crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; }
-        .laser-green { position: absolute; width: 8px; height: 8px; background-color: #00ff00; border-radius: 50%; box-shadow: 0 0 15px #00ff00; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; }
-        .laser-red { position: absolute; width: 8px; height: 8px; background-color: #ff0000; border-radius: 50%; box-shadow: 0 0 15px #ff0000; left: 50%; transform: translateX(-50%); display: none; }
+        .crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; }
+        .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.5); }
+        .crosshair::before { top: 50%; left: -5px; right: -5px; height: 1px; transform: translateY(-50%); }
+        .crosshair::after { left: 50%; top: -5px; bottom: -5px; width: 1px; transform: translateX(-50%); }
 
+        .flashlight-beam { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 450px; height: 450px; background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.05) 40%, transparent 70%); display: none; }
+        .laser-green { position: absolute; width: 10px; height: 10px; background-color: #00ff00; border-radius: 50%; box-shadow: 0 0 15px #00ff00, 0 0 30px #00ff00; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; }
+        .laser-red { position: absolute; width: 10px; height: 10px; background-color: #ff0000; border-radius: 50%; box-shadow: 0 0 15px #ff0000, 0 0 30px #ff0000; left: 50%; transform: translateX(-50%); display: none; animation: blinkLaser 0.15s infinite alternate; transition: top 0.1s ease-out; }
+        @keyframes blinkLaser { 0% { opacity: 0.2; transform: translateX(-50%) scale(0.8); } 100% { opacity: 1; transform: translateX(-50%) scale(1.2); } }
+
+        .lightning { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; background: radial-gradient(circle, rgba(168,235,18,0.2) 0%, transparent 60%); display: none; z-index: 5; }
+        .lightning::before, .lightning::after { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background: #fff; box-shadow: 0 0 15px #a8eb12, 0 0 30px #a8eb12; animation: electricity 0.05s infinite alternate; }
+        .lightning::after { transform: rotate(15deg); }
+
+        /* NY NMI RESULTAT RUTA (GRAFISK) */
         #nmi-overlay {
-            display: none; position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9); border: 2px solid #2ecc71; border-radius: 8px;
-            padding: 15px; text-align: center; z-index: 10000; width: 260px; backdrop-filter: blur(10px);
+            display: none; position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); border: 1px solid rgba(46, 204, 113, 0.5); border-radius: 12px;
+            padding: 20px; text-align: center; z-index: 10000; width: 85%; max-width: 320px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(46, 204, 113, 0.1);
+            backdrop-filter: blur(5px); transition: all 0.3s ease;
         }
-        #nmi-overlay.fail { border-color: #e74c3c; }
+        #nmi-overlay.fail { border-color: rgba(231, 76, 60, 0.5); box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(231, 76, 60, 0.1); }
+        #nmi-title { font-size: 22px; font-weight: bold; color: #2ecc71; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);}
+        #nmi-overlay.fail #nmi-title { color: #e74c3c; }
+        #nmi-details { font-size: 14px; color: #ecf0f1; margin: 0; line-height: 1.5; font-family: 'Courier New', monospace;}
+        .nmi-highlight { font-weight: bold; color: #f1c40f; }
 
-        /* ----- SCENARIO MODAL ----- */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 30000; justify-content: center; align-items: center; }
-        .modal-content { background: #1a1a1a; padding: 25px; border-radius: 15px; border: 2px solid #f1c40f; width: 90%; max-width: 400px; text-align: center; }
-        .scenario-btn { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #333; background: #2c3e50; color: white; font-weight: bold; cursor: pointer; text-align: left; }
-        .scenario-btn:hover { background: #34495e; border-color: #f1c40f; }
-        .scenario-btn span { display: block; font-size: 10px; font-weight: normal; color: #bdc3c7; margin-top: 4px; }
+        /* HUD Label Style */
+        .hud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; }
+        .hud-row { display: flex; justify-content: space-between; width: 100%; }
+        
+        .target-label, .dist-label, .spread-label { 
+            font-size: 10px; font-weight: bold; padding: 4px 6px; border-radius: 3px; border: 1px solid #1a1a1a;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5); background-color: rgba(0,0,0,0.6); backdrop-filter: blur(2px);
+            letter-spacing: 1px;
+        }
+        .target-label { color: #f1c40f; border-color: #f1c40f; }
+        .dist-label { color: #3498db; border-color: #3498db; }
+        .spread-label { color: #e67e22; border-color: #d35400; padding: 5px 8px; font-size: 11px; }
 
-        /* ----- DEVICE & CONTROLS ----- */
+        .place-hint {
+            position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+            background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid #2ecc71;
+            padding: 8px 12px; border-radius: 20px; font-size: 11px; font-weight: bold;
+            pointer-events: none; opacity: 0; transition: opacity 0.15s ease;
+            z-index: 30; text-align: center; backdrop-filter: blur(3px); box-shadow: 0 0 15px rgba(46, 204, 113, 0.2);
+        }
+        .place-hint.visible { opacity: 1; }
+        
+        /* ----- VAPEN OCH KONTROLLER (DEN GULA HUD:EN ÄR TILLBAKA) ----- */
+        .main-container { display: flex; flex-direction: column; align-items: center; width: 100%; position: relative; z-index: 50; transition: all 0.3s ease; }
+
+        /* TAKTIL TEXTUR FÖR VAPEN */
         .taser-device { 
-            width: 280px; height: 160px; background: #c0392b; border-radius: 30px 30px 10px 10px; 
-            position: relative; border: 4px solid #000; box-shadow: inset 0 5px 15px rgba(255,255,255,0.2);
-            background-image: linear-gradient(45deg, #a93226 25%, transparent 25%, transparent 50%, #a93226 50%, #a93226 75%, transparent 75%, transparent);
-            background-size: 4px 4px; margin-top: -10px;
+            width: 300px; 
+            background: linear-gradient(to bottom, #333 0%, #222 40%, #e1c028 40%, #f1c40f 100%); 
+            border-radius: 40px 40px 10px 10px; 
+            box-shadow: 0 15px 30px rgba(0,0,0,0.9), inset 0 5px 15px rgba(255,255,255,0.1); 
+            position: relative; padding-bottom: 15px; border: 2px solid #111; z-index: 2; margin-top: -10px;
+            background-image: radial-gradient(#1a1a1a 10%, transparent 10%), radial-gradient(#1a1a1a 10%, transparent 10%), linear-gradient(to bottom, #333 0%, #222 40%, #e1c028 40%, #f1c40f 100%);
+            background-position: 0 0, 10px 10px, 0 0; background-size: 20px 20px, 20px 20px, 100% 100%;
         }
-        .display-bezel { background: #000; width: 140px; height: 60px; margin: 15px auto; border-radius: 8px; display: flex; justify-content: center; align-items: center; border: 2px solid #333; }
-        .display-screen { color: #ffff00; font-family: monospace; font-size: 14px; font-weight: bold; }
         
-        .sim-controls { width: 300px; background: #2c3e50; padding: 15px; border-radius: 0 0 15px 15px; margin-top: -10px; }
-        .btn-grid-compact { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-top: 8px; }
-        button.action-btn { background: #34495e; color: white; border: none; padding: 10px 2px; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
-        .btn-trigger { background: #e74c3c !important; width: 100%; padding: 15px !important; font-size: 14px !important; margin-top: 10px; box-shadow: 0 4px 0 #7b241c; }
+        .warning-arc { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 120px; height: 25px; background: repeating-linear-gradient(90deg, transparent, transparent 5px, #a8eb12 8px, #ffffff 12px); filter: drop-shadow(0 0 10px #a8eb12) drop-shadow(0 0 20px #a8eb12); border-radius: 10px; display: none; animation: electricity 0.05s infinite alternate; z-index: 20; }
+        .sights { display: flex; justify-content: center; gap: 40px; padding-top: 10px; }
+        .sight-dot { width: 10px; height: 10px; background-color: #fff; border-radius: 50%; box-shadow: inset 0 -2px 4px rgba(0,0,0,0.5); }
         
-        .safety-switch { width: 60px; height: 30px; background: #27ae60; border-radius: 15px; margin: 10px auto; position: relative; cursor: pointer; border: 2px solid #000; }
-        .safety-switch::after { content: ''; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: 0.2s; }
-        .safety-switch.unsafe { background: #e74c3c; }
-        .safety-switch.unsafe::after { left: 32px; }
+        /* DISPLAY BEZEL (REALISTISK REFLEKTION) */
+        .display-bezel { 
+            background-color: #050505; margin: 15px auto; width: 180px; height: 70px; border-radius: 10px; border: 3px solid #000; 
+            display: flex; justify-content: center; align-items: center; 
+            box-shadow: inset 0 0 20px rgba(0,0,0,1), 0 2px 4px rgba(255,255,255,0.05); 
+            position: relative; overflow: hidden;
+        }
+        .display-bezel::after { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, rgba(255,255,255,0.05) 100%); pointer-events: none; }
+        
+        .display-screen { 
+            width: 160px; height: 50px; background-color: #050505; color: #ffff00; 
+            font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; 
+            display: flex; justify-content: center; align-items: center; border-radius: 5px; 
+            transition: all 0.2s; text-align: center;
+            text-shadow: 0 0 10px rgba(255,255,0,0.5); letter-spacing: 1px;
+        }
+        .display-screen.inverted { background-color: #ffff00; color: #050505; text-shadow: none; }
+        .display-screen.dimmed { opacity: 0.3; }
 
-        body.webxr-mode .sim-controls { background: rgba(44, 62, 80, 0.8); border: none; }
+        .display-icons { display: flex; gap: 10px; align-items: flex-end; padding-bottom: 3px; }
+        .chamber-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        
+        .icon-cassette { width: 25px; height: 25px; border: 2px solid rgba(255,255,255,0.1); border-radius: 2px; }
+        .inverted .icon-cassette { border-color: rgba(0,0,0,0.2); }
+        .icon-cassette.loaded { border-color: #ffff00; box-shadow: 0 0 5px rgba(255,255,0,0.3); }
+        .inverted .icon-cassette.loaded { border-color: #050505; box-shadow: none; }
+        .icon-cassette.fired { border-color: #ffff00; background: linear-gradient(to top right, transparent calc(50% - 2px), #ffff00 calc(50% - 1px), #ffff00 calc(50% + 1px), transparent calc(50% + 2px)), linear-gradient(to bottom right, transparent calc(50% - 2px), #ffff00 calc(50% - 1px), #ffff00 calc(50% + 1px), transparent calc(50% + 2px)); }
+        .inverted .icon-cassette.fired { border-color: #050505; background: linear-gradient(to top right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px)), linear-gradient(to bottom right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px)); }
+        
+        .icon-battery-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 7px; }
+        .batt-nub { width: 8px; height: 4px; background-color: transparent; }
+        .batt-body { width: 14px; height: 26px; border: 2px solid rgba(255,255,255,0.1); box-sizing: border-box; border-radius: 1px; }
+        .inverted .batt-body { border-color: rgba(0,0,0,0.2); }
+        .icon-battery-wrap.full .batt-nub { background-color: #ffff00; }
+        .icon-battery-wrap.full .batt-body { background-color: #ffff00; border-color: #ffff00; }
+        .inverted .icon-battery-wrap.full .batt-nub { background-color: #050505; }
+        .inverted .icon-battery-wrap.full .batt-body { background-color: #050505; border-color: #050505; }
+        
+        .active-line { width: 30px; height: 3px; background-color: transparent; }
+        .active-line.show { background-color: #ffff00; }
+        .inverted .active-line.show { background-color: #050505; }
+
+        .warning-btn-wrapper { position: absolute; top: 110px; width: 25px; height: 60px; }
+        .warning-btn-wrapper.left { left: -12px; }
+        .warning-btn-wrapper.right { right: -12px; }
+        
+        .warning-btn { 
+            width: 100%; height: 100%; background: linear-gradient(135deg, #444 0%, #222 100%); border: 2px solid #000; border-radius: 6px; 
+            cursor: pointer; box-shadow: 2px 0 4px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.05), inset 0 -2px 3px rgba(0,0,0,0.5); transition: all 0.1s; touch-action: manipulation;
+        }
+        .warning-btn-wrapper.left .warning-btn { border-radius: 6px 0 0 6px; background: linear-gradient(135deg, #444 0%, #222 100%); box-shadow: -2px 0 4px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.05), inset 0 -2px 3px rgba(0,0,0,0.5); }
+        .warning-btn-wrapper.right .warning-btn { border-radius: 0 6px 6px 0; }
+        .warning-btn:active, .warning-btn.active-press { transform: scaleX(0.8); background: #111; box-shadow: inset 0 0 10px rgba(52, 152, 219, 0.5); }
+
+        .safety-container { display: flex; justify-content: center; margin-top: 15px; }
+        .safety-switch { width: 80px; height: 40px; background-color: #27ae60; border: 3px solid #000; border-radius: 20px; cursor: pointer; position: relative; transition: background-color 0.3s; box-shadow: inset 0 3px 6px rgba(0,0,0,0.6); touch-action: manipulation; }
+        .safety-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 30px; height: 30px; background: linear-gradient(135deg, #fff 0%, #bdc3c7 100%); border-radius: 50%; transition: left 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 2px 2px rgba(255,255,255,1), inset 0 -2px 2px rgba(0,0,0,0.2); }
+        .safety-switch.unsafe { background-color: #e74c3c; }
+        .safety-switch.unsafe::after { left: 42px; }
+        .safety-label { text-align: center; font-weight: bold; margin-top: 6px; color: #111; font-size: 13px; letter-spacing: 1px; text-transform: uppercase;}
+
+        /* ----- KOMPAKT KONTROLLPANEL ----- */
+        .sim-controls { width: 290px; background-color: #2c3e50; padding: 25px 10px 10px 10px; border-radius: 0 0 15px 15px; box-shadow: 0 15px 25px rgba(0,0,0,0.8); margin-top: -20px; border: 2px solid #1a252f; border-top: none; position: relative; z-index: 1; transition: all 0.3s ease;}
+        
+        button.action-btn { 
+            width: 100%; background: linear-gradient(to bottom, #34495e 0%, #2c3e50 100%); color: white; border: 1px solid #1a252f; 
+            padding: 8px 4px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 10px; 
+            touch-action: manipulation; transition: 0.1s; 
+            box-shadow: 0 2px 0 #1a252f, inset 0 1px 0 rgba(255,255,255,0.1); text-transform: uppercase; letter-spacing: 1px;
+        }
+        button.action-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; }
+        
+        .btn-grid-compact { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+        .btn-grid-compact .action-btn { margin-bottom: 0; }
+        
+        .btn-trigger { 
+            background: linear-gradient(to bottom, #c0392b 0%, #a93226 100%) !important; border-color: #7b241c !important; 
+            font-size: 14px !important; padding: 14px !important; text-transform: uppercase; 
+            box-shadow: 0 4px 0 #7b241c, inset 0 1px 0 rgba(255,255,255,0.2); margin-top: 5px !important; margin-bottom: 10px !important; width: 100%;
+        }
+        .btn-trigger:active { box-shadow: 0 0 0 #7b241c; transform: translateY(4px); }
+        
+        .btn-warn { border-color: rgba(241, 196, 15, 0.5) !important; color: #f1c40f !important; }
+        .btn-info { background: linear-gradient(to bottom, #2980b9 0%, #2471a3 100%) !important; border-color: #1a252f !important; margin-bottom: 6px !important; font-size: 10px !important; padding: 6px !important;}
+        .btn-clothing { background: linear-gradient(to bottom, #8e44ad 0%, #732d91 100%) !important; border-color: #5b2272 !important; }
+        
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+        .status-box { background: #050505; padding: 4px; text-align: center; border-radius: 3px; font-size: 9px; font-weight: bold; border: 1px solid rgba(231, 76, 60, 0.5); color: #e74c3c; letter-spacing: 1px; text-transform: uppercase;}
+        .status-box.ok { border-color: rgba(46, 204, 113, 0.5); color: #2ecc71; }
+        .status-box.stealth { border-color: rgba(155, 89, 182, 0.5); color: #9b59b6; grid-column: span 2;}
+        
+        .btn-kontaktstot { 
+            background: linear-gradient(to bottom, #e67e22 0%, #d35400 100%) !important; border-color: #ba4a00 !important; 
+            font-size: 12px !important; padding: 10px !important; display: none; box-shadow: 0 3px 0 #ba4a00, inset 0 1px 0 rgba(255,255,255,0.2); margin-bottom: 10px !important; width: 100%;
+        }
+        .btn-kontaktstot:active { box-shadow: 0 0 0 #ba4a00; transform: translateY(3px); }
+        .log-box { background-color: #050505; color: #00ff00; font-family: 'Courier New', monospace; font-size: 9px; height: 60px; overflow-y: auto; padding: 6px; border-radius: 5px; margin-top: 8px; border: 1px solid #1a1a1a; box-shadow: inset 0 0 10px rgba(0,0,0,1);}
+
+        /* Fäll ihop-animation för sekundära knappar (Combat Mode) */
+        #secondary-controls { display: block; transition: all 0.3s ease; }
+
+        /* ----- PLACERINGS-UI ----- */
+        #placement-controls { display: none; text-align: center; padding-top: 10px; }
+        .btn-confirm { 
+            width: 100%; padding: 15px; background: linear-gradient(to bottom, #27ae60 0%, #219653 100%) !important; 
+            color: white; font-weight: bold; font-size: 14px; border: 2px solid #2ecc71 !important; border-radius: 8px; cursor: pointer; text-transform: uppercase; box-shadow: 0 4px 0 #1e8449, inset 0 1px 0 rgba(255,255,255,0.2); margin-bottom: 10px;
+        }
+        .btn-confirm:active { background: #219653 !important; transform: translateY(4px); box-shadow: 0 0 0 #1e8449;}
+
+        /* ----- WEBXR STYLING OVERRIDES ----- */
+        body.webxr-mode { background: transparent; }
         body.webxr-mode .main-title { display: none; }
+        body.webxr-mode .viewport { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; border: none; box-shadow: none; border-radius: 0; background-color: transparent; margin: 0; z-index: 0; }
+        body.webxr-mode .main-container { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 400px; padding-bottom: env(safe-area-inset-bottom, 20px); }
+        body.webxr-mode .footer { display: none; }
+        body.webxr-mode .sim-controls { background-color: rgba(44, 62, 80, 0.95); box-shadow: none; border: none; border-radius: 15px 15px 0 0;}
+        body.webxr-mode .log-box { display: none; }
+
+        /* Modaler */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 20000; justify-content: center; align-items: center; padding: 15px;}
+        .modal-content { background: #2c3e50; width: 100%; max-width: 500px; max-height: 90vh; border-radius: 10px; border: 1px solid #f1c40f; padding: 20px; overflow-y: auto; position: relative; color: #ecf0f1; box-shadow: 0 10px 40px rgba(0,0,0,0.9);}
+        .modal-close { position: absolute; top: 5px; right: 15px; font-size: 28px; color: #e74c3c; cursor: pointer; background: none; border: none; font-weight: bold; padding: 0;}
+        .modal-content h2 { margin-top: 0; color: #f1c40f; border-bottom: 1px solid #1a252f; padding-bottom: 8px; font-size: 16px;}
+        .modal-content p, .modal-content li { font-size: 11px; line-height: 1.4; color: #bdc3c7;}
+        
+        .scenario-btn { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #1a252f; background: linear-gradient(to bottom, #34495e, #2c3e50); color: white; font-weight: bold; cursor: pointer; text-align: left; box-shadow: 0 2px 0 #1a252f;}
+        .scenario-btn:hover, .scenario-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; border-color: #f1c40f;}
+        .scenario-btn span { display: block; font-size: 10px; font-weight: normal; color: #bdc3c7; margin-top: 4px; }
     </style>
 </head>
 <body>
 
-    <h1 class="main-title">TASER 7 ELITE</h1>
-    
-    <div class="viewport" id="viewport">
-        <div id="three-canvas"></div>
-        <video id="camera-feed" class="camera-feed" autoplay playsinline></video>
+    <div class="simulator-wrapper">
+        <h1 class="main-title">TASER 7 ELITE</h1>
         
-        <div class="fixed-aim-layer">
-            <div class="crosshair"></div>
-            <div id="laser-green" class="laser-green"></div>
-            <div id="laser-red" class="laser-red"></div>
-            <div id="lightning" style="position:absolute; width:100%; height:100%; background: radial-gradient(circle, rgba(255,255,255,0.2), transparent); display:none;"></div>
-        </div>
-
-        <div id="nmi-overlay">
-            <h2 id="nmi-title" style="margin:0; color:#2ecc71;">NMI</h2>
-            <p id="nmi-details" style="margin:10px 0 0 0; font-size:12px;"></p>
-        </div>
-
-        <div class="hud-overlay">
-            <div class="hud-row">
-                <div class="target-label" id="target-label">READY</div>
-                <div class="dist-label" id="dist-label">3.0 M</div>
-            </div>
-            <div class="spread-label" id="spread-label" style="margin-top:5px; width:fit-content;">SPRIDNING: --</div>
-            <div id="place-hint" class="place-hint">Hittar golv...</div>
-        </div>
-    </div>
-
-    <div class="main-container" id="main-container">
-        <div class="taser-device">
-            <div class="display-bezel">
-                <div id="taser-display" class="display-screen">READY</div>
-            </div>
-            <div id="safety-switch" class="safety-switch" onclick="toggleSafety()"></div>
-        </div>
-
-        <div class="sim-controls">
-            <button class="action-btn btn-trigger" onclick="pressTrigger()">AVFYRA</button>
+        <div class="viewport" id="viewport">
+            <div id="three-canvas"></div>
+            <video id="camera-feed" class="camera-feed" autoplay playsinline></video>
             
-            <div class="btn-grid-compact">
-                <button class="action-btn" onclick="toggleCassette()">Kassett</button>
-                <button class="action-btn" onclick="toggleBattery()">Batteri</button>
-                <button class="action-btn" onclick="resetSimulator()">♻️ Återställ</button>
+            <div class="fixed-aim-layer">
+                <div class="crosshair"></div>
+                <div id="flashlight" class="flashlight-beam"></div>
+                <div id="laser-green" class="laser-green"></div>
+                <div id="laser-red" class="laser-red"></div>
+                <div id="lightning" class="lightning"></div>
             </div>
 
-            <div id="secondary-controls">
-                <div class="btn-grid-compact">
-                    <button class="action-btn" onclick="toggleCamera()">📷 Kamera</button>
-                    <button class="action-btn" onclick="openScenarioModal()">🌐 WebXR</button>
-                    <button class="action-btn" onclick="togglePlaceMode()">📍 Placera</button>
+            <div id="nmi-overlay">
+                <h2 id="nmi-title">NMI UPPNÅDD</h2>
+                <p id="nmi-details">
+                    Målavstånd: <span class="nmi-highlight" id="nmi-dist">3.0 M</span><br><br>
+                    Spridning: <span class="nmi-highlight" id="nmi-spread">34 CM</span><br>
+                    <span id="nmi-reason" style="font-style: italic; color: #bdc3c7; font-size: 12px;">Träff i godkänd zon.</span>
+                </p>
+            </div>
+
+            <div class="hud-overlay" id="hud-overlay">
+                <div class="hud-row">
+                    <div class="target-label" id="target-label">PERSON (3D)</div>
+                    <div class="dist-label" id="dist-label">3.0 M</div>
+                </div>
+                <div class="hud-row" style="margin-top:5px; justify-content: flex-start;">
+                    <div class="spread-label" id="spread-label">SPRIDNING: -- CM</div>
+                </div>
+                <div id="place-hint" class="place-hint">Klicka för att placera figuren</div>
+            </div>
+        </div>
+        
+        <div class="main-container" id="main-container">
+            <div class="taser-device">
+                <div id="warning-arc" class="warning-arc"></div>
+                <div class="sights">
+                    <div class="sight-dot"></div><div class="sight-dot"></div>
+                </div>
+                <div class="display-bezel">
+                    <div id="taser-display" class="display-screen"></div>
+                </div>
+                <div class="warning-btn-wrapper left"><button class="warning-btn" id="warn-left" onclick="window.pressSingleWarning()"></button></div>
+                <div class="warning-btn-wrapper right"><button class="warning-btn" id="warn-right" onclick="window.pressSingleWarning()"></button></div>
+                <div class="safety-container">
+                    <div>
+                        <div id="safety-switch" class="safety-switch" onclick="window.toggleSafety()"></div>
+                        <div id="safety-label" class="safety-label">SÄKRAD</div>
+                    </div>
                 </div>
             </div>
+
+            <div class="sim-controls">
+                <div id="standard-controls">
+                    <div class="status-grid">
+                        <div id="stat-cassette" class="status-box">⏏️ Kassetter ur</div>
+                        <div id="stat-battery" class="status-box">🔋 Batteri ur</div>
+                        <div id="stat-stealth" class="status-box stealth" style="display:none;">🥷 DOLT LÄGE AKTIVT</div>
+                    </div>
+
+                    <button class="action-btn btn-trigger" id="btn-trigger" onclick="window.pressTrigger()">💥 AVFYRA (KLICK / SPACE)</button>
+                    <button class="action-btn btn-kontaktstot" id="btn-kontaktstot" onclick="window.performKontaktstot()">⚡ KONTAKTSTÖT</button>
+                    
+                    <div class="btn-grid-compact">
+                        <button class="action-btn" onclick="window.toggleCassette()">⏏️ Kassett</button>
+                        <button class="action-btn" onclick="window.toggleBattery()">🔋 Batteri</button>
+                        <button class="action-btn btn-stealth" onclick="window.activateStealth()">🥷 Dolt</button>
+                    </div>
+                    
+                    <div class="btn-grid-compact">
+                        <button class="action-btn" onclick="window.tiltWeapon()">🔄 Tilt (Z/X)</button>
+                        <button class="action-btn btn-warn" id="btn-warn" onclick="window.pressDualWarning()">⚠️ Funk. Kontroll</button>
+                        <button class="action-btn btn-reset" onclick="window.resetSimulator()">♻️ Återställ</button>
+                    </div>
+                    <div class="btn-grid-compact">
+                        <button class="action-btn btn-clothing" id="btn-clothing" onclick="window.toggleClothing()">🧥 Kläder: NORMAL</button>
+                    </div>
+
+                    <div id="secondary-controls">
+                        <div class="btn-grid-compact">
+                            <button class="action-btn btn-camera" id="btn-camera" onclick="window.toggleCamera()">📷 Kamera (AR)</button>
+                            <button class="action-btn" id="btn-webxr" onclick="window.openScenarioModal()">🌐 WebXR</button>
+                            <button class="action-btn" id="btn-place" onclick="window.togglePlaceMode()">📍 Flytta figur</button>
+                        </div>
+
+                        <div class="btn-grid-compact">
+                            <button class="action-btn btn-gyro" id="btn-gyro" onclick="window.initGyro()">📱 Gyro (Svart)</button>
+                            <button class="action-btn" id="btn-invert" onclick="window.toggleInvertMouse()">↕️ Inv. Mus</button>
+                            <button class="action-btn btn-info" onclick="window.openModal('info-modal')">ℹ️ Lathund</button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div id="placement-controls">
+                    <p style="color: #2ecc71; font-size: 13px; font-weight: bold; margin-bottom: 5px; margin-top: 0;">📍 AR Placeringsläge</p>
+                    <p style="color: #ecf0f1; font-size: 11px; margin-bottom: 15px;">Rikta kameran mot golvet och vänta på markören. Tryck nedan när det ser bra ut.</p>
+                    <button class="action-btn btn-confirm" onclick="window.confirmPlacement()">✅ FASTSTÄLL POSITION</button>
+                </div>
+
+                <div class="log-box" id="log"></div>
+            </div>
         </div>
+        <div class="footer">&copy; Cullibrick 2026</div>
     </div>
 
     <div id="scenario-modal" class="modal-overlay">
         <div class="modal-content">
-            <h2 style="color:#f1c40f; margin-top:0;">Välj Scenario</h2>
-            <button class="scenario-btn" onclick="startTacticalXR('static')">1. STATISKT MÅL<span>Figuren står stilla på golvet. Fokus på precision.</span></button>
-            <button class="scenario-btn" onclick="startTacticalXR('moving')">2. RÖRLIGT MÅL<span>Figuren rör sig i sidled (Strafing).</span></button>
-            <button class="scenario-btn" onclick="startTacticalXR('charging')">3. ANSTORMNING<span>Figuren går aggressivt mot din position!</span></button>
-            <button class="action-btn" onclick="closeModal()" style="margin-top:15px; width:100%; background:#c0392b;">Avbryt</button>
+            <h2>Välj Scenario (WebXR)</h2>
+            <button class="scenario-btn" onclick="window.startXR('static')">1. STATISKT MÅL<span>Figuren står stilla på golvet. Fokus på precision och NMI-räkning.</span></button>
+            <button class="scenario-btn" onclick="window.startXR('moving')">2. RÖRLIGT MÅL<span>Figuren rör sig i sidled fram och tillbaka.</span></button>
+            <button class="scenario-btn" onclick="window.startXR('charging')">3. ANSTORMNING<span>Figuren går aggressivt mot din position! Snabbhet krävs.</span></button>
+            <button class="action-btn" onclick="window.closeModal('scenario-modal')" style="margin-top:15px; background:#c0392b;">Avbryt</button>
+        </div>
+    </div>
+
+    <div id="info-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" onclick="window.closeModal('info-modal')">×</button>
+            <h2>Lathund: Taser 7 Elite Tactical</h2>
+            <p><strong>Väggträffar (WebXR):</strong> Om du missar gubben fäster sig kablarna nu i väggen eller golvet bakom.</p>
+            <p><strong>Tjocka Kläder:</strong> Aktiverar du denna knapp simuleras 20% risk att en perfekt träff orsakar disconnect på grund av plaggens tjocklek.</p>
+            <p><strong>Ballistik:</strong> Pilarna är nu påverkade av gravitation. På avstånd över 3 meter måste du kompensera för att den undre pilen droppar extra mycket.</p>
+            <p><strong>Scenarion:</strong> Tryck på WebXR för att välja mellan statiskt, sidledes eller anfallande mål.</p>
         </div>
     </div>
 
     <script type="importmap">
-    {
+      {
         "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
         }
-    }
+      }
+    </script>
+
+    <script>
+        const logBox = document.getElementById('log');
+        window.log = function(msg) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry'; entry.innerHTML = `> ${msg}`;
+            logBox.prepend(entry);
+        }
+        window.log("Simulator v7.41 (Elite Tactical) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
+
+        document.querySelector('.main-container').addEventListener('beforexrselect', e => e.preventDefault());
+        document.querySelector('.hud-overlay').addEventListener('beforexrselect', e => e.preventDefault());
+
+        window.openModal = function(id) { document.getElementById(id).style.display = 'flex'; }
+        window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; }
+        window.onclick = function(event) { if (event.target.classList.contains('modal-overlay')) { event.target.style.display = "none"; } }
+
+        window.openScenarioModal = function() { window.openModal('scenario-modal'); }
+
+        window.isSafe = true; window.chamber1 = "empty"; window.chamber2 = "empty";
+        window.hasBattery = false; window.displayState = "OFF"; window.arcTimer = null;
+        window.activeChamber = 1; window.stealthMode = false;
+        window.heavyClothing = false; window.scenario = 'static';
+        
+        window.useCamera = false; window.videoStream = null; window.xrSession = null;
+        window.xrHitTestSource = null; window.xrRefSpace = null; window.show3DModel = true; 
+        
+        window.placeMode = false; window.figureLocked = true; window.invertMouseY = false; 
+        window.currentDistance = 3.0; window.cameraAngle = 0; window.aimX = 50; window.aimY = 50; 
+        window.gyroEnabled = false; window.lastTiltTime = 0; window.figureFallen = false;
+        
+        window.nmiTimer = null; 
+        window.activeWires = []; 
+        
+        let audioCtx = null; let isAudioInit = false; let soundInterval = null;
+        let pannerNode = null;
+
+        window.addEventListener('keydown', function(event) {
+            const k = event.key.toLowerCase();
+            if (event.code === 'Space') { event.preventDefault(); window.pressTrigger(); } 
+            else if (k === 'c' || event.key === 'Shift') { event.preventDefault(); window.pressSingleWarning(); } 
+            else if (k === 'z') { window.initAudio(); if (!window.hasBattery || window.isSafe || window.chamber1 === "empty") return; if (window.activeChamber !== 1) { window.activeChamber = 1; window.updateDisplay(); } } 
+            else if (k === 'x') { window.initAudio(); if (!window.hasBattery || window.isSafe || window.chamber1 === "empty") return; if (window.activeChamber !== 2) { window.activeChamber = 2; window.updateDisplay(); } }
+        });
+
+        document.getElementById('viewport').addEventListener('mousedown', function(event) {
+            if (window.placeMode) return; 
+            if (event.button === 0) { event.preventDefault(); window.pressTrigger(); }
+        });
+
+        document.getElementById('viewport').addEventListener('mousemove', (e) => {
+            if(window.gyroEnabled || window.placeMode || window.xrSession) return; 
+            if (e.target !== window.renderer?.domElement && !e.target.classList.contains('crosshair') && 
+                e.target.id !== 'flashlight' && e.target.id !== 'laser-green' && e.target.id !== 'laser-red' && 
+                e.target.id !== 'lightning') return;
+            let rect = document.getElementById('viewport').getBoundingClientRect();
+            window.aimX = ((e.clientX - rect.left) / rect.width) * 100;
+            let yPct = ((e.clientY - rect.top) / rect.height) * 100;
+            window.aimY = window.invertMouseY ? 100 - yPct : yPct;
+            window.aimX = Math.max(0, Math.min(100, window.aimX)); window.aimY = Math.max(0, Math.min(100, window.aimY));
+            window.updateAimVisuals();
+        });
+
+        // ----- AUDIO (MED ENKEL 3D-EFFEKT) -----
+        window.initAudio = function() {
+            if (!isAudioInit) { 
+                isAudioInit = true; 
+                try { 
+                    const AudioContext = window.AudioContext || window.webkitAudioContext; 
+                    if (AudioContext) { 
+                        audioCtx = new AudioContext(); 
+                        pannerNode = audioCtx.createStereoPanner(); // Enkel panorering för Web Audio
+                        pannerNode.connect(audioCtx.destination);
+                    } 
+                } catch (e) {} 
+            }
+            if (audioCtx && audioCtx.state === 'suspended') { try { audioCtx.resume(); } catch(e) {} }
+        }
+        function playPopSound() {
+            window.initAudio(); if (!audioCtx) return;
+            try { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1); gain.gain.setValueAtTime(1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15); osc.connect(gain); gain.connect(pannerNode || audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.15); } catch(e) {}
+        }
+        function playElectricSound() {
+            window.initAudio(); if (!audioCtx) return null;
+            try { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(50, audioCtx.currentTime); osc.connect(gain); gain.connect(pannerNode || audioCtx.destination); osc.start(); soundInterval = setInterval(() => { if(gain.gain) { gain.gain.value = Math.random() * 0.5 + 0.5; osc.frequency.value = 50 + Math.random() * 50; } }, 30); return { osc, gain }; } catch(e) { return null; }
+        }
+        function stopElectricSound(soundObj) {
+            if (soundInterval) { clearInterval(soundInterval); soundInterval = null; }
+            if (soundObj && soundObj.osc && audioCtx) { try { soundObj.gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1); soundObj.osc.stop(audioCtx.currentTime + 0.1); } catch(e) {} }
+        }
+        function animateWarningButtons() {
+            document.getElementById('warn-left').classList.add('active-press'); document.getElementById('warn-right').classList.add('active-press');
+            setTimeout(() => { document.getElementById('warn-left').classList.remove('active-press'); document.getElementById('warn-right').classList.remove('active-press'); }, 200);
+        }
+
+        window.toggleClothing = function() {
+            window.heavyClothing = !window.heavyClothing;
+            const btn = document.getElementById('btn-clothing');
+            if(window.heavyClothing) {
+                btn.innerHTML = "🧥 Kläder: TJOCKA";
+                btn.style.borderColor = "#f1c40f";
+                window.log("<span style='color:#f1c40f'>Tjocka kläder aktiverade. Risk för disconnect ökad.</span>");
+            } else {
+                btn.innerHTML = "🧥 Kläder: NORMAL";
+                btn.style.borderColor = "#5b2272";
+                window.log("Normala kläder aktiverade.");
+            }
+        }
+
+        // ----- NMI RUTA -----
+        window.showNMIOverlay = function(success, reason, spreadCm) {
+            const overlay = document.getElementById('nmi-overlay');
+            const title = document.getElementById('nmi-title');
+            const distSpan = document.getElementById('nmi-dist');
+            const spreadSpan = document.getElementById('nmi-spread');
+            const reasonSpan = document.getElementById('nmi-reason');
+
+            distSpan.textContent = window.currentDistance.toFixed(1) + " M";
+            
+            if(success) {
+                overlay.className = ""; title.textContent = "NMI UPPNÅDD";
+                spreadSpan.textContent = spreadCm.toFixed(1) + " CM"; reasonSpan.textContent = reason;
+            } else {
+                overlay.className = "fail"; title.textContent = "INGEN VERKAN";
+                spreadSpan.textContent = spreadCm ? spreadCm.toFixed(1) + " CM" : "--"; reasonSpan.textContent = reason;
+            }
+            overlay.style.display = "block";
+
+            if (window.nmiTimer) clearTimeout(window.nmiTimer);
+            window.nmiTimer = setTimeout(() => { window.hideNMIOverlay(); }, 3500);
+        }
+        window.hideNMIOverlay = function() { document.getElementById('nmi-overlay').style.display = "none"; }
+
+        window.togglePlaceMode = function() {
+            window.placeMode = true; window.figureLocked = false;
+            document.getElementById('standard-controls').style.display = 'none';
+            document.getElementById('placement-controls').style.display = 'block';
+            if (window.set3DVisibility) window.set3DVisibility(false);
+            if (window.placeMarker) window.placeMarker.visible = true;
+            const hint = document.getElementById('place-hint');
+            if (hint) { hint.innerHTML = window.xrSession ? "Peka mot golvet och vänta på markör" : "Klicka på golvet"; hint.classList.add('visible'); }
+            window.log("Sök efter golvet och bekräfta...");
+        }
+
+        window.confirmPlacement = function() {
+            if (!window.placeMarker || !window.placeMarker.visible) {
+                if(!window.xrSession) { window.log("<span style='color:#f39c12'>Använder standardavstånd.</span>"); } else { return; }
+            }
+            window.placeMode = false; window.figureLocked = true;
+            if (window.taserGroup && window.placeMarker.visible) {
+                window.taserGroup.position.copy(window.placeMarker.position); window.taserGroup.visible = true;
+                // Spara ursprunglig position för scenarios
+                window.taserGroup.userData.startPos = window.taserGroup.position.clone();
+            }
+            if (window.show3DModel && window.set3DVisibility) { window.set3DVisibility(true); }
+            if (window.placeMarker) window.placeMarker.visible = false;
+            const hint = document.getElementById('place-hint'); if (hint) hint.classList.remove('visible');
+            document.getElementById('standard-controls').style.display = 'block';
+            document.getElementById('placement-controls').style.display = 'none';
+            window.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
+        }
+
+        window.toggleCamera = async function() {
+            const cameraFeed = document.getElementById('camera-feed');
+            const btnCamera = document.getElementById('btn-camera');
+            if (window.xrSession) { await window.endXRSession(); }
+
+            if (!window.useCamera) {
+                try {
+                    window.videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    cameraFeed.srcObject = window.videoStream; cameraFeed.style.display = 'block'; window.useCamera = true;
+                    btnCamera.innerHTML = "📷 Avbryt AR"; btnCamera.classList.add('active-cam');
+                    window.show3DModel = false; if (window.set3DVisibility) window.set3DVisibility(false);
+                    document.getElementById('target-label').textContent = "PERSON (LIVE)";
+                    window.log("<span style='color:#f1c40f'>Kamera AR aktiverad. 3D-figur dold.</span>");
+                } catch (err) { window.log("<span style='color:red'>Kunde inte starta kamera.</span>"); }
+            } else {
+                if (window.videoStream) { window.videoStream.getTracks().forEach(track => track.stop()); }
+                cameraFeed.style.display = 'none'; window.useCamera = false;
+                btnCamera.innerHTML = "📷 Kamera (AR)"; btnCamera.classList.remove('active-cam');
+                window.show3DModel = true; if (window.set3DVisibility) window.set3DVisibility(true);
+                document.getElementById('target-label').textContent = "PERSON (3D)";
+                if (window.placeMode) { window.confirmPlacement(); }
+                window.figureLocked = true;
+                if(window.taserGroup) { window.taserGroup.position.set(0, 0, 0); window.taserGroup.rotation.x = 0; window.figureFallen = false; }
+                window.log("Återgått till svart bakgrund. 3D-figur synlig.");
+            }
+        }
+
+        window.startXR = function(type) {
+            window.scenario = type || 'static';
+            window.closeModal('scenario-modal');
+
+            if (!navigator.xr) { window.log("<span style='color:red'>WebXR stöds inte.</span>"); return; }
+            if (!window.gyroEnabled) { window.initGyro(); } 
+            
+            const btnWebXR = document.getElementById('btn-webxr');
+            navigator.xr.isSessionSupported('immersive-ar').then((canHit) => {
+                if (!canHit) { window.log("<span style='color:red'>WebXR AR inte tillgängligt.</span>"); return Promise.reject('no-xr'); }
+                if (window.xrSession) { return window.endXRSession().then(() => Promise.reject('session-ended')); }
+                return navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test', 'local-floor'], optionalFeatures: ['dom-overlay'], domOverlay: { root: document.body } });
+            }).then((session) => {
+                if (!session) return;
+                window.renderer.xr.enabled = true;
+                window.renderer.xr.setReferenceSpaceType('local-floor');
+                return window.renderer.xr.setSession(session).then(() => session);
+            }).then((session) => {
+                if (!session) return;
+                window.xrSession = session; window.hitTestSourceRequested = false;
+                
+                document.body.classList.add('webxr-mode');
+                window.useCamera = false;
+                document.getElementById('camera-feed').style.display = 'none';
+                if (btnWebXR) { btnWebXR.textContent = '⛔ Avsluta WebXR'; btnWebXR.style.backgroundColor = '#e74c3c'; }
+                
+                window.show3DModel = true; 
+                document.getElementById('target-label').textContent = `PERSON (${window.scenario.toUpperCase()})`;
+                window.togglePlaceMode(); 
+                session.addEventListener('end', window.onXRSessionEnded);
+            }).catch(err => { if (err !== 'no-xr' && err !== 'session-ended') console.error(err); });
+        }
+
+        window.onXRSessionEnded = function() {
+            window.xrSession = null; window.hitTestSourceRequested = false; window.xrHitTestSource = null; window.xrRefSpace = null;
+            if(window.renderer) { window.renderer.xr.setSession(null); window.renderer.xr.enabled = false; }
+            
+            document.body.classList.remove('webxr-mode');
+            const btnWebXR = document.getElementById('btn-webxr');
+            if (btnWebXR) { btnWebXR.textContent = '🌐 WebXR'; btnWebXR.style.backgroundColor = '#34495e'; }
+            
+            if (window.placeMode) { window.confirmPlacement(); } 
+            window.figureLocked = true; window.scenario = 'static';
+            if(window.taserGroup) { window.taserGroup.position.set(0, 0, 0); window.taserGroup.rotation.x = 0; window.figureFallen = false; }
+            window.log("WebXR-session avslutad.");
+        }
+        window.endXRSession = async function() { if (window.xrSession) { await window.xrSession.end(); } }
+
+        window.initGyro = function() {
+            window.initAudio(); 
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(state => {
+                    if (state === 'granted') { enableGyro(); } else { window.log("Åtkomst nekades."); }
+                }).catch(e => { window.log("Kunde inte starta sensorer."); });
+            } else { enableGyro(); }
+        }
+        function enableGyro() {
+            if(window.gyroEnabled) return;
+            window.addEventListener('deviceorientation', handleOrientation);
+            window.gyroEnabled = true; window.log("Rörelsesensor aktiverad!");
+            document.getElementById('btn-gyro').style.display = 'none';
+        }
+        
+        function handleOrientation(event) {
+            if (!window.gyroEnabled || window.placeMode) return;
+
+            if (event.gamma) {
+                const gamma = event.gamma; 
+                const now = Date.now();
+                if (now - window.lastTiltTime > 1000 && !window.isSafe && window.hasBattery && window.chamber1 !== "empty") {
+                    if (gamma > 50 || gamma < -50) { 
+                        window.tiltWeapon(); 
+                        window.lastTiltTime = now; 
+                    }
+                }
+            }
+
+            if (window.xrSession || !event.alpha) return;
+
+            let alpha = event.alpha; let beta = event.beta;
+            if (window.calibBeta === null) { window.calibAlpha = alpha; window.calibBeta = beta; }
+            let deltaX = alpha - window.calibAlpha; if (deltaX > 180) deltaX -= 360; if (deltaX < -180) deltaX += 360;
+            let deltaY = beta - window.calibBeta;
+            
+            window.aimX = 50 + (deltaX * -1.0); 
+            window.aimY = 50 + (deltaY * -1.5); 
+            window.aimX = Math.max(10, Math.min(90, window.aimX)); 
+            window.aimY = Math.max(10, Math.min(90, window.aimY));
+            window.updateAimVisuals();
+        }
+
+        window.updateAimVisuals = function() {
+            let angle = (window.activeChamber === 1) ? 12 : 3.5;
+            let spreadMeters = window.currentDistance * Math.tan(angle * Math.PI / 180);
+            let spreadCm = spreadMeters * 100;
+            document.getElementById('dist-label').textContent = `${window.currentDistance.toFixed(1)} M`;
+            document.getElementById('spread-label').textContent = `SPRIDNING: ${spreadCm.toFixed(1)} CM`;
+            
+            let safeDist = Math.max(0.5, window.currentDistance);
+            if(isNaN(safeDist)) safeDist = 3.0;
+            
+            let baseScale = 0.5; let scaleFactor = (3.0 / safeDist) * baseScale; 
+            scaleFactor = Math.min(Math.max(scaleFactor, 0.1), 5.0); 
+            let visualDropPx = ((window.activeChamber === 1) ? 141.7 : 40.7) * scaleFactor; 
+            
+            document.getElementById('laser-red').style.top = `calc(50% + ${visualDropPx}px)`; 
+        }
+
+        window.updateProjectors = function() {
+            if (!window.isSafe && window.hasBattery && !window.stealthMode) {
+                document.getElementById('flashlight').style.display = 'block'; document.getElementById('laser-green').style.display = 'block';
+                let currentChamberState = window.activeChamber === 1 ? window.chamber1 : window.chamber2;
+                if(currentChamberState === "loaded") document.getElementById('laser-red').style.display = 'block';
+                else document.getElementById('laser-red').style.display = 'none'; 
+            } else {
+                document.getElementById('flashlight').style.display = 'none'; document.getElementById('laser-green').style.display = 'none'; document.getElementById('laser-red').style.display = 'none';
+            }
+        }
+        function renderIconsHTML() {
+            const getIconClass = (state) => { if(state === "loaded") return "loaded"; if(state === "fired") return "fired"; return "empty"; };
+            const line1 = window.activeChamber === 1 ? "show" : ""; const line2 = window.activeChamber === 2 ? "show" : "";
+            return `<div class="display-icons"><div class="chamber-col"><div class="icon-cassette ${getIconClass(window.chamber1)}"></div><div class="active-line ${line1}"></div></div><div class="icon-battery-wrap full"><div class="batt-nub"></div><div class="batt-body"></div></div><div class="chamber-col"><div class="icon-cassette ${getIconClass(window.chamber2)}"></div><div class="active-line ${line2}"></div></div></div>`;
+        }
+        window.updateDisplay = function() {
+            if (window.arcTimer) return; window.updateAimVisuals(); 
+            const dEl = document.getElementById('taser-display');
+            if (!window.hasBattery) { dEl.innerHTML = ""; dEl.className = "display-screen"; window.displayState = "OFF"; window.updateProjectors(); return; }
+            if(window.stealthMode) { dEl.classList.add('dimmed'); } else { dEl.classList.remove('dimmed'); }
+            if (window.displayState === "BOOT") { dEl.innerHTML = "v1.4.10<br>[||||] 94%"; dEl.classList.remove('inverted'); } 
+            else if (window.displayState === "FUNK_MODE") { dEl.innerHTML = renderIconsHTML(); dEl.classList.add('inverted'); } 
+            else if (window.displayState === "ACTIVE") { dEl.innerHTML = renderIconsHTML(); dEl.classList.remove('inverted'); } 
+            else { dEl.innerHTML = ""; dEl.classList.remove('inverted'); }
+            window.updateProjectors();
+            if(window.chamber1 === "fired" && window.chamber2 === "fired" && !window.isSafe) { document.getElementById('btn-kontaktstot').style.display = 'block'; } else { document.getElementById('btn-kontaktstot').style.display = 'none'; }
+        }
+
+        window.toggleCassette = function() {
+            window.initAudio(); if (!window.isSafe) { window.log("<span style='color:red'>FEL: Säkra vapnet!</span>"); return; }
+            const cEl = document.getElementById('stat-cassette');
+            if (window.chamber1 === "empty" && window.chamber2 === "empty") {
+                window.chamber1 = "loaded"; window.chamber2 = "loaded"; 
+                cEl.textContent = "⏏️ Kassetter i"; cEl.classList.add('ok'); window.log("Kassetter laddade.");
+            } else {
+                window.chamber1 = "empty"; window.chamber2 = "empty"; window.activeChamber = 1; 
+                cEl.textContent = "⏏️ Kassetter ur"; cEl.classList.remove('ok'); window.log("Kassetter urtagna."); 
+                document.querySelectorAll('.dart-spark').forEach(el => el.remove());
+                
+                // Rensa kablar
+                if(window.activeWires && window.scene) {
+                    window.activeWires.forEach(w => window.scene.remove(w.line));
+                    window.activeWires = [];
+                }
+
+                if(window.figureFallen && window.taserGroup) {
+                    window.taserGroup.rotation.x = 0; window.figureFallen = false;
+                }
+            }
+            window.updateDisplay();
+        }
+        window.toggleBattery = function() {
+            window.initAudio(); if (!window.isSafe) { window.log("<span style='color:red'>FEL: Säkra vapnet!</span>"); return; }
+            window.hasBattery = !window.hasBattery; 
+            const bEl = document.getElementById('stat-battery');
+            bEl.textContent = window.hasBattery ? "🔋 Batteri i" : "🔋 Batteri ur"; bEl.classList.toggle('ok', window.hasBattery); 
+            window.log(window.hasBattery ? "Batteri isatt." : "Batteri urtaget.");
+            if (!window.hasBattery) { window.stealthMode = false; document.getElementById('stat-stealth').style.display = 'none'; } 
+            window.updateDisplay();
+        }
+        window.toggleSafety = function() {
+            window.initAudio(); if (window.arcTimer) return; 
+            if (!window.hasBattery) { window.log("<span style='color:red'>Vapnet saknar batteri!</span>"); return; }
+            window.isSafe = !window.isSafe;
+            const sSwitch = document.getElementById('safety-switch');
+            const secControls = document.getElementById('secondary-controls');
+            
+            if (window.isSafe) {
+                sSwitch.classList.remove('unsafe'); document.getElementById('safety-label').textContent = "SÄKRAD"; window.log("Vapnet är SÄKRAT.");
+                if(window.stealthMode) { window.stealthMode = false; document.getElementById('stat-stealth').style.display = 'none'; }
+                if (window.displayState === "FUNK_MODE" || window.displayState === "ACTIVE") { window.displayState = "OFF"; } 
+                if(secControls) secControls.style.display = 'block'; 
+                window.updateDisplay();
+            } else {
+                sSwitch.classList.add('unsafe'); document.getElementById('safety-label').textContent = "OSÄKRAD";
+                if(secControls) secControls.style.display = 'none'; 
+                if(window.chamber1 === "empty" && window.chamber2 === "empty") { window.log("Osäkrad. (Endast grönt sikte, inga kassetter)"); }
+                if(window.hasBattery) {
+                    if (window.displayState === "BOOT") { window.displayState = "FUNK_MODE"; window.log("Funktionskontroll (Infomeny) aktiv."); } else { window.displayState = "ACTIVE"; } 
+                }
+                window.updateDisplay();
+            }
+        }
+        window.activateStealth = function() {
+            window.initAudio();
+            if(!window.hasBattery || !window.isSafe) { window.log("<span style='color:red'>Säkra vapnet</span> för att växla Dolt Läge."); return; }
+            window.stealthMode = !window.stealthMode;
+            if(window.stealthMode) { document.getElementById('stat-stealth').style.display = 'block'; window.log("<span style='color:#9b59b6; font-weight:bold;'>Dolt läge PÅ!</span> (Display släckta)"); } else { document.getElementById('stat-stealth').style.display = 'none'; window.log("Dolt läge AV."); }
+            window.updateDisplay();
+        }
+
+        window.runCycle = function(msg, isFiring) {
+            window.initAudio(); if (window.arcTimer) return; window.log(`<span style='color:#3498db'>${msg} ⚡</span>`);
+            const canvas = document.getElementById('three-canvas');
+            if(isFiring) { canvas.classList.add('flash'); document.getElementById('lightning').style.display = 'block'; } 
+            else { document.getElementById('warning-arc').style.display = 'block'; }
+            let electricSound = playElectricSound(); let count = 1; document.getElementById('taser-display').innerHTML = "5 SEK<br>CYKEL: " + count;
+            window.arcTimer = setInterval(() => {
+                count++;
+                if (count > 5) {
+                    clearInterval(window.arcTimer); window.arcTimer = null;
+                    canvas.classList.remove('flash'); document.getElementById('warning-arc').style.display = 'none'; document.getElementById('lightning').style.display = 'none';
+                    stopElectricSound(electricSound); window.log("Strömcykel avslutad."); window.updateDisplay(); 
+                } else { document.getElementById('taser-display').innerHTML = "5 SEK<br>CYKEL: " + count; }
+            }, 1000);
+        }
+
+        window.pressTrigger = function() {
+            window.initAudio(); if (!window.hasBattery || window.isSafe) { window.log("Kräver osäkrat vapen med batteri."); return; } if (window.arcTimer) return; 
+            
+            let currentState = window.activeChamber === 1 ? window.chamber1 : window.chamber2;
+            if (currentState === "loaded") {
+                playPopSound(); window.log(`<span style='color:red; font-weight:bold;'>💥 SKOTT AVFYRAT (Kammare ${window.activeChamber})</span>`);
+                if (window.activeChamber === 1) window.chamber1 = "fired"; else window.chamber2 = "fired";
+                
+                if(typeof window.onDartsFired === 'function') {
+                    let nmiResult = window.onDartsFired(window.activeChamber);
+                    if(nmiResult.success) { 
+                        window.log(`<span style='color:#2ecc71; font-weight:bold;'>NMI UPPNÅDD!</span> ${nmiResult.reason}`); 
+                        window.showNMIOverlay(true, nmiResult.reason, nmiResult.spreadCm);
+                        window.runCycle("NMI påbörjad...", true); 
+                        
+                        if(window.show3DModel && window.taserGroup && !window.figureFallen) {
+                            window.figureFallen = true;
+                            let fallAngle = 0;
+                            let fallInt = setInterval(() => {
+                                fallAngle -= 0.08;
+                                window.taserGroup.rotation.x = fallAngle;
+                                if(fallAngle <= -Math.PI / 2 + 0.2) clearInterval(fallInt);
+                            }, 20);
+                        }
+
+                    } else { 
+                        window.log(`<span style='color:#c0392b; font-weight:bold;'>NMI MISSLYCKADES!</span> ${nmiResult.reason}`); 
+                        window.showNMIOverlay(false, nmiResult.reason, nmiResult.spreadCm);
+                        document.getElementById('three-canvas').classList.remove('fail-flash'); void document.getElementById('three-canvas').offsetWidth; document.getElementById('three-canvas').classList.add('fail-flash'); window.updateDisplay(); 
+                    }
+                }
+                
+                let nextChamber = window.activeChamber === 1 ? 2 : 1;
+                if ((nextChamber === 1 ? window.chamber1 : window.chamber2) === "loaded") { window.activeChamber = nextChamber; window.log(`Växlar automatiskt till laddad kammare (${window.activeChamber}).`); }
+                window.updateDisplay();
+            } else if (currentState === "fired") { window.log("Återaktiverar NMI i befintliga pilar."); window.runCycle("Återaktiverar el...", true); } else { window.log("Tom kammare. (klick)"); }
+        }
+
+        window.pressSingleWarning = function() { window.initAudio(); animateWarningButtons(); if (!window.hasBattery || window.isSafe || window.arcTimer) return; window.runCycle(window.displayState === "FUNK_MODE" ? "Testar varningsbåge..." : "Skarp varningsbåge!", false); }
+        window.pressDualWarning = function() { window.initAudio(); animateWarningButtons(); if (!window.hasBattery || !window.isSafe) return; window.log("Display (BOOT) aktiv i 5s."); window.displayState = "BOOT"; window.updateDisplay(); setTimeout(() => { if (window.displayState === "BOOT" && window.isSafe) { window.displayState = "OFF"; window.updateDisplay(); } }, 5000); }
+        window.tiltWeapon = function() { window.initAudio(); if (!window.hasBattery || window.isSafe || window.chamber1 === "empty") return; window.activeChamber = window.activeChamber === 1 ? 2 : 1; window.updateDisplay(); }
+        window.performKontaktstot = function() { window.initAudio(); if(window.isSafe || window.arcTimer) return; window.log("<span style='color:#e67e22; font-weight:bold;'>KONTAKTSTÖT!</span>"); window.runCycle("NMI påbörjad via Kontaktstöt...", true); }
+        
+        window.resetSimulator = function() { 
+            window.initAudio();
+            window.hideNMIOverlay();
+            
+            window.chamber1 = "loaded"; window.chamber2 = "loaded"; window.activeChamber = 1;
+            document.getElementById('stat-cassette').textContent = "⏏️ Kassetter i"; document.getElementById('stat-cassette').classList.add('ok');
+            document.querySelectorAll('.dart-spark').forEach(el => el.remove());
+            
+            if(window.activeWires && window.scene) {
+                window.activeWires.forEach(w => window.scene.remove(w.line));
+                window.activeWires = [];
+            }
+
+            if(window.figureFallen && window.taserGroup) { 
+                window.taserGroup.rotation.x = 0; window.figureFallen = false; 
+                // Om gubben laddade emot dig, sätt tillbaka honom till start
+                if (window.scenario === 'charging' && window.taserGroup.userData.startPos) {
+                    window.taserGroup.position.copy(window.taserGroup.userData.startPos);
+                }
+            }
+            if(window.arcTimer) { clearInterval(window.arcTimer); window.arcTimer = null; document.getElementById('three-canvas').classList.remove('flash'); document.getElementById('warning-arc').style.display = 'none'; document.getElementById('lightning').style.display = 'none'; stopElectricSound(); }
+            
+            window.log("♻️ <span style='color:#3498db; font-weight:bold;'>SOFT RESET: Vapnet laddat och mål återställt.</span>");
+            window.updateDisplay(); 
+        }
+
+        window.updateDisplay(); // Init
     </script>
 
     <script type="module">
@@ -146,258 +856,300 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-        // --- STATE ---
-        let isSafe = true, hasBattery = true, chamber1 = "loaded", chamber2 = "loaded";
-        let currentDistance = 3.0, activeChamber = 1, scenario = 'static';
-        let figureFallen = false, figureVisible = true;
-        let xrSession = null, hitTestSource = null, localSpace = null;
-        let activeWires = [], envHits = [];
-        let heavyClothing = true; // Risk för disconnect
-
-        // --- THREE.JS SETUP ---
+        const canvasContainer = document.getElementById('three-canvas');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / 320, 0.1, 100);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth - 20, 320);
+        scene.background = new THREE.Color(0x0a0a0a); // Mörkare bakgrund
+
+        const camera = new THREE.PerspectiveCamera(45, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 100);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        renderer.setClearColor(0x000000, 0); 
+        renderer.xr.enabled = true;
+        canvasContainer.appendChild(renderer.domElement);
+        
+        // PBR & Shadows
         renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        document.getElementById('three-canvas').appendChild(renderer.domElement);
+        renderer.toneMappingExposure = 1.0;
 
-        const pmrem = new THREE.PMREMGenerator(renderer);
-        scene.environment = pmrem.fromScene(new RoomEnvironment()).texture;
+        window.renderer = renderer; window.camera = camera; window.scene = scene;
 
-        const light = new THREE.DirectionalLight(0xffffff, 2);
-        light.position.set(5, 10, 5);
-        light.castShadow = true;
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0); dirLight.position.set(5, 10, 7); dirLight.castShadow = true; scene.add(dirLight);
 
-        const taserGroup = new THREE.Group();
-        scene.add(taserGroup);
+        let taserGroup = new THREE.Group(); scene.add(taserGroup); window.taserGroup = taserGroup;
+        
+        window.set3DVisibility = function(isVisible) { 
+            if (window.taserGroup) window.taserGroup.visible = isVisible; 
+        };
 
-        // --- LOAD MODEL ---
         const loader = new GLTFLoader();
+        
         loader.load('ue_mannequin_retopology.glb', (gltf) => {
-            const model = gltf.scene;
-            model.scale.set(0.9, 0.9, 0.9);
-            model.traverse(n => { 
-                if(n.isMesh) {
-                    n.material = new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.5, metalness: 0.2 });
-                    n.castShadow = true; n.name = "Body";
-                }
+            let dummy = gltf.scene;
+            dummy.updateMatrixWorld(true);
+            const box = new THREE.Box3().setFromObject(dummy);
+            const modelHeight = box.max.y - box.min.y;
+            const scale = 1.8 / modelHeight; 
+            dummy.scale.set(scale, scale, scale);
+            dummy.updateMatrixWorld(true);
+            const scaledBox = new THREE.Box3().setFromObject(dummy);
+            dummy.position.y = -scaledBox.min.y; 
+
+            dummy.traverse((child) => {
+                if (child.isMesh) { child.material = new THREE.MeshStandardMaterial({ color: 0x219653, roughness: 0.5, metalness: 0.3 }); child.name = "Godkand_Zon"; child.castShadow = true; child.receiveShadow = true; }
             });
-            taserGroup.add(model);
-        });
+            taserGroup.add(dummy);
+            taserGroup.userData.startPos = new THREE.Vector3(0,0,0);
 
-        const placementMarker = new THREE.Mesh(
-            new THREE.RingGeometry(0.2, 0.25, 32),
-            new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide })
-        );
-        placementMarker.rotation.x = -Math.PI/2;
-        placementMarker.visible = false;
-        scene.add(placementMarker);
-
-        // --- AUDIO ---
-        const listener = new THREE.AudioListener();
-        camera.add(listener);
-        const sparkSound = new THREE.PositionalAudio(listener);
-        // (Här skulle man normalt ladda en ljudfil, vi simulerar med AudioContext för enkelhetens skull i en fil)
-
-        // --- LOGIC FUNCTIONS ---
-        window.toggleSafety = () => {
-            isSafe = !isSafe;
-            document.getElementById('safety-switch').classList.toggle('unsafe', !isSafe);
-            document.getElementById('secondary-controls').style.display = isSafe ? 'block' : 'none';
-            updateDisplay();
-        };
-
-        window.toggleBattery = () => {
-            hasBattery = !hasBattery;
-            updateDisplay();
-        };
-
-        window.toggleCassette = () => {
-            if(!isSafe) return;
-            chamber1 = (chamber1 === "empty") ? "loaded" : "empty";
-            chamber2 = chamber1;
-            updateDisplay();
-        };
-
-        function updateDisplay() {
-            const disp = document.getElementById('taser-display');
-            if(!hasBattery) { disp.textContent = ""; return; }
-            disp.textContent = isSafe ? "SAFE" : (chamber1 === "loaded" ? "READY" : "EMPTY");
-            document.getElementById('laser-green').style.display = (!isSafe && hasBattery) ? 'block' : 'none';
-            document.getElementById('laser-red').style.display = (!isSafe && hasBattery && chamber1 === "loaded") ? 'block' : 'none';
-        }
-
-        window.openScenarioModal = () => { document.getElementById('scenario-modal').style.display = 'flex'; };
-        window.closeModal = () => { document.getElementById('scenario-modal').style.display = 'none'; };
-
-        window.startTacticalXR = async (type) => {
-            scenario = type;
-            closeModal();
-            if (!navigator.xr) return alert("WebXR stöds ej");
-            const session = await navigator.xr.requestSession('immersive-ar', {
-                requiredFeatures: ['hit-test', 'local-floor']
-            });
-            xrSession = session;
-            renderer.xr.enabled = true;
-            await renderer.xr.setSession(session);
-            document.body.classList.add('webxr-mode');
+            const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.8, emissive: 0xf1c40f, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.8 });
             
-            session.addEventListener('end', () => {
-                document.body.classList.remove('webxr-mode');
-                xrSession = null;
-            });
-        };
+            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), yellowMat); headMesh.position.set(0, 1.65, 0.0); headMesh.name = "Huvud/Hals"; headMesh.castShadow = true; taserGroup.add(headMesh);
+            const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.2), yellowMat); chestMesh.position.set(0, 1.35, 0.08); chestMesh.name = "Hjärttrakten"; chestMesh.castShadow = true; taserGroup.add(chestMesh);
+            const groinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), yellowMat); groinMesh.position.set(0, 0.85, 0.08); groinMesh.name = "Genitalier"; groinMesh.castShadow = true; taserGroup.add(groinMesh);
 
-        window.pressTrigger = () => {
-            if(isSafe || !hasBattery || chamber1 === "empty") return;
-            
-            // --- BALLISTIK BERÄKNING ---
-            // Ju längre avstånd, desto mer "drop" får pilen
-            const dropAmount = Math.pow(currentDistance, 2) * 0.005; // Fysisk simulering
-            const spreadFactor = currentDistance * 0.12; // Taser 7 spridning 12 grader
-            
-            const raycaster = new THREE.Raycaster();
-            const activeCam = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
-            
-            // Pil 1 (Övre - Grön laser)
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), activeCam);
-            const hit1 = raycaster.intersectObject(taserGroup, true)[0];
+            window.log("<span style='color:#2ecc71'>3D-Gubbe (Tactical) inladdad!</span>");
+        }, undefined, (e) => { window.log("<span style='color:red'>Laddningsfel (GLB).</span>"); });
 
-            // Pil 2 (Nedre - Beräknad ballistik)
-            const bottomDartNDC = new THREE.Vector2(0, -(spreadFactor + dropAmount) / 2);
-            raycaster.setFromCamera(bottomDartNDC, activeCam);
-            const hit2 = raycaster.intersectObject(taserGroup, true)[0];
+        // SHADOW PLANE (fungerar också som miljö/vägg för bommar)
+        const placementGround = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.ShadowMaterial({ opacity: 0.5 }));
+        placementGround.rotation.x = -Math.PI / 2; placementGround.receiveShadow = true; placementGround.name = "Environment"; scene.add(placementGround);
+        
+        const placementMarker = new THREE.Group();
+        placementMarker.add(new THREE.Mesh(new THREE.RingGeometry(0.25, 0.4, 48), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8, side: THREE.DoubleSide })));
+        placementMarker.add(new THREE.Mesh(new THREE.CircleGeometry(0.12, 32), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35, side: THREE.DoubleSide })));
+        placementMarker.children[1].rotation.x = -Math.PI / 2; placementMarker.children[0].rotation.x = -Math.PI / 2;
+        placementMarker.position.y = 0.01; placementMarker.visible = false; scene.add(placementMarker); window.placeMarker = placementMarker;
 
-            // --- NMI LOGIK ---
-            if(hit1 && hit2) {
-                const dist = hit1.point.distanceTo(hit2.point) * 100;
-                let success = dist > 20;
-                
-                // Slumpmässig risk för "Heavy Clothing" disconnect
-                if(heavyClothing && Math.random() > 0.8) {
-                    success = false;
-                    showNMIOverlay(false, "DISCONNECT: Tjocka kläder blockerar kontakt.");
-                } else {
-                    showNMIOverlay(success, success ? "BRA SPRIDNING" : "FÖR TÄT SPRIDNING", dist);
-                }
+        const placementRaycaster = new THREE.Raycaster();
 
-                if(success) figureFallen = true;
+        // SPARK PARTIKEL EFFEKT
+        function spawnSparks(point) {
+            const sparkGroup = new THREE.Group();
+            scene.add(sparkGroup);
+            const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const sparkGeo = new THREE.SphereGeometry(0.005, 4, 4);
 
-                // Skapa kablar
-                createWire(hit1.point, 1);
-                createWire(hit2.point, 2);
-            } else {
-                // MISS - Kolla om vi träffar omgivningen (väggar) i WebXR
-                showNMIOverlay(false, "MISS: Pilarna missade målet.");
+            for (let i = 0; i < 15; i++) {
+                const spark = new THREE.Mesh(sparkGeo, sparkMat);
+                spark.position.copy(point);
+                spark.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1);
+                sparkGroup.add(spark);
             }
 
-            chamber1 = "fired";
-            updateDisplay();
-        };
-
-        function createWire(targetPoint, id) {
-            const material = new THREE.LineBasicMaterial({ color: 0x95a5a6 });
-            const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), targetPoint]);
-            const line = new THREE.Line(geometry, material);
-            scene.add(line);
-            activeWires.push({ line, target: targetPoint.clone(), id });
+            let lifetime = 0;
+            const sparkInt = setInterval(() => {
+                lifetime++;
+                sparkGroup.children.forEach(spark => {
+                    spark.position.add(spark.userData.velocity);
+                    spark.userData.velocity.y -= 0.005; // Gravitation
+                    spark.scale.multiplyScalar(0.95); 
+                });
+                if (lifetime > 30) { clearInterval(sparkInt); scene.remove(sparkGroup); }
+            }, 30);
         }
 
-        function showNMIOverlay(success, reason, spread = 0) {
-            const ovl = document.getElementById('nmi-overlay');
-            ovl.style.display = 'block';
-            ovl.className = success ? '' : 'fail';
-            document.getElementById('nmi-title').textContent = success ? "NMI UPPNÅDD" : "INGEN VERKAN";
-            document.getElementById('nmi-details').innerHTML = `Avstånd: ${currentDistance.toFixed(1)}m<br>Spridning: ${spread.toFixed(0)}cm<br><i>${reason}</i>`;
-            setTimeout(() => ovl.style.display = 'none', 3500);
-        }
+        window.onDartsFired = function(chamber) {
+            if (!window.show3DModel) {
+                let spreadCm = window.currentDistance * Math.tan((chamber === 1 ? 12 : 3.5) * Math.PI / 180) * 100;
+                let minSpreadCm = 20.0; 
+                if (window.currentDistance > 7) { minSpreadCm = 20.0 + (window.currentDistance - 7) * 2; } else if (window.currentDistance < 2) { minSpreadCm = 15.0; }
+                if (spreadCm < minSpreadCm) return { success: false, reason: `För tät spridning. Krävs ${minSpreadCm.toFixed(1)} cm.`, spreadCm: spreadCm };
+                return { success: true, reason: `Spridning OK`, spreadCm: spreadCm };
+            }
 
-        window.resetSimulator = () => {
-            figureFallen = false;
-            taserGroup.rotation.x = 0;
-            chamber1 = "loaded"; chamber2 = "loaded";
-            activeWires.forEach(w => scene.remove(w.line));
-            activeWires = [];
-            updateDisplay();
-            window.log("System återställt.");
-        };
+            const raycaster = new THREE.Raycaster();
+            const rect = canvasContainer.getBoundingClientRect();
+            let ndc1 = new THREE.Vector2(0, 0); 
+            
+            let safeDist = Math.max(0.5, window.currentDistance);
+            if(isNaN(safeDist)) safeDist = 3.0;
+            let baseScale = 0.5; let scaleFactor = (3.0 / safeDist) * baseScale; 
+            scaleFactor = Math.min(Math.max(scaleFactor, 0.1), 5.0);
+            
+            let visualDropPx = (chamber === 1) ? 141.7 : 40.7; 
+            visualDropPx = visualDropPx * scaleFactor; 
 
-        // --- ANIMATION LOOP ---
-        renderer.setAnimationLoop((timestamp, frame) => {
-            // WebXR Hit-test för placering
-            if (frame && xrSession) {
-                if (!hitTestSource) {
-                    xrSession.requestReferenceSpace('viewer').then(space => {
-                        xrSession.requestHitTestSource({ space }).then(src => hitTestSource = src);
-                    });
+            // BALLISTIK: Pilen droppar extra pga gravitation på långt avstånd (>3m)
+            let ballisticDrop = (window.currentDistance > 3.0) ? Math.pow(window.currentDistance - 3.0, 2) * 0.002 : 0;
+            let ndcDrop = (visualDropPx / (rect.height / 2)) + ballisticDrop;
+
+            let ndc2 = new THREE.Vector2(0, -ndcDrop); 
+            const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
+
+            raycaster.setFromCamera(ndc1, activeCamera);
+            raycaster.ray.direction.x += (Math.random() - 0.5) * 0.005; raycaster.ray.direction.y += (Math.random() - 0.5) * 0.005;
+            let hits1 = raycaster.intersectObject(taserGroup, true);
+            let hitWall1 = false;
+            if(hits1.length === 0) { hits1 = raycaster.intersectObject(placementGround, true); hitWall1 = true; }
+
+            raycaster.setFromCamera(ndc2, activeCamera);
+            raycaster.ray.direction.x += (Math.random() - 0.5) * 0.005; raycaster.ray.direction.y += (Math.random() - 0.5) * 0.005;
+            let hits2 = raycaster.intersectObject(taserGroup, true);
+            let hitWall2 = false;
+            if(hits2.length === 0) { hits2 = raycaster.intersectObject(placementGround, true); hitWall2 = true; }
+
+            if (hits1.length > 0 && hits2.length > 0) {
+                let hit1 = hits1[0]; let hit2 = hits2[0];
+                document.querySelectorAll('.dart-spark').forEach(el => el.remove());
+                
+                const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6); const dartMat = new THREE.MeshStandardMaterial({color: 0x7f8c8d, metalness: 1, roughness: 0.2 });
+                const d1 = new THREE.Mesh(dartGeo, dartMat); d1.position.copy(hit1.point); d1.rotation.x = Math.PI/2; scene.add(d1); setTimeout(() => scene.remove(d1), 5000);
+                const d2 = new THREE.Mesh(dartGeo, dartMat); d2.position.copy(hit2.point); d2.rotation.x = Math.PI/2; scene.add(d2); setTimeout(() => scene.remove(d2), 5000);
+
+                spawnSparks(hit1.point);
+                spawnSparks(hit2.point);
+
+                // --- TRÅDAR (WIRES) ---
+                const wireMat = new THREE.LineBasicMaterial({ color: 0xbdc3c7, transparent: true, opacity: 0.6 });
+                const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
+                const wire1 = new THREE.Line(geo1, wireMat);
+                scene.add(wire1);
+                window.activeWires.push({ line: wire1, chamber: chamber, target: hit1.point.clone() });
+                
+                const geo2 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit2.point.clone()]);
+                const wire2 = new THREE.Line(geo2, wireMat);
+                scene.add(wire2);
+                window.activeWires.push({ line: wire2, chamber: chamber, target: hit2.point.clone() });
+
+                // Om någon pil träffar väggen -> MISS
+                if(hitWall1 || hitWall2) return { success: false, reason: "En eller båda pilarna missade kroppen (Vägg/Golv).", spreadCm: null };
+
+                let distCm = hit1.point.distanceTo(hit2.point) * 100;
+                let badZone = null;
+                if(hit1.object.name !== "Godkand_Zon") badZone = hit1.object.name;
+                if(hit2.object.name !== "Godkand_Zon") badZone = hit2.object.name;
+
+                if (badZone) return { success: false, reason: `Träff i förbjuden zon (${badZone}).`, spreadCm: distCm };
+                
+                let minSpreadCm = 20.0; 
+                if (window.currentDistance > 7) { minSpreadCm = 20.0 + (window.currentDistance - 7) * 2; } else if (window.currentDistance < 2) { minSpreadCm = 15.0; }
+                
+                if (distCm < minSpreadCm) return { success: false, reason: `För tät spridning. Krävs ${minSpreadCm.toFixed(1)} cm.`, spreadCm: distCm };
+                
+                // DISCONNECT RISK (TJOCKA KLÄDER)
+                if(window.heavyClothing && Math.random() > 0.8) {
+                    return { success: false, reason: `DISCONNECT: Kläder blockerar kontakt.`, spreadCm: distCm };
                 }
-                if (hitTestSource) {
-                    const hits = frame.getHitTestResults(hitTestSource);
-                    if (hits.length > 0) {
-                        const pose = hits[0].getPose(renderer.xr.getReferenceSpace());
-                        placementMarker.visible = true;
-                        placementMarker.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+
+                return { success: true, reason: `Träff i godkänd zon.`, spreadCm: distCm };
+            } else { return { success: false, reason: "En eller båda pilarna missade målet.", spreadCm: null }; }
+        };
+
+        renderer.domElement.addEventListener('pointerdown', (event) => {
+            if (window.placeMode && window.xrSession && event.target === renderer.domElement) {
+                const rect = canvasContainer.getBoundingClientRect();
+                const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                placementRaycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+                const hits = placementRaycaster.intersectObject(placementGround, true);
+                if (hits.length > 0) {
+                    window.placeMarker.position.copy(hits[0].point);
+                    window.placeMarker.position.y += 0.01;
+                    window.placeMarker.visible = true;
+                }
+            }
+        });
+
+        renderer.setAnimationLoop((timestamp, frame) => {
+            if (window.placeMode && renderer.xr.isPresenting && frame) {
+                const session = renderer.xr.getSession();
+                const referenceSpace = renderer.xr.getReferenceSpace();
+                if (!window.hitTestSourceRequested) {
+                    session.requestReferenceSpace('viewer').then((viewerSpace) => {
+                        session.requestHitTestSource({ space: viewerSpace }).then((source) => { window.xrHitTestSource = source; });
+                    });
+                    window.hitTestSourceRequested = true;
+                }
+                if (window.xrHitTestSource) {
+                    const hitTestResults = frame.getHitTestResults(window.xrHitTestSource);
+                    if (hitTestResults.length > 0) {
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(referenceSpace);
+                        if (pose) {
+                            window.placeMarker.visible = true;
+                            window.placeMarker.position.set(pose.transform.position.x, pose.transform.position.y + 0.01, pose.transform.position.z);
+                        }
+                    } else { window.placeMarker.visible = false; }
+                }
+            } 
+            else if (window.placeMode && !renderer.xr.isPresenting && window.useCamera) {
+                placementRaycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const hits = placementRaycaster.intersectObject(placementGround, true);
+                if (hits.length > 0) {
+                    window.placeMarker.position.copy(hits[0].point);
+                    window.placeMarker.position.y = 0.01;
+                    window.placeMarker.visible = true;
+                }
+            }
+
+            const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
+
+            // SCENARIO RÖRELSER (Rörlig eller Anstormande)
+            if (window.taserGroup && window.taserGroup.visible && !window.figureFallen) {
+                if (window.scenario === 'moving') {
+                    // Strafe left/right
+                    window.taserGroup.position.x = window.taserGroup.userData.startPos.x + Math.sin(timestamp * 0.001) * 1.2;
+                } else if (window.scenario === 'charging') {
+                    // Gå emot kameran (På XZ planet)
+                    let dir = new THREE.Vector3().subVectors(activeCamera.position, window.taserGroup.position);
+                    dir.y = 0; 
+                    if (dir.length() > 1.5) {
+                        dir.normalize();
+                        window.taserGroup.position.addScaledVector(dir, 0.015);
                     }
                 }
             }
 
-            // --- SCENARIO RÖRELSE ---
-            if(!figureFallen) {
-                if(scenario === 'moving') {
-                    taserGroup.position.x = Math.sin(timestamp / 1000) * 1.5;
-                } else if (scenario === 'charging') {
-                    taserGroup.position.z += 0.01;
-                    if(taserGroup.position.z > 5) taserGroup.position.z = -2;
+            if (renderer.xr.isPresenting && window.figureLocked && window.taserGroup.visible) {
+                let chestPos = new THREE.Vector3(window.taserGroup.position.x, window.taserGroup.position.y + 1.35, window.taserGroup.position.z);
+                let rawDist = activeCamera.position.distanceTo(chestPos);
+                if(!isNaN(rawDist) && rawDist > 0.1) {
+                    window.currentDistance = Math.max(0.5, rawDist); 
+                    window.updateAimVisuals(); 
                 }
-            } else {
-                // Fall-animation
-                if(taserGroup.rotation.x > -Math.PI/2) taserGroup.rotation.x -= 0.1;
             }
 
-            // Uppdatera kablar (sträck dem mellan kamera och träffpunkt)
-            const activeCam = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
-            activeWires.forEach(w => {
-                const pos = w.line.geometry.attributes.position.array;
-                const camPos = new THREE.Vector3(0, -0.2, -0.1).applyMatrix4(activeCam.matrixWorld);
-                pos[0] = camPos.x; pos[1] = camPos.y; pos[2] = camPos.z;
-                w.line.geometry.attributes.position.needsUpdate = true;
-            });
-
-            // Avståndsmätning
-            if(taserGroup.visible) {
-                currentDistance = activeCam.position.distanceTo(taserGroup.position);
-                document.getElementById('dist-label').textContent = currentDistance.toFixed(1) + " M";
+            // PULSERANDE GLÖD UPDATE
+            if(window.taserGroup && window.taserGroup.children[1]) {
+                const pulse = Math.sin(timestamp * 0.005) * 0.3 + 0.5; 
+                window.taserGroup.children[1].material.emissiveIntensity = pulse;
             }
 
+            if (!renderer.xr.isPresenting) {
+                if(window.useCamera) { scene.background = null; } else { scene.background = new THREE.Color(0x0a0a0a); }
+                let targetPos = window.taserGroup ? window.taserGroup.position.clone() : new THREE.Vector3(0,0,0);
+                targetPos.y += 1.35; 
+                let camZ = targetPos.z + window.currentDistance;
+                let camX = targetPos.x;
+                camera.position.set(camX, targetPos.y, camZ);
+                
+                let lookTarget = targetPos.clone(); 
+                let panX = (50 - window.aimX) * 0.015 * window.currentDistance;
+                let activeAimY = window.invertMouseY ? (100 - window.aimY) : window.aimY;
+                let panY = (activeAimY - 50) * 0.015 * window.currentDistance;
+                
+                lookTarget.y += panY; lookTarget.x -= panX;
+                camera.lookAt(lookTarget);
+            }
+
+            // UPPDATERA DYNAMISKA TRÅDAR
+            if (window.activeWires && window.activeWires.length > 0) {
+                window.activeWires.forEach(wire => {
+                    let offset = new THREE.Vector3(wire.chamber === 1 ? -0.05 : 0.05, -0.15, -0.3);
+                    offset.applyQuaternion(activeCamera.quaternion);
+                    let origin = activeCamera.position.clone().add(offset);
+                    
+                    const positions = wire.line.geometry.attributes.position.array;
+                    positions[0] = origin.x; positions[1] = origin.y; positions[2] = origin.z;
+                    wire.line.geometry.attributes.position.needsUpdate = true;
+                });
+            }
+            
             renderer.render(scene, camera);
         });
-
-        window.toggleCamera = async () => {
-            const feed = document.getElementById('camera-feed');
-            if(feed.style.display === 'none') {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                feed.srcObject = stream;
-                feed.style.display = 'block';
-                scene.background = null;
-                taserGroup.visible = false; // Fokus på riktig markör
-            } else {
-                feed.style.display = 'none';
-                scene.background = new THREE.Color(0x050505);
-                taserGroup.visible = true;
-            }
-        };
-
-        window.togglePlaceMode = () => {
-            taserGroup.position.copy(placementMarker.position);
-            placementMarker.visible = false;
-            window.log("Figur placerad.");
-        };
-
     </script>
 </body>
 </html>
