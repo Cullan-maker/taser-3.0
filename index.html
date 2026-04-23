@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taser 7 - Elite Tactical v7.46</title>
+    <title>Taser 7 - Elite Tactical v7.47</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -23,7 +23,7 @@
         .viewport {
             width: 100%; height: 320px; border: 3px solid #1a1a1a; border-radius: 12px;
             position: relative; overflow: hidden; box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 50px rgba(0,0,0,0.5);
-            background-color: #0a0a0a; cursor: crosshair; touch-action: none; margin-bottom: 15px; transition: all 0.3s ease;
+            background-color: #0a0a0a; cursor: crosshair; touch-action: none; margin-bottom: 15px; transition: background-color 0.3s ease;
         }
 
         #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; }
@@ -36,7 +36,7 @@
         @keyframes redStrobe { 0% { filter: sepia(1) hue-rotate(-50deg) saturate(5) brightness(1.2); } 100% { filter: none; } }
 
         /* ----- SIKTET (FASTLÅST I MITTEN) ----- */
-        .fixed-aim-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9000; }
+        .fixed-aim-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; }
         .crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; }
         .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.5); }
         .crosshair::before { top: 50%; left: -5px; right: -5px; height: 1px; transform: translateY(-50%); }
@@ -51,7 +51,7 @@
         .lightning::before, .lightning::after { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background: #fff; box-shadow: 0 0 15px #a8eb12, 0 0 30px #a8eb12; animation: electricity 0.05s infinite alternate; }
         .lightning::after { transform: rotate(15deg); }
 
-        /* ----- NMI RUTA ----- */
+        /* ----- KOMPAKT NMI RUTA HÖGST UPP ----- */
         #nmi-overlay {
             display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.85); border: 2px solid rgba(46, 204, 113, 0.8); border-radius: 8px;
@@ -370,10 +370,10 @@
         <div class="modal-content">
             <button class="modal-close" onclick="window.closeModal('info-modal')">×</button>
             <h2>Lathund: Taser 7 Elite Tactical</h2>
-            <p><strong>Hot-Eskalering (NY!):</strong> Målet kommer börja skrika åt dig (slå på ljudet!). Efter ca 10 sekunder drar han en metallisk kniv, vilket kräver omedelbar respons.</p>
-            <p><strong>Sensorfix:</strong> Gyrot är nu stenhårt kalibrerat och kameran kan inte längre försvinna ut i den svarta rymden när du startar det.</p>
+            <p><strong>Hot-Eskalering:</strong> Målet kommer börja skrika åt dig. Efter ca 10 sekunder drar han en metallisk kniv!</p>
             <p><strong>Kamera AR-fix:</strong> Kameran har fått tvångsattribut så att mobil-webbläsare (iOS) släpper igenom videon utan problem.</p>
-            <p><strong>Ballistik:</strong> Pilarna är påverkade av gravitation. På avstånd över 3 meter måste du kompensera (den undre pilen droppar extra mycket).</p>
+            <p><strong>Wire Dynamics (Snören):</strong> Knivskarpa fysiska kablar dras ut och fäster i figuren. De följer med figuren om den faller!</p>
+            <p><strong>Ballistik:</strong> Pilarna är nu påverkade av gravitation. På avstånd över 3 meter måste du kompensera (den undre pilen droppar extra mycket).</p>
         </div>
     </div>
 
@@ -393,7 +393,7 @@
             entry.className = 'log-entry'; entry.innerHTML = `> ${msg}`;
             logBox.prepend(entry);
         }
-        window.log("Simulator v7.46 (The Ironclad Update) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
+        window.log("Simulator v7.47 (AR & Optics Patch) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
 
         document.querySelector('.main-container').addEventListener('beforexrselect', e => e.preventDefault());
         document.querySelector('.hud-overlay').addEventListener('beforexrselect', e => e.preventDefault());
@@ -452,13 +452,13 @@
             window.aimX = ((e.clientX - rect.left) / rect.width) * 100;
             let yPct = ((e.clientY - rect.top) / rect.height) * 100;
             window.aimY = window.invertMouseY ? 100 - yPct : yPct;
-            // Sanitize
+            
+            // SANITIZER
             if (isNaN(window.aimX)) window.aimX = 50; if (isNaN(window.aimY)) window.aimY = 50;
             window.aimX = Math.max(0, Math.min(100, window.aimX)); window.aimY = Math.max(0, Math.min(100, window.aimY));
             window.updateAimVisuals();
         });
 
-        // ----- AUDIO -----
         window.initAudio = function() {
             if (!isAudioInit) { 
                 isAudioInit = true; 
@@ -490,7 +490,6 @@
             setTimeout(() => { document.getElementById('warn-left').classList.remove('active-press'); document.getElementById('warn-right').classList.remove('active-press'); }, 200);
         }
 
-        // ----- HOTESKALERING -----
         window.suspectSpeak = function(text) {
             const subtitle = document.getElementById('subtitle-overlay');
             subtitle.textContent = `MÅL: "${text}"`;
@@ -522,9 +521,7 @@
                     window.suspectSpeak("Rör mig inte sa jag! Stick!");
                 } else if(window.threatLevel === 3) {
                     window.suspectSpeak("Jag sprättar dig! Jag svär!");
-                    
                     if(window.knifeMesh) window.knifeMesh.visible = true; 
-                    
                     window.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit kniv! Omedelbar respons krävs!</span>");
                     document.getElementById('target-label').textContent = "PERSON: BEVÄPNAD";
                     document.getElementById('target-label').classList.add('armed');
@@ -593,28 +590,37 @@
             document.getElementById('standard-controls').style.display = 'block';
             document.getElementById('placement-controls').style.display = 'none';
             window.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
-            
             window.startThreatEscalation();
         }
 
-        // AR KAMERA FIX (Muted + Fallback)
+        // --- AR CAMERA FIX ---
         window.toggleCamera = async function() {
-            if (!navigator.mediaDevices) { window.log("<span style='color:red'>AR-Kamera stöds ej (Kräver HTTPS).</span>"); return; }
+            if (!navigator.mediaDevices) { window.log("<span style='color:red'>Kamera stöds ej (Kräver HTTPS).</span>"); return; }
             
             const cameraFeed = document.getElementById('camera-feed');
             const btnCamera = document.getElementById('btn-camera');
+            const viewport = document.getElementById('viewport');
+            
             if (window.xrSession) { await window.endXRSession(); }
 
             if (!window.useCamera) {
                 try {
                     window.videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 } catch (err) { 
-                    // Fallback om mobilen bråkar med facingMode
                     try { window.videoStream = await navigator.mediaDevices.getUserMedia({ video: true }); }
-                    catch(e) { window.log("<span style='color:red'>Kunde inte starta kamera.</span>"); return; }
+                    catch(e) { window.log("<span style='color:red'>Kunde inte starta kamera. Tillåtelse nekad.</span>"); return; }
                 }
                 
-                cameraFeed.srcObject = window.videoStream; cameraFeed.style.display = 'block'; window.useCamera = true;
+                cameraFeed.srcObject = window.videoStream; 
+                cameraFeed.style.display = 'block'; 
+                
+                // Tvinga play för att lösa iOS black screen
+                cameraFeed.play().catch(e => console.log("Video autoplay blocked", e));
+                
+                // Tvinga viewporten att bli genomskinlig så videon syns bakom 3D-lagret
+                viewport.style.backgroundColor = "transparent";
+                
+                window.useCamera = true;
                 btnCamera.innerHTML = "📷 Avbryt AR"; btnCamera.classList.add('active-cam');
                 window.show3DModel = false; if (window.set3DVisibility) window.set3DVisibility(false);
                 document.getElementById('target-label').textContent = "PERSON (LIVE)";
@@ -622,7 +628,10 @@
                 window.log("<span style='color:#f1c40f'>Kamera AR aktiverad. 3D-figur dold.</span>");
             } else {
                 if (window.videoStream) { window.videoStream.getTracks().forEach(track => track.stop()); }
-                cameraFeed.style.display = 'none'; window.useCamera = false;
+                cameraFeed.style.display = 'none'; 
+                viewport.style.backgroundColor = "#0a0a0a"; // Återställ mörk bakgrund
+                window.useCamera = false;
+                
                 btnCamera.innerHTML = "📷 Kamera (AR)"; btnCamera.classList.remove('active-cam');
                 window.show3DModel = true; if (window.set3DVisibility) window.set3DVisibility(true);
                 document.getElementById('target-label').textContent = "PERSON (3D)";
@@ -662,6 +671,8 @@
                 
                 window.show3DModel = true; 
                 document.getElementById('target-label').textContent = `PERSON (${window.scenario.toUpperCase()})`;
+                
+                window.updateProjectors(); // Säkerställ att lasrar är aktiverade
                 window.togglePlaceMode(); 
                 session.addEventListener('end', window.onXRSessionEnded);
             }).catch(err => { if (err !== 'no-xr' && err !== 'session-ended') console.error(err); });
@@ -679,6 +690,7 @@
             window.figureLocked = true; window.scenario = 'static';
             if(window.taserGroup) { window.taserGroup.position.set(0, 0, 0); window.taserGroup.rotation.x = 0; window.figureFallen = false; }
             window.startThreatEscalation();
+            window.updateDisplay();
             window.log("WebXR-session avslutad.");
         }
         window.endXRSession = async function() { if (window.xrSession) { await window.xrSession.end(); } }
@@ -693,10 +705,8 @@
         }
         function enableGyro() {
             if(window.gyroEnabled) return;
-            // STENHÅRD NOLLSTÄLLNING AV SENSORVÄRDEN
             window.calibAlpha = null; window.calibBeta = null; 
             window.aimX = 50; window.aimY = 50; 
-            
             window.addEventListener('deviceorientation', handleOrientation);
             window.gyroEnabled = true; window.log("Rörelsesensor aktiverad!");
             document.getElementById('btn-gyro').style.display = 'none';
@@ -728,7 +738,6 @@
             window.aimX = 50 + (deltaX * -1.0); 
             window.aimY = 50 + (deltaY * -1.5); 
             
-            // SANITIZER: Förhindra NaN
             if (isNaN(window.aimX)) window.aimX = 50;
             if (isNaN(window.aimY)) window.aimY = 50;
 
@@ -737,21 +746,26 @@
             window.updateAimVisuals();
         }
 
+        // --- LASER FIX FÖR WEBXR ---
         window.updateAimVisuals = function() {
             let angle = (window.activeChamber === 1) ? 12 : 3.5;
-            // SANITIZER: Förhindra att distance kraschar matematiken
-            if (isNaN(window.currentDistance) || window.currentDistance < 0.5) window.currentDistance = 3.0;
+            
+            // SANITIZER: Tvinga giltigt avstånd om mätaren blinkar i WebXR
+            let safeDist = parseFloat(window.currentDistance);
+            if (isNaN(safeDist) || safeDist < 0.5) safeDist = 3.0;
 
-            let spreadMeters = window.currentDistance * Math.tan(angle * Math.PI / 180);
+            let spreadMeters = safeDist * Math.tan(angle * Math.PI / 180);
             let spreadCm = spreadMeters * 100;
-            document.getElementById('dist-label').textContent = `${window.currentDistance.toFixed(1)} M`;
+            document.getElementById('dist-label').textContent = `${safeDist.toFixed(1)} M`;
             document.getElementById('spread-label').textContent = `SPRIDNING: ${spreadCm.toFixed(1)} CM`;
             
-            let baseScale = 0.5; let scaleFactor = (3.0 / window.currentDistance) * baseScale; 
+            let baseScale = 0.5; let scaleFactor = (3.0 / safeDist) * baseScale; 
             scaleFactor = Math.min(Math.max(scaleFactor, 0.1), 5.0); 
-            let visualDropPx = ((window.activeChamber === 1) ? 141.7 : 40.7) * scaleFactor; 
             
-            // LÅS FAST LASRAR
+            let visualDropPx = ((window.activeChamber === 1) ? 141.7 : 40.7) * scaleFactor; 
+            if(isNaN(visualDropPx)) visualDropPx = 40.7; // Failsafe
+            
+            // LÅS FAST LASERN: Tillåt den aldrig att hamna utanför rutan
             visualDropPx = Math.min(visualDropPx, 140);
             
             document.getElementById('laser-red').style.top = `calc(50% + ${visualDropPx}px)`; 
@@ -915,9 +929,8 @@
             window.initAudio();
             window.hideNMIOverlay();
             
-            // RESET MÅL & MATEMATIK DIREKT
             window.currentDistance = 3.0; window.aimX = 50; window.aimY = 50;
-            window.calibAlpha = null; window.calibBeta = null; // Tvinga ny kalibrering
+            window.calibAlpha = null; window.calibBeta = null;
 
             window.chamber1 = "loaded"; window.chamber2 = "loaded"; window.activeChamber = 1;
             document.getElementById('stat-cassette').textContent = "⏏️ Kassetter i"; document.getElementById('stat-cassette').classList.add('ok');
@@ -992,18 +1005,15 @@
         };
 
         // --- FALLBACK DUMMY ---
-        // (Visas direkt om GLB-filen laddar långsamt eller saknas!)
         const dummyBody = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.4, 0.3), new THREE.MeshStandardMaterial({color: 0x219653, roughness: 0.5}));
         dummyBody.position.set(0, 0.7, 0); dummyBody.castShadow = true; dummyBody.name = "Godkand_Zon";
         taserGroup.add(dummyBody); window.dummyBody = dummyBody;
 
-        // HIT ZONES
         const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.8, emissive: 0xf1c40f, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.8 });
         const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), yellowMat); headMesh.position.set(0, 1.65, 0.0); headMesh.name = "Huvud/Hals"; headMesh.castShadow = true; taserGroup.add(headMesh);
         const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.2), yellowMat); chestMesh.position.set(0, 1.35, 0.08); chestMesh.name = "Hjärttrakten"; chestMesh.castShadow = true; taserGroup.add(chestMesh);
         const groinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), yellowMat); groinMesh.position.set(0, 0.85, 0.08); groinMesh.name = "Genitalier"; groinMesh.castShadow = true; taserGroup.add(groinMesh);
 
-        // KNIFE
         const knifeGroup = new THREE.Group();
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), new THREE.MeshStandardMaterial({color: 0x111111, roughness: 0.9}));
         const blade = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.25, 0.05), new THREE.MeshStandardMaterial({color: 0xffffff, metalness: 1.0, roughness: 0.1}));
@@ -1013,7 +1023,6 @@
         knifeGroup.rotation.x = Math.PI / 2; knifeGroup.rotation.z = -Math.PI / 8; 
         knifeGroup.visible = false; window.knifeMesh = knifeGroup; taserGroup.add(knifeGroup);
 
-        // LADDA GLB (Ersätter Fallback Dummy)
         const loader = new GLTFLoader();
         loader.load('ue_mannequin_retopology.glb', (gltf) => {
             let dummy = gltf.scene;
@@ -1030,7 +1039,7 @@
                 if (child.isMesh) { child.material = new THREE.MeshStandardMaterial({ color: 0x219653, roughness: 0.5, metalness: 0.3 }); child.name = "Godkand_Zon"; child.castShadow = true; child.receiveShadow = true; }
             });
             taserGroup.add(dummy);
-            if(window.dummyBody) window.dummyBody.visible = false; // Göm fallbacken!
+            if(window.dummyBody) window.dummyBody.visible = false; 
             window.log("<span style='color:#2ecc71'>3D-Gubbe (Tactical) inladdad!</span>");
         }, undefined, (e) => { window.log("<span style='color:red'>Hittade ingen .glb-fil. Använder Fallback-figur.</span>"); });
 
@@ -1133,6 +1142,7 @@
                 spawnSparks(hit1.point);
                 spawnSparks(hit2.point);
 
+                // SKARPA KABLAR
                 const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
                 
                 const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
@@ -1249,7 +1259,6 @@
             if (!renderer.xr.isPresenting) {
                 if(window.useCamera) { scene.background = null; } else { scene.background = new THREE.Color(0x0a0a0a); }
                 
-                // SANITIZER: Tvinga distans om NaN
                 if(isNaN(window.currentDistance) || window.currentDistance < 0.5) window.currentDistance = 3.0;
                 if(isNaN(window.aimX)) window.aimX = 50;
                 if(isNaN(window.aimY)) window.aimY = 50;
