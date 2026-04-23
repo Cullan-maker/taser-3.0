@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taser 7 - Ultimate AR & WebXR v7.42</title>
+    <title>Taser 7 - Elite Tactical v7.43</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -51,18 +51,18 @@
         .lightning::before, .lightning::after { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background: #fff; box-shadow: 0 0 15px #a8eb12, 0 0 30px #a8eb12; animation: electricity 0.05s infinite alternate; }
         .lightning::after { transform: rotate(15deg); }
 
-        /* NY NMI RESULTAT RUTA (GRAFISK) */
+        /* ----- NMI RESULTAT RUTA (KOMPAKT & HÖGST UPP) ----- */
         #nmi-overlay {
-            display: none; position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9); border: 1px solid rgba(46, 204, 113, 0.5); border-radius: 12px;
-            padding: 20px; text-align: center; z-index: 10000; width: 85%; max-width: 320px;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(46, 204, 113, 0.1);
+            display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); border: 2px solid rgba(46, 204, 113, 0.8); border-radius: 8px;
+            padding: 10px 15px; text-align: center; z-index: 10000; width: max-content; min-width: 200px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.9), inset 0 0 15px rgba(46, 204, 113, 0.15);
             backdrop-filter: blur(5px); transition: all 0.3s ease;
         }
-        #nmi-overlay.fail { border-color: rgba(231, 76, 60, 0.5); box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 20px rgba(231, 76, 60, 0.1); }
-        #nmi-title { font-size: 22px; font-weight: bold; color: #2ecc71; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);}
+        #nmi-overlay.fail { border-color: rgba(231, 76, 60, 0.8); box-shadow: 0 10px 25px rgba(0,0,0,0.9), inset 0 0 15px rgba(231, 76, 60, 0.15); }
+        #nmi-title { font-size: 14px; font-weight: bold; color: #2ecc71; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 1px;}
         #nmi-overlay.fail #nmi-title { color: #e74c3c; }
-        #nmi-details { font-size: 14px; color: #ecf0f1; margin: 0; line-height: 1.5; font-family: 'Courier New', monospace;}
+        #nmi-details { font-size: 11px; color: #ecf0f1; margin: 0; line-height: 1.4; font-family: 'Courier New', monospace;}
         .nmi-highlight { font-weight: bold; color: #f1c40f; }
 
         /* HUD Label Style */
@@ -87,7 +87,7 @@
         }
         .place-hint.visible { opacity: 1; }
         
-        /* ----- VAPEN OCH KONTROLLER (GUL) ----- */
+        /* ----- VAPEN OCH KONTROLLER ----- */
         .main-container { display: flex; flex-direction: column; align-items: center; width: 100%; position: relative; z-index: 50; transition: all 0.3s ease; }
 
         .taser-device { 
@@ -253,9 +253,9 @@
             <div id="nmi-overlay">
                 <h2 id="nmi-title">NMI UPPNÅDD</h2>
                 <p id="nmi-details">
-                    Målavstånd: <span class="nmi-highlight" id="nmi-dist">3.0 M</span><br><br>
+                    Avstånd: <span class="nmi-highlight" id="nmi-dist">3.0 M</span> | 
                     Spridning: <span class="nmi-highlight" id="nmi-spread">34 CM</span><br>
-                    <span id="nmi-reason" style="font-style: italic; color: #bdc3c7; font-size: 12px;">Träff i godkänd zon.</span>
+                    <span id="nmi-reason" style="font-style: italic; color: #bdc3c7; font-size: 10px;">Träff i godkänd zon.</span>
                 </p>
             </div>
 
@@ -381,7 +381,7 @@
             entry.className = 'log-entry'; entry.innerHTML = `> ${msg}`;
             logBox.prepend(entry);
         }
-        window.log("Simulator v7.42 (The Dynamic Wire Update) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
+        window.log("Simulator v7.43 (The Polish Update) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
 
         document.querySelector('.main-container').addEventListener('beforexrselect', e => e.preventDefault());
         document.querySelector('.hud-overlay').addEventListener('beforexrselect', e => e.preventDefault());
@@ -666,6 +666,9 @@
             scaleFactor = Math.min(Math.max(scaleFactor, 0.1), 5.0); 
             let visualDropPx = ((window.activeChamber === 1) ? 141.7 : 40.7) * scaleFactor; 
             
+            // Säkerhetsspärr: Låt inte den röda lasern åka utanför skärmen
+            visualDropPx = Math.min(visualDropPx, 140);
+            
             document.getElementById('laser-red').style.top = `calc(50% + ${visualDropPx}px)`; 
         }
 
@@ -708,7 +711,6 @@
                 cEl.textContent = "⏏️ Kassetter ur"; cEl.classList.remove('ok'); window.log("Kassetter urtagna."); 
                 document.querySelectorAll('.dart-spark').forEach(el => el.remove());
                 
-                // Rensa kablar och pilar
                 if(window.activeWires && window.scene) {
                     window.activeWires.forEach(w => window.scene.remove(w.line));
                     window.activeWires = [];
@@ -896,7 +898,6 @@
 
         let taserGroup = new THREE.Group(); scene.add(taserGroup); window.taserGroup = taserGroup;
         
-        // ARRAY FÖR ATT HÅLLA KOLL PÅ TRÅDAR OCH PILAR
         window.activeWires = [];
         window.activeDarts = [];
         
@@ -1011,7 +1012,6 @@
                 let hit1 = hits1[0]; let hit2 = hits2[0];
                 document.querySelectorAll('.dart-spark').forEach(el => el.remove());
                 
-                // SKAPA FYSISKA PILAR (Fäst i gubben så de rör sig med honom)
                 const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6); 
                 const dartMat = new THREE.MeshStandardMaterial({color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
                 
@@ -1032,8 +1032,8 @@
                 spawnSparks(hit1.point);
                 spawnSparks(hit2.point);
 
-                // --- TRÅDAR (Följer pilarna) ---
-                const wireMat = new THREE.LineBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 1.0 });
+                // --- UPPGRADERADE TRÅDAR ---
+                const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
                 
                 const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
                 const wire1 = new THREE.Line(geo1, wireMat);
@@ -1160,15 +1160,12 @@
                 camera.lookAt(lookTarget);
             }
 
-            // UPPDATERA DYNAMISKA TRÅDAR OCH PILAR
             if (window.activeWires && window.activeWires.length > 0) {
                 window.activeWires.forEach(wire => {
-                    // Startpunkt: Kameran (Vapnet)
                     let offset = new THREE.Vector3(wire.chamber === 1 ? -0.05 : 0.05, -0.15, -0.3);
                     offset.applyQuaternion(activeCamera.quaternion);
                     let origin = activeCamera.position.clone().add(offset);
                     
-                    // Slutpunkt: Exakt där pilen befinner sig i 3D världen (följer med när gubben faller!)
                     let targetPos = new THREE.Vector3();
                     wire.dart.getWorldPosition(targetPos);
 
