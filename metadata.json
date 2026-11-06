@@ -1,0 +1,8 @@
+{
+  "name": "Taser 7 - Elite Tactical",
+  "description": "Taser 7 Elite Tactical training simulator featuring 3D mannequin ballistics, realistic electrical cycle animations, and AR mode.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
