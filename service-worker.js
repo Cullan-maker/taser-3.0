@@ -1,29 +1,25 @@
-const CACHE_NAME = 'taser7-tactical-v9';
+const CACHE_NAME = 'taser7-tactical-v10';
 
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/service-worker.js',
-  '/ue_mannequin_retopology.glb',
-  '/vendor/three/build/three.module.js',
-  '/vendor/three/examples/jsm/loaders/GLTFLoader.js',
-  '/vendor/three/examples/jsm/environments/RoomEnvironment.js',
-  '/vendor/mediapipe/pose/pose.js',
-  '/js/app.js',
-  '/js/fsm.js',
-  '/js/audio.js',
-  '/js/ballistics.js',
-  '/js/scene.js',
-  '/js/xr.js',
-  '/js/pwa.js',
-  '/js/voice.js',
-  '/js/pose.js',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png',
-  '/icons/apple-touch-icon.png',
-  '/icons/icon.svg'
+  './',
+  './index.html',
+  './manifest.json',
+  './service-worker.js',
+  './ue_mannequin_retopology.glb',
+  './js/app.js',
+  './js/fsm.js',
+  './js/audio.js',
+  './js/ballistics.js',
+  './js/scene.js',
+  './js/xr.js',
+  './js/pwa.js',
+  './js/voice.js',
+  './js/pose.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/icon.svg'
 ];
 
 self.addEventListener('install', (event) => {

@@ -75,6 +75,8 @@ export class TaserScene {
     const height = this.container.clientHeight || 320;
 
     this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+    this.camera.position.set(0, 1.35, 3.0);
+    this.camera.lookAt(0, 1.35, 0);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl,
@@ -245,7 +247,7 @@ export class TaserScene {
   loadGLBMannequin() {
     const loader = new GLTFLoader();
     loader.load(
-      '/ue_mannequin_retopology.glb',
+      './ue_mannequin_retopology.glb',
       (gltf) => {
         const dummy = gltf.scene;
         dummy.updateMatrixWorld(true);
@@ -295,6 +297,8 @@ export class TaserScene {
       undefined,
       (err) => {
         console.warn('[TaserScene] GLB model not found or failed, using composite procedural mannequin:', err);
+        if (this.dummyBody) this.dummyBody.visible = true;
+        if (this.taserGroup) this.taserGroup.visible = true;
       }
     );
   }

@@ -207,8 +207,8 @@ export class TaserAIPose {
         try {
           this.pose = new PoseClass({
             locateFile: (file) => {
-              // Prefer local fast offline vendor assets with jsdelivr CDN fallback
-              return `/vendor/mediapipe/pose/${file}`;
+              // Direct CDN locator for guaranteed cross-origin and GitHub Pages subpath compatibility
+              return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
             }
           });
 
