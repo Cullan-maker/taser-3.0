@@ -768,6 +768,20 @@ export class TaserScene {
     }
   }
 
+  enableARMode() {
+    this.scene.background = null;
+    if (this.renderer) {
+      this.renderer.setClearColor(0x000000, 0);
+    }
+  }
+
+  disableARMode() {
+    this.scene.background = this.defaultBackground;
+    if (this.renderer) {
+      this.renderer.setClearColor(0x000000, 0);
+    }
+  }
+
   set3DVisibility(isVisible) {
     this.show3DModel = isVisible;
     if (this.taserGroup) this.taserGroup.visible = isVisible;

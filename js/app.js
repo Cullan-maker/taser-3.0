@@ -825,7 +825,10 @@ export class TaserApp {
   }
 
   onXRSessionStart(session, scenario) {
-    document.body.classList.add('webxr-mode');
+    document.body.classList.add('ar-active', 'webxr-mode');
+    document.documentElement.classList.add('ar-active');
+    this.scene.enableARMode();
+
     const btnWebXR = document.getElementById('btn-webxr');
     if (btnWebXR) {
       btnWebXR.textContent = '⛔ Avsluta WebXR';
@@ -841,7 +844,10 @@ export class TaserApp {
   }
 
   onXRSessionEnd() {
-    document.body.classList.remove('webxr-mode');
+    document.body.classList.remove('ar-active', 'webxr-mode');
+    document.documentElement.classList.remove('ar-active');
+    this.scene.disableARMode();
+
     const btnWebXR = document.getElementById('btn-webxr');
     if (btnWebXR) {
       btnWebXR.textContent = '🌐 WebXR';
@@ -1032,9 +1038,12 @@ export class TaserApp {
             this.updateAimVisuals();
           }
         }
+      if (renderer.xr.isPresenting) {
+        this.scene.scene.background = null;
       } else {
         // Desktop / Mobile Non-XR Perspective Viewport Orbit
-        this.scene.scene.background = this.xr.useCamera ? null : this.scene.defaultBackground;
+        const isARActive = this.xr.useCamera || document.body.classList.contains('ar-active') || document.body.classList.contains('webxr-mode');
+        this.scene.scene.background = isARActive ? null : this.scene.defaultBackground;
 
         if (isNaN(this.currentDistance) || this.currentDistance < 0.5) this.currentDistance = 3.0;
         if (isNaN(this.aimX)) this.aimX = 50;

@@ -83,6 +83,11 @@ export class TaserXR {
       this.xrSession = session;
       this.hitTestSourceRequested = false;
 
+      // Ensure Three.js WebGL context is transparent and clearColor is 0x000000 with alpha 0
+      if (this.taserScene) {
+        this.taserScene.enableARMode();
+      }
+
       const renderer = this.taserScene.renderer;
       renderer.xr.enabled = true;
       renderer.xr.setReferenceSpaceType('local-floor');
@@ -117,6 +122,10 @@ export class TaserXR {
     this.hitTestSourceRequested = false;
     this.xrHitTestSource = null;
     this.xrRefSpace = null;
+
+    if (this.taserScene) {
+      this.taserScene.disableARMode();
+    }
 
     const renderer = this.taserScene.renderer;
     if (renderer) {
