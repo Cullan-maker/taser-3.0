@@ -3,12 +3,16 @@
  * High-performance mobile portrait layout, WebXR, Three.js, Media Session API & PWA.
  */
 
+import * as THREE from 'three';
+if (typeof window !== 'undefined') window.THREE = THREE;
 import { TaserFSM, ChamberState } from './fsm.js';
 import { TaserAudio } from './audio.js';
 import { TaserBallistics } from './ballistics.js';
 import { TaserScene } from './scene.js';
 import { TaserXR } from './xr.js';
 import { TaserPWA } from './pwa.js';
+import { TaserVoice } from './voice.js';
+import { TaserAIPose } from './pose.js';
 
 export class TaserApp {
   constructor() {
@@ -26,16 +30,49 @@ export class TaserApp {
 
     this.pwa = new TaserPWA();
 
+    // AI-Based Person Pose & Dynamic Hitbox Engine
+    this.aiPose = new TaserAIPose(this.scene, this.scene.camera, {
+      videoElement: document.getElementById('camera-feed'),
+      onStatusChange: (detected, label) => {
+        const tLabel = document.getElementById('target-label');
+        const dLabel = document.getElementById('dist-label');
+        if (tLabel && this.xr.useCamera) {
+          tLabel.textContent = detected ? 'MÄNNISKA (AI LÅST: LIVE)' : 'SÖKER PERSON (AI)...';
+          tLabel.classList.toggle('armed', detected);
+        }
+        if (dLabel && this.xr.useCamera && detected) {
+          dLabel.textContent = `${this.aiPose.estimatedDistance.toFixed(1)} M (AI)`;
+          this.currentDistance = this.aiPose.estimatedDistance;
+          this.updateAimVisuals();
+        }
+      }
+    });
+    this.scene.aiPose = this.aiPose;
+
+    // Voice Command Engine ('sv-SE')
+    this.voice = new TaserVoice({
+      onCommand: this.handleVoiceCommand.bind(this),
+      onStatusChange: (active, label) => {
+        const btn = document.getElementById('btn-voice');
+        if (btn) {
+          btn.innerHTML = active ? `🎙️ Röst: ${label}` : `🎙️ Röst: ${label}`;
+          btn.classList.toggle('listening', active);
+        }
+      },
+      onLog: (msg) => this.log(msg)
+    });
+
     // Aim and Tracking State
     this.currentDistance = 3.0; // meters
     this.aimX = 50; // percentage
     this.aimY = 50; // percentage
     this.invertMouseY = false;
 
-    // Threat escalation
+    // Threat escalation & Verbal warnings
     this.threatLevel = 0;
     this.threatInterval = null;
     this.nmiTimer = null;
+    this.warningGiven = false;
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -58,19 +95,32 @@ export class TaserApp {
   initDOM() {
     // Expose tactical methods to window for clean button handlers
     window.app = this;
-    window.toggleBattery = () => this.fsm.toggleBattery();
+    window.toggleBattery = () => {
+      // Smoothly request gyro permission during startup on iOS if not yet granted
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function' && !this.xr.gyroEnabled) {
+        this.initGyro();
+      }
+      return this.fsm.toggleBattery();
+    };
     window.toggleCassette = () => this.fsm.toggleCassette();
     window.toggleSafety = () => this.fsm.toggleSafety();
     window.tiltWeapon = () => this.fsm.tiltWeapon();
     window.activateStealth = () => this.fsm.activateStealth();
     window.toggleClothing = () => this.fsm.toggleClothing();
-    window.pressSingleWarning = () => this.fsm.pressSingleWarning();
-    window.pressDualWarning = () => this.fsm.pressDualWarning();
+    window.pressSingleWarning = () => {
+      this.animateWarningButtons();
+      return this.fsm.pressSingleWarning();
+    };
+    window.pressDualWarning = () => {
+      this.animateWarningButtons();
+      return this.fsm.pressDualWarning();
+    };
     window.pressTrigger = () => this.handleTrigger();
     window.performKontaktstot = () => this.fsm.performKontaktstot();
     window.resetSimulator = () => this.resetSimulator();
 
     window.toggleCamera = () => this.toggleCameraAR();
+    window.startRealPersonAI = () => this.startRealPersonAI();
     window.openScenarioModal = () => this.openModal('scenario-modal');
     window.startXR = (type) => this.startWebXR(type);
     window.togglePlaceMode = () => this.togglePlaceMode();
@@ -80,6 +130,18 @@ export class TaserApp {
     window.openModal = (id) => this.openModal(id);
     window.closeModal = (id) => this.closeModal(id);
     window.promptInstall = () => this.pwa.promptInstall();
+    window.toggleVoice = () => this.voice.toggle();
+    window.testVoiceCommand = (cmd) => this.voice.simulateCommand(cmd);
+
+    // Direct event listener for the real-person WebXR/AI button
+    const btnRealPerson = document.getElementById('btn-start-real-person-xr');
+    if (btnRealPerson) {
+      btnRealPerson.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.startRealPersonAI();
+      });
+    }
   }
 
   initFSMSubscriptions() {
@@ -117,6 +179,8 @@ export class TaserApp {
 
         this.updateDisplay();
       } else if (event === 'CHAMBER_CHANGED') {
+        this.updateDisplay();
+      } else if (event === 'DISPLAY_CHANGED') {
         this.updateDisplay();
       } else if (event === 'STEALTH_CHANGED') {
         const stBox = document.getElementById('stat-stealth');
@@ -162,6 +226,8 @@ export class TaserApp {
         this.currentDistance = 3.0;
         this.aimX = 50;
         this.aimY = 50;
+        this.warningGiven = false;
+        this.updateWarningUI();
         this.scene.resetTarget();
         this.updateDisplay();
         this.startThreatEscalation();
@@ -170,15 +236,49 @@ export class TaserApp {
   }
 
   initInputs() {
-    // Keyboard Shortcuts
+    // Unlock AudioContext and silent MediaSession loop on first touch/click
+    const unlockAudio = () => {
+      this.audio.init();
+      if (this.audio.silentAudioEl) {
+        this.audio.silentAudioEl.play().catch(() => {});
+      }
+      // On non-iOS devices where no explicit permission barrier exists, auto-engage gyro
+      if (
+        typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission !== 'function' &&
+        !this.xr.gyroEnabled
+      ) {
+        this.initGyro(true);
+      }
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+
+    // Keyboard Shortcuts & Physical Hardware Keys
     window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
+      // Physical Volume Keys / Media Keys mapped to Warning Arc
+      if (
+        k === 'audiovolumeup' || 
+        k === 'audiovolumedown' || 
+        k === 'volumeup' || 
+        k === 'volumedown' ||
+        e.code === 'AudioVolumeUp' ||
+        e.code === 'AudioVolumeDown'
+      ) {
+        e.preventDefault();
+        window.pressSingleWarning();
+        return;
+      }
+
       if (e.code === 'Space') {
         e.preventDefault();
         this.handleTrigger();
       } else if (k === 'c' || e.key === 'Shift') {
         e.preventDefault();
-        this.fsm.pressSingleWarning();
+        window.pressSingleWarning();
       } else if (k === 'z') {
         this.fsm.setChamber(1);
       } else if (k === 'x') {
@@ -226,8 +326,7 @@ export class TaserApp {
         const rect = viewport.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-        this.scene.placementRaycaster.setFromCamera(new THREE.Vector2(x, y), this.scene.camera);
-        const hits = this.scene.placementRaycaster.intersectObject(this.scene.placementGround, true);
+        const hits = this.scene.setPlacementFromScreen(x, y);
         if (hits.length > 0 && this.scene.placementMarker) {
           this.scene.placementMarker.position.copy(hits[0].point);
           this.scene.placementMarker.position.y += 0.01;
@@ -389,6 +488,17 @@ export class TaserApp {
     }
   }
 
+  animateWarningButtons() {
+    const leftBtn = document.getElementById('warn-left');
+    const rightBtn = document.getElementById('warn-right');
+    if (leftBtn) leftBtn.classList.add('active-press');
+    if (rightBtn) rightBtn.classList.add('active-press');
+    setTimeout(() => {
+      if (leftBtn) leftBtn.classList.remove('active-press');
+      if (rightBtn) rightBtn.classList.remove('active-press');
+    }, 200);
+  }
+
   showNMIOverlay(success, reason, spreadCm) {
     const overlay = document.getElementById('nmi-overlay');
     const title = document.getElementById('nmi-title');
@@ -417,10 +527,24 @@ export class TaserApp {
     if (overlay) overlay.style.display = 'none';
   }
 
+  updateWarningUI() {
+    const badge = document.getElementById('hud-warning');
+    if (badge) {
+      badge.style.display = this.warningGiven ? 'inline-block' : 'none';
+      if (this.warningGiven) {
+        badge.textContent = '⚠️ VARNING DELGIVEN';
+      }
+    }
+  }
+
   startThreatEscalation() {
     this.threatLevel = 0;
+    if (typeof window !== 'undefined') window.threatLevel = 0;
     if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
     if (this.threatInterval) clearInterval(this.threatInterval);
+    this.warningGiven = false;
+    this.updateWarningUI();
+    this.scene.setAnimation('Idle', 0.4);
 
     const tLabel = document.getElementById('target-label');
     if (tLabel) {
@@ -432,6 +556,8 @@ export class TaserApp {
       if (this.scene.figureFallen || !this.scene.taserGroup || !this.scene.taserGroup.visible) return;
 
       this.threatLevel++;
+      if (typeof window !== 'undefined') window.threatLevel = this.threatLevel;
+
       if (this.threatLevel === 1) {
         this.suspectSpeak('Vad fan glor du på?! Backa!');
       } else if (this.threatLevel === 2) {
@@ -439,6 +565,7 @@ export class TaserApp {
       } else if (this.threatLevel === 3) {
         this.suspectSpeak('Jag sprättar dig! Jag svär!');
         if (this.scene.knifeMesh) this.scene.knifeMesh.visible = true;
+        this.scene.setAnimation('Walk', 0.5);
         this.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit kniv! Omedelbar respons krävs!</span>");
         if (tLabel) {
           tLabel.textContent = 'PERSON: BEVÄPNAD';
@@ -460,35 +587,241 @@ export class TaserApp {
     this.audio.suspectSpeak(text);
   }
 
-  toggleCameraAR() {
+  handleVoiceCommand(cmd, transcript) {
+    if (this.scene.figureFallen) {
+      this.log("<span style='color:#bdc3c7'>Målet är redan neutraliserat / på marken.</span>");
+      return;
+    }
+
+    // --- TAKTISK VARNING: ELCHOCKVAPEN & BEREDD ATT ANVÄNDA DET ---
+    if (cmd === 'VARNING_FULL' || cmd === 'VARNING_ELCHOCKVAPEN' || cmd === 'VARNING_BEREDD') {
+      const wasWarned = this.warningGiven;
+      this.warningGiven = true;
+      this.updateWarningUI();
+
+      if (cmd === 'VARNING_FULL') {
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag har ett elchockvapen, jag är beredd att använda det!\"</i>");
+      } else if (cmd === 'VARNING_ELCHOCKVAPEN') {
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag har ett elchockvapen!\"</i>");
+      } else {
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag är beredd att använda det!\"</i>");
+      }
+
+      if (this.threatLevel >= 3) {
+        if (!wasWarned) {
+          this.suspectSpeak(Math.random() < 0.5 ? 'Tror du jag bryr mig om ditt elvapen?!' : 'Kom inte närmare, jag menar allvar!');
+        } else {
+          this.suspectSpeak('Jag hörde dig! Stick sa jag!');
+        }
+      } else {
+        this.suspectSpeak('Vadå elchockvapen?! Ta det lugnt!');
+      }
+      return;
+    }
+
+    // --- KOMMANDO: SLÄPP KNIVEN ---
+    if (cmd === 'SLAPP_KNIVEN') {
+      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible);
+      if (isArmed) {
+        // Taktisk sannolikhetsbedömning: 30% chans att målet lyder och släpper kniven
+        const obeys = Math.random() < 0.30;
+        if (obeys) {
+          if (this.threatInterval) clearInterval(this.threatInterval);
+          this.threatLevel = 0;
+          if (typeof window !== 'undefined') window.threatLevel = 0;
+
+          // Släpp kniven och återgå till stillastående
+          if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+          this.scene.setAnimation('Idle', 0.4);
+
+          const tLabel = document.getElementById('target-label');
+          if (tLabel) {
+            tLabel.textContent = 'PERSON: GAV UPP';
+            tLabel.classList.remove('armed');
+          }
+
+          this.log("<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES (30% chans):</span> Målet släpper kniven och kapitulerar!");
+          this.suspectSpeak('Okej! Skjut inte, jag släpper den!');
+        } else {
+          // 70% risk: Målet vägrar och eskalerar
+          this.log("<span style='color:#e74c3c; font-weight:bold;'>⚠️ KOMMANDO IGNORERADES (70% risk):</span> Målet vägrar släppa kniven! Fortsätter anfallet!");
+          this.suspectSpeak('Aldrig i livet! Kom hit då!');
+          this.scene.setAnimation('Walk', 0.3);
+        }
+      } else {
+        this.suspectSpeak('Jag har ingen kniv! Vad glor du på?!');
+        this.log("<span style='color:#f39c12'>Målet har ännu inte dragit något vapen.</span>");
+      }
+    } else if (cmd === 'STANNA') {
+      if (this.threatLevel >= 3) {
+        const pauses = Math.random() < 0.25;
+        if (pauses) {
+          this.suspectSpeak('Vad vill du mig?!');
+          this.scene.setAnimation('Idle', 0.3);
+          setTimeout(() => {
+            if (!this.scene.figureFallen && this.threatLevel >= 3) {
+              this.scene.setAnimation('Walk', 0.4);
+            }
+          }, 2500);
+          this.log("<span style='color:#f1c40f; font-weight:bold;'>Målet tvekar och stannar tillfälligt!</span>");
+        } else {
+          this.suspectSpeak('Stoppa mig om du kan!');
+          this.log("<span style='color:#e74c3c'>Målet ignorerar stanna-ordern.</span>");
+        }
+      } else {
+        this.suspectSpeak('Jag står ju still!');
+      }
+    } else if (cmd === 'LAGG_DIG_NER') {
+      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible);
+      if (isArmed) {
+        // Taktisk eskalering med sannolikhetslogik:
+        // Utan varning (warningGiven == false): endast 10% chans att figuren ger upp
+        // Efter varning (warningGiven == true): ökar chansen till 40% att figuren avbryter anfallet
+        const surrenderChance = this.warningGiven ? 0.40 : 0.10;
+        const obeys = Math.random() < surrenderChance;
+
+        if (obeys) {
+          if (this.threatInterval) clearInterval(this.threatInterval);
+          this.threatLevel = 0;
+          if (typeof window !== 'undefined') window.threatLevel = 0;
+
+          // Målet släpper kniven och lägger sig ner på marken
+          if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+          this.scene.collapseTarget();
+
+          const tLabel = document.getElementById('target-label');
+          if (tLabel) {
+            tLabel.textContent = 'PERSON: GAV UPP';
+            tLabel.classList.remove('armed');
+          }
+
+          const chanceInfo = this.warningGiven ? '40% chans efter formell varning' : '10% chans utan varning';
+          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ MÅLET GER UPP (${chanceInfo})!</span> Målet släpper kniven och lägger sig platt på marken.`);
+          this.suspectSpeak('Okej! Jag lägger mig ner, skjut inte!');
+        } else {
+          const failInfo = this.warningGiven ? '60% risk trots delgiven varning' : '90% risk utan varning';
+          this.log(`<span style='color:#e74c3c; font-weight:bold;'>⚠️ MÅLET VÄGRAR (${failInfo})!</span> Målet vägrar lägga sig ner och fortsätter anfallet!`);
+          this.suspectSpeak(this.warningGiven ? 'Ditt elvapen skrämmer mig inte! Kom hit då!' : 'Aldrig i livet! Jag lägger mig inte!');
+          this.scene.setAnimation('Walk', 0.3);
+        }
+      } else {
+        this.suspectSpeak('Okej, jag lägger mig ner!');
+        this.scene.collapseTarget();
+        const tLabel = document.getElementById('target-label');
+        if (tLabel) {
+          tLabel.textContent = 'PERSON: PÅ MARKEN';
+          tLabel.classList.remove('armed');
+        }
+        this.log("<span style='color:#2ecc71; font-weight:bold;'>Målet lyder och lägger sig ner på marken.</span>");
+      }
+    }
+  }
+
+  showTacticalError(title, detail, type = 'SYSTEM') {
+    console.error(`[TACTICAL ERROR: ${type}] ${title} - ${detail}`);
+    const banner = document.getElementById('tactical-error-banner');
+    const titleEl = document.getElementById('banner-title-text');
+    const bodyEl = document.getElementById('banner-body-text');
+
+    if (banner && titleEl && bodyEl) {
+      titleEl.textContent = `${title} (${type})`;
+      bodyEl.textContent = detail;
+      banner.style.display = 'block';
+
+      if (this._errorBannerTimer) clearTimeout(this._errorBannerTimer);
+      this._errorBannerTimer = setTimeout(() => {
+        banner.style.display = 'none';
+      }, 8000);
+    }
+  }
+
+  async startRealPersonAI() {
+    this.closeModal('scenario-modal');
     const cameraFeed = document.getElementById('camera-feed');
     const btnCamera = document.getElementById('btn-camera');
     const viewport = document.getElementById('viewport');
     const tLabel = document.getElementById('target-label');
 
-    this.xr.toggleCameraAR(cameraFeed, viewport).then((isActive) => {
-      if (isActive) {
-        btnCamera.innerHTML = '📷 Avbryt AR';
-        btnCamera.classList.add('active-cam');
-        if (tLabel) tLabel.textContent = 'PERSON (LIVE)';
-        this.log("<span style='color:#f1c40f'>Kamera AR aktiverad. 3D-figur dold.</span>");
-      } else {
-        btnCamera.innerHTML = '📷 Kamera (AR)';
-        btnCamera.classList.remove('active-cam');
+    // Immediate user feedback
+    if (tLabel) tLabel.textContent = 'INITIERAR AI & KAMERA...';
+    if (btnCamera) btnCamera.innerHTML = '⏳ Startar AI...';
+    this.log("<span style='color:#f1c40f'>⏳ Initierar Mixed Reality (Kamera + BlazePose AI)...</span>");
+
+    try {
+      // STEG 1: Kamerabehörighet (MÅSTE anropas direkt vid användarklick för att behålla aktiv User Gesture)
+      const isActive = await this.xr.toggleCameraAR(cameraFeed, viewport);
+
+      if (!isActive) {
+        // Om användaren klickade för att stänga av kameran
+        if (btnCamera) {
+          btnCamera.innerHTML = '🤖 Live AI (Kamera)';
+          btnCamera.classList.remove('active-cam');
+        }
         if (tLabel) tLabel.textContent = 'PERSON (3D)';
-        this.log('Återgått till mörk bakgrund. 3D-figur synlig.');
+        this.aiPose.stop();
+        this.currentDistance = 3.0;
+        this.updateAimVisuals();
+        this.log('Kamera avstängd. Återgått till 3D-mål.');
         this.startThreatEscalation();
+        return;
       }
-    }).catch((err) => {
-      this.log(`<span style='color:red'>${err.message}</span>`);
-    });
+
+      const isSimulated = !!this.xr.isSimulatedCamera;
+      this.aiPose.isSimulated = isSimulated;
+
+      // STEG 2: Ladda och förbered ML-modellen i minnet (MediaPipe Pose WASM)
+      if (!isSimulated) {
+        if (tLabel) tLabel.textContent = 'LADDAR AI-MODELL...';
+        await this.aiPose.ensureReady().catch((e) => {
+          console.warn('[AI MODEL NOTICE] Förbereder fallback till simulerad person:', e.message);
+          this.aiPose.isSimulated = true;
+        });
+      }
+
+      // STEG 3: Koppla videoströmmen till AI-detektorn
+      this.aiPose.start(cameraFeed);
+
+      if (btnCamera) {
+        btnCamera.innerHTML = isSimulated ? '🤖 Avbryt AI (Demo)' : '🤖 Avbryt Live AI';
+        btnCamera.classList.add('active-cam');
+      }
+      if (tLabel) {
+        tLabel.textContent = isSimulated ? 'MÄNNISKA (AI SIMULERAD)' : 'MÄNNISKA (AI SÖKER...)';
+      }
+
+      if (isSimulated) {
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>ℹ️ SIMULERAD AI-KAMERA:</span> Fysisk kamera är blockerad av webbläsarens iframe-säkerhet. Kör med simulerad person för full AI- och ballistikträning!");
+      } else {
+        this.log("<span style='color:#2ecc71; font-weight:bold;'>✅ LIVE AI AKTIV:</span> Riktar kameran mot en levande människa för dynamiska träffzoner.");
+      }
+    } catch (err) {
+      console.warn('[STARTUP SEQUENCE NOTICE] Faller tillbaka till simulerad AI-person:', err);
+      this.aiPose.isSimulated = true;
+      this.aiPose.start(cameraFeed);
+      if (btnCamera) {
+        btnCamera.innerHTML = '🤖 Avbryt AI (Demo)';
+        btnCamera.classList.add('active-cam');
+      }
+      if (tLabel) {
+        tLabel.textContent = 'MÄNNISKA (AI SIMULERAD)';
+      }
+      this.log("<span style='color:#f1c40f;'>Kamera ej tillgänglig. Startat i simulerat AI-läge för test och verifiering.</span>");
+    }
   }
 
-  startWebXR(type) {
+  async toggleCameraAR() {
+    return this.startRealPersonAI();
+  }
+
+  async startWebXR(type) {
     this.closeModal('scenario-modal');
-    this.xr.startXR(type).catch((err) => {
-      this.log(`<span style='color:red'>WebXR fel: ${err.message}</span>`);
-    });
+    try {
+      await this.xr.startXR(type);
+    } catch (err) {
+      console.error('[WEBXR STARTUP ERROR]', err);
+      this.showTacticalError('WebXR Fel', err.message || 'WebXR kunde inte startas.', 'WEBXR');
+      this.log(`<span style='color:#e74c3c; font-weight:bold;'>WebXR fel:</span> ${err.message}`);
+    }
   }
 
   onXRSessionStart(session, scenario) {
@@ -507,7 +840,7 @@ export class TaserApp {
     this.log(`WebXR startad i scenario: ${scenario}`);
   }
 
-  onSessionEnd() {
+  onXRSessionEnd() {
     document.body.classList.remove('webxr-mode');
     const btnWebXR = document.getElementById('btn-webxr');
     if (btnWebXR) {
@@ -571,7 +904,7 @@ export class TaserApp {
     this.startThreatEscalation();
   }
 
-  initGyro() {
+  initGyro(silent = false) {
     this.audio.init();
     this.xr.initGyro(
       (aimX, aimY) => {
@@ -579,18 +912,46 @@ export class TaserApp {
         this.aimY = aimY;
         this.updateAimVisuals();
       },
-      (gamma) => {
-        if (!this.fsm.isSafe && this.fsm.hasBattery) {
-          this.fsm.tiltWeapon();
+      (direction, gamma) => {
+        if (!this.fsm.hasBattery) {
+          this.log("<span style='color:#f39c12'>Sätt i batteri för att använda kammare.</span>");
+          return;
+        }
+        if (this.fsm.isSafe) {
+          this.log("<span style='color:#f39c12'>Vapnet är säkrat. Osäkra vapnet för att byta kammare med tilt.</span>");
+          return;
+        }
+        if (this.fsm.chamber1 === ChamberState.EMPTY) {
+          this.log("<span style='color:#f39c12'>Ladda kassetter för att byta kammare med tilt.</span>");
+          return;
+        }
+
+        const switched = this.fsm.tiltWeapon();
+        if (switched) {
+          if (navigator.vibrate) {
+            try { navigator.vibrate(40); } catch (e) {}
+          }
+          this.log(`📱 <span style='color:#3498db; font-weight:bold;'>GYRO-TILT (${direction.toUpperCase()} ${Math.round(gamma)}°):</span> Växlar till kammare ${this.fsm.activeChamber} (${this.fsm.activeChamber === 1 ? '12°' : '3.5°'})!`);
         }
       }
-    ).then((granted) => {
-      if (granted) {
-        this.log('Rörelsesensor aktiverad!');
-        const btn = document.getElementById('btn-gyro');
-        if (btn) btn.style.display = 'none';
-      } else {
-        this.log('Kunde inte starta rörelsesensor.');
+    ).then((res) => {
+      const btn = document.getElementById('btn-gyro');
+      if (res && res.success) {
+        if (btn) {
+          btn.innerHTML = '📱 Gyro: PÅ';
+          btn.classList.add('active-gyro');
+        }
+        if (res.alreadyEnabled) {
+          this.log("📱 <span style='color:#2ecc71'>Gyrosikte omkalibrerat till neutralt läge.</span>");
+        } else if (!silent) {
+          this.log("📱 <span style='color:#2ecc71; font-weight:bold;'>Rörelsesensor (Gyro) aktiverad!</span> Vrid handleden åt sidan för att byta kammare.");
+        }
+      } else if (res && res.permission === 'denied') {
+        if (btn) btn.innerHTML = '📱 Gyro: NEKAD';
+        this.log("<span style='color:#e74c3c; font-weight:bold;'>Rörelsesensor nekades.</span> Tillåt rörelse och riktning i Safari/webbläsarinställningar.");
+      } else if (res && res.permission === 'unsupported' && !silent) {
+        if (btn) btn.innerHTML = '📱 Gyro: EJ STÖD';
+        this.log("<span style='color:#bdc3c7'>Enheten saknar hårdvarugyroskop. Använd '🔄 Tilt (Z/X)' knapparna.</span>");
       }
     });
   }
@@ -622,6 +983,39 @@ export class TaserApp {
     renderer.setAnimationLoop((timestamp, frame) => {
       const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
 
+      // Skeletal Animation update & Threat Escalation movement
+      const delta = Math.min(this.scene.clock.getDelta(), 0.1);
+      this.scene.update(delta);
+
+      const currentThreat = (typeof window !== 'undefined' && typeof window.threatLevel === 'number')
+        ? window.threatLevel
+        : this.threatLevel;
+
+      if (currentThreat >= 3 && !this.scene.figureFallen && this.scene.taserGroup && this.scene.taserGroup.visible) {
+        if (this.scene.activeAction !== this.scene.actions['Walk']) {
+          this.scene.setAnimation('Walk', 0.5);
+        }
+
+        // Advance target slowly towards camera along Z-axis in non-XR mode
+        if (!renderer.xr.isPresenting) {
+          const minDistance = 1.1; // minimum standoff in meters
+          const currentDist = (this.scene.taserGroup.userData.startPos ? this.scene.taserGroup.userData.startPos.z : 0) + 3.0 - this.scene.taserGroup.position.z;
+          if (currentDist > minDistance) {
+            // Modulate velocity by walk action weight to prevent foot sliding during weight transfer
+            const walkWeight = (this.scene.actions['Walk'] && this.scene.activeAction === this.scene.actions['Walk'])
+              ? this.scene.actions['Walk'].getEffectiveWeight()
+              : 0;
+            this.scene.taserGroup.position.z += this.scene.walkSpeed * walkWeight * delta;
+            this.currentDistance = Math.max(minDistance, 3.0 - this.scene.taserGroup.position.z);
+            this.updateAimVisuals();
+          }
+        }
+      } else if (currentThreat < 3 && !this.scene.figureFallen) {
+        if (this.scene.activeAction === this.scene.actions['Walk']) {
+          this.scene.setAnimation('Idle', 0.5);
+        }
+      }
+
       // WebXR Frame logic & dynamic scenario updates
       if (renderer.xr.isPresenting) {
         this.xr.handleXRFrame(timestamp, frame, activeCamera);
@@ -640,11 +1034,7 @@ export class TaserApp {
         }
       } else {
         // Desktop / Mobile Non-XR Perspective Viewport Orbit
-        if (this.xr.useCamera) {
-          this.scene.scene.background = null;
-        } else {
-          this.scene.scene.background = new THREE.Color(0x0a0a0a);
-        }
+        this.scene.scene.background = this.xr.useCamera ? null : this.scene.defaultBackground;
 
         if (isNaN(this.currentDistance) || this.currentDistance < 0.5) this.currentDistance = 3.0;
         if (isNaN(this.aimX)) this.aimX = 50;

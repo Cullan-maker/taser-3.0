@@ -58,7 +58,7 @@ export class TaserPWA {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        const reg = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
         console.log('[TaserPWA] Service Worker registered with scope:', reg.scope);
       } catch (err) {
         console.warn('[TaserPWA] Service Worker registration failed:', err);

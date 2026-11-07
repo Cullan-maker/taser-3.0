@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "build": "mkdir -p dist && cp -r index.html js icons manifest.json sw.js ue_mannequin_retopology.glb dist 2>/dev/null || true",
+    "build": "mkdir -p dist && cp -r index.html js icons manifest.json service-worker.js sw.js ue_mannequin_retopology.glb dist 2>/dev/null || true",
     "start": "node server.js",
     "lint": "echo 'No lint errors'"
   },
   "dependencies": {
+    "@mediapipe/pose": "^0.5.1675469404",
     "@types/three": "^0.187.0",
     "express": "^4.21.2",
     "three": "^0.187.0"

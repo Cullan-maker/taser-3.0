@@ -45,14 +45,36 @@ export class TaserAudio {
   ensureSilentLoop() {
     if (!this.silentAudioEl && typeof document !== 'undefined') {
       try {
-        // 1-second silent WAV base64
+        // Continuous 1-second silent WAV base64
         const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
         const audio = new Audio(silentWav);
         audio.loop = true;
-        audio.volume = 0.01;
+        audio.volume = 0.5; // Set to midpoint so volume up/down triggers delta
         this.silentAudioEl = audio;
+
+        let volumeDebounce = false;
+        // Listen for hardware volume button presses via HTMLAudioElement volumechange
+        audio.addEventListener('volumechange', () => {
+          if (volumeDebounce) return;
+          volumeDebounce = true;
+
+          // Trigger TASER 7 Warning Arc
+          if (typeof window !== 'undefined' && window.pressSingleWarning) {
+            window.pressSingleWarning();
+          } else if (this.fsm) {
+            this.fsm.pressSingleWarning();
+          }
+
+          // Reset volume to 0.5 after delta detection to capture subsequent button clicks
+          setTimeout(() => {
+            if (this.silentAudioEl) {
+              this.silentAudioEl.volume = 0.5;
+            }
+            volumeDebounce = false;
+          }, 250);
+        });
       } catch (e) {
-        // Ignore fallback
+        console.warn('[TaserAudio] Silent loop creation fallback:', e);
       }
     }
   }
@@ -62,8 +84,8 @@ export class TaserAudio {
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: 'TASER 7 Tactical Drill',
-          artist: 'Elite Tactical v7.47',
-          album: 'Axon Weapon Simulation',
+          artist: 'Axon TASER 7 Simulator',
+          album: 'Procedursimulator v7.47',
           artwork: [
             { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
             { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -71,13 +93,35 @@ export class TaserAudio {
           ]
         });
 
+        // Varningsbåge via Media Keys (Volymknappar / Next Track / Previous Track)
+        const triggerWarnArc = () => {
+          if (typeof window !== 'undefined' && window.pressSingleWarning) {
+            window.pressSingleWarning();
+          } else if (this.fsm) {
+            this.fsm.pressSingleWarning();
+          }
+        };
+
+        const mediaActions = ['nexttrack', 'previoustrack', 'seekforward', 'seekbackward'];
+        for (const action of mediaActions) {
+          try {
+            navigator.mediaSession.setActionHandler(action, triggerWarnArc);
+          } catch (err) {
+            // Some actions may not be supported by every browser engine
+          }
+        }
+
         // Lockscreen and tactical wearable controls
         navigator.mediaSession.setActionHandler('play', () => {
           if (this.fsm) {
             if (this.fsm.isSafe) {
               this.fsm.toggleSafety();
             } else {
-              this.fsm.pressTrigger();
+              if (typeof window !== 'undefined' && window.pressTrigger) {
+                window.pressTrigger();
+              } else {
+                this.fsm.pressTrigger();
+              }
             }
           }
         });
@@ -91,18 +135,6 @@ export class TaserAudio {
         navigator.mediaSession.setActionHandler('stop', () => {
           if (this.fsm) {
             this.fsm.reset();
-          }
-        });
-
-        navigator.mediaSession.setActionHandler('nexttrack', () => {
-          if (this.fsm) {
-            this.fsm.tiltWeapon();
-          }
-        });
-
-        navigator.mediaSession.setActionHandler('previoustrack', () => {
-          if (this.fsm) {
-            this.fsm.toggleSafety();
           }
         });
       } catch (err) {
