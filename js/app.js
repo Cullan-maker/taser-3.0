@@ -1038,6 +1038,8 @@ export class TaserApp {
             this.updateAimVisuals();
           }
         }
+      }
+
       if (renderer.xr.isPresenting) {
         this.scene.scene.background = null;
       } else {
