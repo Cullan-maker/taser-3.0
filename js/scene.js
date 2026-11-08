@@ -579,19 +579,29 @@ export class TaserScene {
     }
   }
 
-  spawnSparks(point) {
+  spawnSparks(point, isHit = true) {
     const sparkGroup = new THREE.Group();
     this.scene.add(sparkGroup);
-    const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const sparkGeo = new THREE.SphereGeometry(0.005, 4, 4);
 
-    for (let i = 0; i < 15; i++) {
+    // Tactical micro-flash confirmation (bright electric cyan on hit, amber on miss)
+    const flashColor = isHit ? 0x70d6ff : 0xffaa00;
+    const flashLight = new THREE.PointLight(flashColor, isHit ? 3.0 : 1.2, 1.2);
+    flashLight.position.copy(point);
+    this.scene.add(flashLight);
+
+    const colors = isHit ? [0xffffff, 0x70d6ff, 0x00f0ff, 0xffea00] : [0xffaa00, 0xff5500, 0xdddddd];
+    const particleCount = isHit ? 16 : 8;
+    const sparkGeo = new THREE.SphereGeometry(0.004, 4, 4);
+
+    for (let i = 0; i < particleCount; i++) {
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const sparkMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1.0 });
       const spark = new THREE.Mesh(sparkGeo, sparkMat);
       spark.position.copy(point);
       spark.userData.velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 0.1,
-        (Math.random() - 0.5) * 0.1,
-        (Math.random() - 0.5) * 0.1
+        (Math.random() - 0.5) * 0.14,
+        (Math.random() - 0.3) * 0.12,
+        (Math.random() - 0.5) * 0.14
       );
       sparkGroup.add(spark);
     }
@@ -601,14 +611,75 @@ export class TaserScene {
       lifetime++;
       sparkGroup.children.forEach((spark) => {
         spark.position.add(spark.userData.velocity);
-        spark.userData.velocity.y -= 0.005;
-        spark.scale.multiplyScalar(0.95);
+        spark.userData.velocity.y -= 0.006;
+        spark.scale.multiplyScalar(0.92);
+        if (spark.material) spark.material.opacity = Math.max(0, 1.0 - (lifetime / 18));
       });
-      if (lifetime > 30) {
+
+      if (flashLight.intensity > 0) {
+        flashLight.intensity = Math.max(0, flashLight.intensity - 0.35);
+      }
+
+      if (lifetime > 20) {
         clearInterval(sparkInt);
         this.scene.remove(sparkGroup);
+        this.scene.remove(flashLight);
+        sparkGroup.traverse((c) => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) c.material.dispose();
+        });
       }
-    }, 30);
+    }, 20);
+  }
+
+  spawnElectricArc(p1, p2, bothHitTarget = true) {
+    if (!bothHitTarget) return;
+
+    // Tactical high-voltage electric arc between probes confirming NMI circuit
+    const segments = 10;
+    const positions = new Float32Array((segments + 1) * 3);
+    const arcGeo = new THREE.BufferGeometry();
+    arcGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const arcMat = new THREE.LineBasicMaterial({
+      color: 0x00f7ff,
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.95
+    });
+
+    const arcLine = new THREE.Line(arcGeo, arcMat);
+    this.scene.add(arcLine);
+
+    // Subtle tactile haptic confirmation
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([35, 25, 45]); } catch (_) {}
+    }
+
+    let tick = 0;
+    const maxTicks = 12; // ~240ms duration
+    const arcInt = setInterval(() => {
+      tick++;
+      const posArr = arcGeo.attributes.position.array;
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const x = p1.x + (p2.x - p1.x) * t + (i > 0 && i < segments ? (Math.random() - 0.5) * 0.045 : 0);
+        const y = p1.y + (p2.y - p1.y) * t + (i > 0 && i < segments ? (Math.random() - 0.5) * 0.045 : 0);
+        const z = p1.z + (p2.z - p1.z) * t + (i > 0 && i < segments ? (Math.random() - 0.5) * 0.045 : 0);
+        posArr[i * 3] = x;
+        posArr[i * 3 + 1] = y;
+        posArr[i * 3 + 2] = z;
+      }
+      arcGeo.attributes.position.needsUpdate = true;
+      arcMat.opacity = Math.random() * 0.5 + 0.5;
+
+      if (tick >= maxTicks) {
+        clearInterval(arcInt);
+        this.scene.remove(arcLine);
+        arcGeo.dispose();
+        arcMat.dispose();
+      }
+    }, 20);
   }
 
   fireDarts({ ndc1, ndc2, chamber }) {
@@ -651,22 +722,25 @@ export class TaserScene {
       const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6);
       const dartMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
 
-      const attachGroup1 = hitWall1 ? this.scene : activeTargetGroup;
+      // Attach dart firmly to the exact hit anatomical mesh (e.g. torso, leg) so it moves with the person in 3D
+      const attachGroup1 = (!hitWall1 && hit1.object) ? hit1.object : (hitWall1 ? this.scene : activeTargetGroup);
       const d1 = new THREE.Mesh(dartGeo, dartMat);
       d1.position.copy(attachGroup1.worldToLocal(hit1.point.clone()));
       d1.lookAt(attachGroup1.worldToLocal(activeCamera.position.clone()));
       attachGroup1.add(d1);
       this.activeDarts.push(d1);
 
-      const attachGroup2 = hitWall2 ? this.scene : activeTargetGroup;
+      const attachGroup2 = (!hitWall2 && hit2.object) ? hit2.object : (hitWall2 ? this.scene : activeTargetGroup);
       const d2 = new THREE.Mesh(dartGeo, dartMat);
       d2.position.copy(attachGroup2.worldToLocal(hit2.point.clone()));
       d2.lookAt(attachGroup2.worldToLocal(activeCamera.position.clone()));
       attachGroup2.add(d2);
       this.activeDarts.push(d2);
 
-      this.spawnSparks(hit1.point);
-      this.spawnSparks(hit2.point);
+      // Instant visual feedback: subtle spark burst + micro-flash + electric arc confirmation
+      this.spawnSparks(hit1.point, !hitWall1);
+      this.spawnSparks(hit2.point, !hitWall2);
+      this.spawnElectricArc(hit1.point, hit2.point, !hitWall1 && !hitWall2);
 
       // Deploy insulated high-tensile copper-clad wire lines
       const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });

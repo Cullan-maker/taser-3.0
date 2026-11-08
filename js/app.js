@@ -73,6 +73,7 @@ export class TaserApp {
     this.threatInterval = null;
     this.nmiTimer = null;
     this.warningGiven = false;
+    this.isScenarioActive = false;
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -80,7 +81,7 @@ export class TaserApp {
     this.startRenderLoop();
 
     this.log("Simulator v7.47 (Tactical WebXR & PWA) startar... <span style='color:#f1c40f;'>Sätt i batteri!</span>");
-    this.startThreatEscalation();
+    this.stopScenario();
   }
 
   log(msg) {
@@ -107,6 +108,9 @@ export class TaserApp {
     window.tiltWeapon = () => this.fsm.tiltWeapon();
     window.activateStealth = () => this.fsm.activateStealth();
     window.toggleClothing = () => this.fsm.toggleClothing();
+    window.toggleScenario = () => this.toggleScenario();
+    window.startScenario = () => this.startScenario();
+    window.stopScenario = () => this.stopScenario();
     window.pressSingleWarning = () => {
       this.animateWarningButtons();
       return this.fsm.pressSingleWarning();
@@ -165,7 +169,7 @@ export class TaserApp {
         if (fsm.chamber1 === ChamberState.EMPTY) {
           this.scene.clearWiresAndDarts();
           this.scene.resetTarget();
-          this.startThreatEscalation();
+          this.stopScenario();
         }
         this.updateDisplay();
       } else if (event === 'SAFETY_CHANGED') {
@@ -191,6 +195,13 @@ export class TaserApp {
         if (cBtn) {
           cBtn.innerHTML = fsm.heavyClothing ? '🧥 Kläder: TJOCKA' : '🧥 Kläder: NORMAL';
           cBtn.style.borderColor = fsm.heavyClothing ? '#f1c40f' : '#1a252f';
+        }
+      } else if (event === 'SCENARIO_CHANGED') {
+        this.isScenarioActive = payload.isScenarioActive;
+        const btn = document.getElementById('btn-scenario');
+        if (btn) {
+          btn.innerHTML = this.isScenarioActive ? '⏸️ STOPPA ANGREPP' : '🚨 STARTA ANGREPP';
+          btn.classList.toggle('active-attack', this.isScenarioActive);
         }
       } else if (event === 'CYCLE_STARTED') {
         this.log(`<span style='color:#3498db'>${payload.message} ⚡</span>`);
@@ -230,7 +241,7 @@ export class TaserApp {
         this.updateWarningUI();
         this.scene.resetTarget();
         this.updateDisplay();
-        this.startThreatEscalation();
+        this.stopScenario();
       }
     });
   }
@@ -537,6 +548,80 @@ export class TaserApp {
     }
   }
 
+  toggleScenario() {
+    if (this.isScenarioActive) {
+      this.stopScenario();
+    } else {
+      this.startScenario();
+    }
+  }
+
+  startScenario() {
+    this.isScenarioActive = true;
+    this.fsm.isScenarioActive = true;
+
+    this.log("<span style='color:#e74c3c; font-weight:bold;'>🚨 SCENARIOFAS STARTAD:</span> Hotet aktiverat! Var beredd!");
+
+    const btn = document.getElementById('btn-scenario');
+    if (btn) {
+      btn.innerHTML = '⏸️ STOPPA ANGREPP';
+      btn.classList.add('active-attack');
+    }
+
+    const tLabel = document.getElementById('target-label');
+    if (tLabel) {
+      tLabel.textContent = 'MÅL: ANGREPP PÅGÅR';
+      tLabel.classList.add('armed');
+    }
+
+    this.startThreatEscalation();
+  }
+
+  stopScenario() {
+    this.isScenarioActive = false;
+    this.fsm.isScenarioActive = false;
+
+    if (this.threatInterval) {
+      clearInterval(this.threatInterval);
+      this.threatInterval = null;
+    }
+    this.threatLevel = 0;
+    if (typeof window !== 'undefined') window.threatLevel = 0;
+
+    if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+    this.warningGiven = false;
+    this.updateWarningUI();
+
+    // Smoothly ensure figure is strictly in Idle animation
+    if (!this.scene.figureFallen) {
+      this.scene.setAnimation('Idle', 0.5);
+    }
+
+    // Reset Z position to initial standoff
+    if (this.scene.taserGroup && this.scene.taserGroup.userData.startPos) {
+      this.scene.taserGroup.position.copy(this.scene.taserGroup.userData.startPos);
+      this.currentDistance = 3.0;
+      this.updateAimVisuals();
+    }
+
+    const btn = document.getElementById('btn-scenario');
+    if (btn) {
+      btn.innerHTML = '🚨 STARTA ANGREPP';
+      btn.classList.remove('active-attack');
+    }
+
+    const tLabel = document.getElementById('target-label');
+    if (tLabel) {
+      tLabel.textContent = 'PERSON (3D): PROCEDURFAS';
+      tLabel.classList.remove('armed');
+    }
+
+    const sub = document.getElementById('subtitle-overlay');
+    if (sub) sub.style.display = 'none';
+
+    this.log("<span style='color:#3498db; font-weight:bold;'>🛠️ PROCEDURFAS AKTIV:</span> Hotet fryst i Idle. Träna laddning och funktionskontroll i lugn och ro.");
+  }
+
   startThreatEscalation() {
     this.threatLevel = 0;
     if (typeof window !== 'undefined') window.threatLevel = 0;
@@ -546,18 +631,13 @@ export class TaserApp {
     this.updateWarningUI();
     this.scene.setAnimation('Idle', 0.4);
 
-    const tLabel = document.getElementById('target-label');
-    if (tLabel) {
-      tLabel.textContent = 'PERSON (3D)';
-      tLabel.classList.remove('armed');
-    }
-
     this.threatInterval = setInterval(() => {
-      if (this.scene.figureFallen || !this.scene.taserGroup || !this.scene.taserGroup.visible) return;
+      if (!this.isScenarioActive || this.scene.figureFallen || !this.scene.taserGroup || !this.scene.taserGroup.visible) return;
 
       this.threatLevel++;
       if (typeof window !== 'undefined') window.threatLevel = this.threatLevel;
 
+      const tLabel = document.getElementById('target-label');
       if (this.threatLevel === 1) {
         this.suspectSpeak('Vad fan glor du på?! Backa!');
       } else if (this.threatLevel === 2) {
@@ -572,7 +652,7 @@ export class TaserApp {
           tLabel.classList.add('armed');
         }
       }
-    }, 6000);
+    }, 4500);
   }
 
   suspectSpeak(text) {
@@ -588,6 +668,16 @@ export class TaserApp {
   }
 
   handleVoiceCommand(cmd, transcript) {
+    // Taktiska scenario triggers
+    if (cmd === 'STARTA_ANGREPP') {
+      this.startScenario();
+      return;
+    }
+    if (cmd === 'STOPPA_ANGREPP') {
+      this.stopScenario();
+      return;
+    }
+
     if (this.scene.figureFallen) {
       this.log("<span style='color:#bdc3c7'>Målet är redan neutraliserat / på marken.</span>");
       return;
@@ -762,7 +852,7 @@ export class TaserApp {
         this.currentDistance = 3.0;
         this.updateAimVisuals();
         this.log('Kamera avstängd. Återgått till 3D-mål.');
-        this.startThreatEscalation();
+        this.stopScenario();
         return;
       }
 
@@ -856,7 +946,7 @@ export class TaserApp {
 
     if (this.xr.placeMode) this.confirmPlacement();
     this.scene.resetTarget();
-    this.startThreatEscalation();
+    this.stopScenario();
     this.updateDisplay();
     this.log('WebXR-session avslutad.');
   }
@@ -907,7 +997,7 @@ export class TaserApp {
     document.getElementById('placement-controls').style.display = 'none';
 
     this.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
-    this.startThreatEscalation();
+    this.stopScenario();
   }
 
   initGyro(silent = false) {
@@ -993,16 +1083,17 @@ export class TaserApp {
       const delta = Math.min(this.scene.clock.getDelta(), 0.1);
       this.scene.update(delta);
 
+      const isScenarioActive = this.fsm.isScenarioActive || this.isScenarioActive;
       const currentThreat = (typeof window !== 'undefined' && typeof window.threatLevel === 'number')
         ? window.threatLevel
         : this.threatLevel;
 
-      if (currentThreat >= 3 && !this.scene.figureFallen && this.scene.taserGroup && this.scene.taserGroup.visible) {
+      if (isScenarioActive && currentThreat >= 3 && !this.scene.figureFallen && this.scene.taserGroup && this.scene.taserGroup.visible) {
         if (this.scene.activeAction !== this.scene.actions['Walk']) {
           this.scene.setAnimation('Walk', 0.5);
         }
 
-        // Advance target slowly towards camera along Z-axis in non-XR mode
+        // Advance target slowly towards camera along Z-axis only in active scenario
         if (!renderer.xr.isPresenting) {
           const minDistance = 1.1; // minimum standoff in meters
           const currentDist = (this.scene.taserGroup.userData.startPos ? this.scene.taserGroup.userData.startPos.z : 0) + 3.0 - this.scene.taserGroup.position.z;
@@ -1016,7 +1107,7 @@ export class TaserApp {
             this.updateAimVisuals();
           }
         }
-      } else if (currentThreat < 3 && !this.scene.figureFallen) {
+      } else if ((!isScenarioActive || currentThreat < 3) && !this.scene.figureFallen) {
         if (this.scene.activeAction === this.scene.actions['Walk']) {
           this.scene.setAnimation('Idle', 0.5);
         }

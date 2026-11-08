@@ -33,6 +33,9 @@ export class TaserFSM {
     this.heavyClothing = false;
     this.displayState = 'OFF'; // 'OFF' | 'BOOT' | 'FUNK_MODE' | 'ACTIVE' | 'CYCLING'
     
+    // Procedural training vs Tactical Scenario phase
+    this.isScenarioActive = false;
+
     // Runtime timers
     this.cycleTimer = null;
     this.cycleCount = 0;
@@ -258,6 +261,24 @@ export class TaserFSM {
     }
     this.notify('CLOTHING_CHANGED');
     return this.heavyClothing;
+  }
+
+  startScenario() {
+    this.isScenarioActive = true;
+    this.notify('SCENARIO_CHANGED', { isScenarioActive: true });
+    this.notify('LOG', {
+      message: "<span style='color:#e74c3c; font-weight:bold;'>🚨 SCENARIOFAS AKTIVERAD:</span> Angriparen agerar! Vapnet ska vara laddat och klart."
+    });
+    return true;
+  }
+
+  stopScenario() {
+    this.isScenarioActive = false;
+    this.notify('SCENARIO_CHANGED', { isScenarioActive: false });
+    this.notify('LOG', {
+      message: "<span style='color:#3498db; font-weight:bold;'>🛠️ PROCEDURFAS:</span> Hotet fryst i Idle. Öva laddning, kassetter och funktionskontroll i lugn och ro."
+    });
+    return true;
   }
 
   /**

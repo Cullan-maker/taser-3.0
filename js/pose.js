@@ -41,13 +41,20 @@ export class TaserAIPose {
     this.targets = {
       torsoPos: new THREE.Vector3(0, 0, -3),
       torsoScale: new THREE.Vector3(0.45, 0.6, 0.25),
+      torsoQuat: new THREE.Quaternion(),
       headPos: new THREE.Vector3(0, 0.6, -3),
       pelvisPos: new THREE.Vector3(0, -0.3, -3),
       leftLegPos: new THREE.Vector3(-0.15, -0.8, -3),
-      leftLegScale: new THREE.Vector3(0.16, 0.8, 0.16),
+      leftLegScale: new THREE.Vector3(0.18, 0.8, 0.18),
+      leftLegQuat: new THREE.Quaternion(),
       rightLegPos: new THREE.Vector3(0.15, -0.8, -3),
-      rightLegScale: new THREE.Vector3(0.16, 0.8, 0.16)
+      rightLegScale: new THREE.Vector3(0.18, 0.8, 0.18),
+      rightLegQuat: new THREE.Quaternion()
     };
+
+    // Landmark anti-jitter smoothing cache
+    this._smoothedLandmarks = null;
+    this._lastLandmarkTime = 0;
 
     // Master 3D Hitbox Container (registered for ballistics raycasting)
     this.hitboxGroup = new THREE.Group();
@@ -61,78 +68,46 @@ export class TaserAIPose {
   }
 
   initHitboxMeshes() {
-    // 1. Torso / Bröstkorg (Approved NMI Zone - Godkand_Zon)
-    const torsoMat = new THREE.MeshStandardMaterial({
-      color: 0x2ecc71,
+    // 100% physically raycastable, 0% rendered pixel visibility (invisible collision hulls)
+    // Raycaster can intersect triangles normally because visible === true,
+    // but the WebGL engine skips writing color/depth (transparent: true, opacity: 0, colorWrite: false).
+    const createInvisibleHitboxMat = () => new THREE.MeshBasicMaterial({
       transparent: true,
-      opacity: 0.32,
-      roughness: 0.4,
-      metalness: 0.2,
-      wireframe: false,
-      depthWrite: false
+      opacity: 0.0,
+      depthWrite: false,
+      colorWrite: false
     });
-    this.torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), torsoMat);
+
+    // 1. Torso / Bröstkorg (Approved NMI Zone - Godkand_Zon)
+    this.torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), createInvisibleHitboxMat());
     this.torsoMesh.name = 'Godkand_Zon';
     this.torsoMesh.userData.zoneType = 'Torso';
     this.torsoMesh.userData.isAI = true;
-
-    // Sci-Fi Tactical Edge Outline for Torso
-    const torsoEdges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
-      new THREE.LineBasicMaterial({ color: 0x2ecc71, transparent: true, opacity: 0.85 })
-    );
-    this.torsoMesh.add(torsoEdges);
     this.hitboxGroup.add(this.torsoMesh);
 
     // 2. Head / Huvud & Hals (Forbidden Danger Zone - Farlig_Zon)
-    const headMat = new THREE.MeshStandardMaterial({
-      color: 0xf1c40f,
-      transparent: true,
-      opacity: 0.35,
-      roughness: 0.5,
-      depthWrite: false
-    });
-    this.headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), headMat);
+    this.headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), createInvisibleHitboxMat());
     this.headMesh.name = 'Huvud / Hals';
     this.headMesh.userData.zoneType = 'Head';
     this.headMesh.userData.isAI = true;
-    const headEdges = new THREE.LineSegments(
-      new THREE.WireframeGeometry(new THREE.SphereGeometry(0.14, 8, 6)),
-      new THREE.LineBasicMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.7 })
-    );
-    this.headMesh.add(headEdges);
     this.hitboxGroup.add(this.headMesh);
 
     // 3. Pelvis / Ljumskar (Forbidden Zone - Farlig_Zon)
-    const pelvisMat = new THREE.MeshStandardMaterial({
-      color: 0xe67e22,
-      transparent: true,
-      opacity: 0.35,
-      roughness: 0.5,
-      depthWrite: false
-    });
-    this.pelvisMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.22), pelvisMat);
+    this.pelvisMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.22), createInvisibleHitboxMat());
     this.pelvisMesh.name = 'Ljumskar / Genitalier';
     this.pelvisMesh.userData.zoneType = 'Groin';
     this.pelvisMesh.userData.isAI = true;
     this.hitboxGroup.add(this.pelvisMesh);
 
     // 4. Left Leg / Vänster ben (Approved NMI Zone - Godkand_Zon)
-    const legMat = new THREE.MeshStandardMaterial({
-      color: 0x27ae60,
-      transparent: true,
-      opacity: 0.3,
-      roughness: 0.4,
-      depthWrite: false
-    });
-    this.leftLegMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 1, 10), legMat);
+    this.leftLegMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 1, 12), createInvisibleHitboxMat());
     this.leftLegMesh.name = 'Godkand_Zon';
     this.leftLegMesh.userData.zoneType = 'Ben';
     this.leftLegMesh.userData.isAI = true;
     this.hitboxGroup.add(this.leftLegMesh);
 
     // 5. Right Leg / Höger ben (Approved NMI Zone - Godkand_Zon)
-    this.rightLegMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 1, 10), legMat.clone());
+    this.rightLegMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 1, 12), createInvisibleHitboxMat());
     this.rightLegMesh.name = 'Godkand_Zon';
     this.rightLegMesh.userData.zoneType = 'Ben';
     this.rightLegMesh.userData.isAI = true;
@@ -140,7 +115,7 @@ export class TaserAIPose {
   }
 
   initSkeletonLines() {
-    // Real-time Tactical HUD Skeleton line connections
+    // Tactical HUD Skeleton line connections (hidden to maintain full AR immersion)
     this.skeletonBones = [
       [11, 12], // Shoulders
       [11, 23], // Left torso side
@@ -161,14 +136,15 @@ export class TaserAIPose {
       color: 0x00ff88,
       linewidth: 2,
       transparent: true,
-      opacity: 0.95
+      opacity: 0.0
     });
 
     this.skeletonMesh = new THREE.LineSegments(lineGeo, lineMat);
     this.skeletonMesh.frustumCulled = false;
+    this.skeletonMesh.visible = false;
     this.hitboxGroup.add(this.skeletonMesh);
 
-    // Joint tracking dots
+    // Joint tracking dots (hidden)
     const jointGeo = new THREE.BufferGeometry();
     const jointPos = new Float32Array(33 * 3);
     jointGeo.setAttribute('position', new THREE.BufferAttribute(jointPos, 3));
@@ -176,10 +152,11 @@ export class TaserAIPose {
       color: 0x00ffff,
       size: 0.04,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.0
     });
     this.jointPoints = new THREE.Points(jointGeo, jointMat);
     this.jointPoints.frustumCulled = false;
+    this.jointPoints.visible = false;
     this.hitboxGroup.add(this.jointPoints);
   }
 
@@ -281,6 +258,7 @@ export class TaserAIPose {
     this.isActive = false;
     this.isPersonDetected = false;
     this.hitboxGroup.visible = false;
+    this._smoothedLandmarks = null;
 
     // Restore static 3D target when exiting live camera AR
     this.scene.set3DVisibility(true);
@@ -388,6 +366,51 @@ export class TaserAIPose {
   }
 
   /**
+   * Adaptive Velocity-Based Landmark Smoothing Filter
+   * Eliminates camera jitter, hand tremor, and sensor noise while maintaining instant response to movement.
+   */
+  smoothLandmarks(rawLm, timestamp) {
+    if (!this._smoothedLandmarks || this._smoothedLandmarks.length !== rawLm.length) {
+      this._smoothedLandmarks = rawLm.map((p) => ({
+        x: p.x,
+        y: p.y,
+        z: p.z || 0,
+        visibility: p.visibility || 0
+      }));
+      this._lastLandmarkTime = timestamp;
+      return this._smoothedLandmarks;
+    }
+
+    const dt = Math.max(0.015, Math.min(0.1, (timestamp - this._lastLandmarkTime) / 1000));
+    this._lastLandmarkTime = timestamp;
+
+    for (let i = 0; i < rawLm.length; i++) {
+      const raw = rawLm[i];
+      const prev = this._smoothedLandmarks[i];
+
+      const dx = raw.x - prev.x;
+      const dy = raw.y - prev.y;
+      const dist = Math.hypot(dx, dy);
+      const speed = dist / dt; // normalized screen units per second
+
+      // Speed-dependent adaptive alpha:
+      // When still (speed < 0.1 screen/s), alpha is ~0.18 for maximum jitter suppression.
+      // When moving quickly (speed > 0.6 screen/s), alpha ramps up to ~0.82 for zero lag.
+      const speedFactor = Math.min(1.0, Math.max(0.0, (speed - 0.10) / 0.50));
+      const alpha = 0.18 + 0.64 * speedFactor;
+
+      prev.x += dx * alpha;
+      prev.y += dy * alpha;
+      if (raw.z !== undefined && prev.z !== undefined) {
+        prev.z += ((raw.z || 0) - prev.z) * alpha;
+      }
+      prev.visibility = raw.visibility;
+    }
+
+    return this._smoothedLandmarks;
+  }
+
+  /**
    * Callback fired by MediaPipe Pose when inference finishes.
    */
   onPoseResults(results) {
@@ -401,7 +424,8 @@ export class TaserAIPose {
       return;
     }
 
-    const lm = results.poseLandmarks;
+    // Apply velocity-adaptive landmark smoothing to eliminate sensor jitter
+    const lm = this.smoothLandmarks(results.poseLandmarks, performance.now());
 
     // Key anatomical landmarks
     const nose = lm[0];
@@ -425,7 +449,7 @@ export class TaserAIPose {
     }
 
     // ============================================================
-    // 1. BIOMETRIC DEPTH ESTIMATION (Z-AXIS) WITHOUT LIDAR
+    // 1. BIOMETRIC DEPTH ESTIMATION (Z-AXIS) WITH OUTLIER-CLAMPED EMA
     // ============================================================
     // Biacromial breadth (inter-shoulder distance) in average adults = 0.40m
     const realShoulderWidth = 0.40;
@@ -441,8 +465,12 @@ export class TaserAIPose {
     let rawZ = (realShoulderWidth * fx) / Math.max(0.06, screenShoulderDist);
     rawZ = Math.min(Math.max(rawZ, 0.9), 7.5);
 
-    // Exponential Moving Average filter (EMA) to eliminate noise & jitter
-    this.estimatedDistance = (0.22 * rawZ) + (0.78 * this.estimatedDistance);
+    // Outlier-clamped Adaptive EMA filter on Z depth
+    const zDiff = rawZ - this.estimatedDistance;
+    const maxZDelta = 0.35; // prevent unrealistic frame-to-frame depth teleportation
+    const clampedRawZ = this.estimatedDistance + Math.sign(zDiff) * Math.min(Math.abs(zDiff), maxZDelta);
+    const zAlpha = Math.abs(zDiff) > 0.2 ? 0.32 : 0.18;
+    this.estimatedDistance += (clampedRawZ - this.estimatedDistance) * zAlpha;
     const currentZ = this.estimatedDistance;
 
     this.isPersonDetected = true;
@@ -474,75 +502,40 @@ export class TaserAIPose {
     const shoulderBreadth3D = Math.max(0.32, pLShoulder.distanceTo(pRShoulder));
     const torsoHeight3D = Math.max(0.40, shoulderMid.distanceTo(hipMid));
 
-    // Update Targets
+    // Update Targets & Orientations
     this.targets.torsoPos.copy(torsoMid);
     this.targets.torsoScale.set(shoulderBreadth3D * 1.15, torsoHeight3D * 1.05, 0.28);
 
-    this.targets.headPos.copy(pNose);
+    // Anatomical orientation for Torso
+    const chestDirX = this._diff.copy(pRShoulder).sub(pLShoulder).normalize();
+    const chestDirY = this._p1.copy(shoulderMid).sub(hipMid).normalize();
+    const chestDirZ = new THREE.Vector3().crossVectors(chestDirX, chestDirY).normalize();
+    const mChest = new THREE.Matrix4().makeBasis(chestDirX, chestDirY, chestDirZ);
+    this.targets.torsoQuat.setFromRotationMatrix(mChest);
 
+    this.targets.headPos.copy(pNose);
     this.targets.pelvisPos.copy(hipMid);
 
-    // Left Leg
+    // Left Leg orientation & scale
     const lLegMid = this._p1.copy(pLHip).add(pLKnee).multiplyScalar(0.5);
     this.targets.leftLegPos.copy(lLegMid);
-    const lLegLen = Math.max(0.4, pLHip.distanceTo(pLKnee));
-    this.targets.leftLegScale.set(0.18, lLegLen, 0.18);
+    const lLegLen = Math.max(0.35, pLHip.distanceTo(pLKnee));
+    this.targets.leftLegScale.set(1.0, lLegLen, 1.0);
+    this._diff.copy(pLKnee).sub(pLHip).normalize();
+    this.targets.leftLegQuat.setFromUnitVectors(new THREE.Vector3(0, -1, 0), this._diff);
 
-    // Right Leg
+    // Right Leg orientation & scale
     const rLegMid = this._p2.copy(pRHip).add(pRKnee).multiplyScalar(0.5);
     this.targets.rightLegPos.copy(rLegMid);
-    const rLegLen = Math.max(0.4, pRHip.distanceTo(pRKnee));
-    this.targets.rightLegScale.set(0.18, rLegLen, 0.18);
-
-    // ============================================================
-    // 3. UPDATE TACTICAL SKELETON HUD LINES
-    // ============================================================
-    const lineAttr = this.skeletonMesh.geometry.attributes.position;
-    const lineArr = lineAttr.array;
-    let lineIdx = 0;
-
-    const jointMap = [
-      pNose, null, null, null, null, null, null, null, null, null, null,
-      pLShoulder, pRShoulder,
-      this.projectLandmarkTo3D(lm[13], currentZ, new THREE.Vector3()), // L Elbow
-      this.projectLandmarkTo3D(lm[14], currentZ, new THREE.Vector3()), // R Elbow
-      this.projectLandmarkTo3D(lm[15], currentZ, new THREE.Vector3()), // L Wrist
-      this.projectLandmarkTo3D(lm[16], currentZ, new THREE.Vector3()), // R Wrist
-      null, null, null, null, null, null,
-      pLHip, pRHip,
-      pLKnee, pRKnee,
-      pLAnkle, pRAnkle
-    ];
-
-    for (let i = 0; i < this.skeletonBones.length; i++) {
-      const [b1, b2] = this.skeletonBones[i];
-      const pt1 = jointMap[b1];
-      const pt2 = jointMap[b2];
-      if (pt1 && pt2) {
-        lineArr[lineIdx++] = pt1.x; lineArr[lineIdx++] = pt1.y; lineArr[lineIdx++] = pt1.z;
-        lineArr[lineIdx++] = pt2.x; lineArr[lineIdx++] = pt2.y; lineArr[lineIdx++] = pt2.z;
-      }
-    }
-    lineAttr.needsUpdate = true;
-
-    // Joint tracking dots
-    const jointAttr = this.jointPoints.geometry.attributes.position;
-    const jointArr = jointAttr.array;
-    let jIdx = 0;
-    for (let k = 0; k < jointMap.length; k++) {
-      const pt = jointMap[k];
-      if (pt) {
-        jointArr[jIdx++] = pt.x; jointArr[jIdx++] = pt.y; jointArr[jIdx++] = pt.z;
-      } else {
-        jointArr[jIdx++] = 0; jointArr[jIdx++] = -100; jointArr[jIdx++] = 0;
-      }
-    }
-    jointAttr.needsUpdate = true;
+    const rLegLen = Math.max(0.35, pRHip.distanceTo(pRKnee));
+    this.targets.rightLegScale.set(1.0, rLegLen, 1.0);
+    this._diff.copy(pRKnee).sub(pRHip).normalize();
+    this.targets.rightLegQuat.setFromUnitVectors(new THREE.Vector3(0, -1, 0), this._diff);
   }
 
   /**
    * Per-frame Three.js update loop (60 FPS).
-   * Smoothly interpolates (lerps) the physical hitboxes towards latest AI targets.
+   * Frame-rate independent exponential smoothing: alpha = 1 - exp(-lambda * delta).
    */
   update(delta) {
     if (!this.isActive) return;
@@ -557,24 +550,36 @@ export class TaserAIPose {
 
     this.hitboxGroup.visible = true;
 
-    // Interpolation factor ensuring 60 FPS buttery smoothness
-    const lerpFactor = Math.min(1.0, Math.max(0.1, delta * 18.0));
+    // Frame-rate independent exponential smoothing factor: 1 - exp(-lambda * delta)
+    // lambda = 14.0 s^-1 gives a half-life of ~50ms: ultra-responsive without any jitter
+    const decayLambda = 14.0;
+    const lerpAlpha = 1.0 - Math.exp(-decayLambda * Math.min(delta, 0.1));
 
     // 1. Torso
-    this.torsoMesh.position.lerp(this.targets.torsoPos, lerpFactor);
-    this.torsoMesh.scale.lerp(this.targets.torsoScale, lerpFactor);
+    this.torsoMesh.position.lerp(this.targets.torsoPos, lerpAlpha);
+    this.torsoMesh.scale.lerp(this.targets.torsoScale, lerpAlpha);
+    if (this.targets.torsoQuat) {
+      this.torsoMesh.quaternion.slerp(this.targets.torsoQuat, lerpAlpha);
+    }
 
     // 2. Head
-    this.headMesh.position.lerp(this.targets.headPos, lerpFactor);
+    this.headMesh.position.lerp(this.targets.headPos, lerpAlpha);
 
     // 3. Pelvis
-    this.pelvisMesh.position.lerp(this.targets.pelvisPos, lerpFactor);
+    this.pelvisMesh.position.lerp(this.targets.pelvisPos, lerpAlpha);
 
-    // 4. Legs
-    this.leftLegMesh.position.lerp(this.targets.leftLegPos, lerpFactor);
-    this.leftLegMesh.scale.lerp(this.targets.leftLegScale, lerpFactor);
+    // 4. Left Leg
+    this.leftLegMesh.position.lerp(this.targets.leftLegPos, lerpAlpha);
+    this.leftLegMesh.scale.lerp(this.targets.leftLegScale, lerpAlpha);
+    if (this.targets.leftLegQuat) {
+      this.leftLegMesh.quaternion.slerp(this.targets.leftLegQuat, lerpAlpha);
+    }
 
-    this.rightLegMesh.position.lerp(this.targets.rightLegPos, lerpFactor);
-    this.rightLegMesh.scale.lerp(this.targets.rightLegScale, lerpFactor);
+    // 5. Right Leg
+    this.rightLegMesh.position.lerp(this.targets.rightLegPos, lerpAlpha);
+    this.rightLegMesh.scale.lerp(this.targets.rightLegScale, lerpAlpha);
+    if (this.targets.rightLegQuat) {
+      this.rightLegMesh.quaternion.slerp(this.targets.rightLegQuat, lerpAlpha);
+    }
   }
 }

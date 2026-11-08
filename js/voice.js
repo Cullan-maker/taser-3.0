@@ -223,10 +223,28 @@ export class TaserVoice {
     const regexStanna = /(?:stanna|stopp|stå\s+still|halt)/i;
     const isStanna = regexStanna.test(lower);
 
+    // 6. Taktiskt Scenario Trigger ("Starta angrepp" / "Starta scenario")
+    const regexStartScenario = /(?:starta|påbörja|aktivera|kör)\s+(?:angrepp|scenario|anfall)|(?:kom\s+då|börja|kör\s+igång)/i;
+    const isStartScenario = regexStartScenario.test(lower) ||
+      lower.includes('starta angrepp') ||
+      lower.includes('starta scenario') ||
+      lower.includes('starta anfall');
+
+    // 7. Procedurfas Trigger ("Stoppa angrepp" / "Procedurfas")
+    const regexStopScenario = /(?:stoppa|avbryt|pausa)\s+(?:angrepp|scenario|anfall)|procedur(?:fas)?/i;
+    const isStopScenario = regexStopScenario.test(lower) ||
+      lower.includes('stoppa angrepp') ||
+      lower.includes('avbryt angrepp') ||
+      lower.includes('procedurfas');
+
     let matchedCommand = null;
 
     // Evaluera i prioriteringsordning
-    if (isElchockVapen && isBeredd) {
+    if (isStartScenario) {
+      matchedCommand = 'STARTA_ANGREPP';
+    } else if (isStopScenario) {
+      matchedCommand = 'STOPPA_ANGREPP';
+    } else if (isElchockVapen && isBeredd) {
       matchedCommand = 'VARNING_FULL';
     } else if (isElchockVapen) {
       matchedCommand = 'VARNING_ELCHOCKVAPEN';

@@ -622,6 +622,36 @@
         }
         .btn-kontaktstot:active { box-shadow: 0 0 0 #ba4a00; transform: translateY(2px); }
 
+        /* TAKTISK SCENARIO / PROCEDUR-KNAPP */
+        .btn-scenario {
+            background: linear-gradient(to bottom, #d35400 0%, #b94a00 100%) !important;
+            border: 1px solid #e67e22 !important;
+            color: #ffffff !important;
+            font-size: 11px !important;
+            font-weight: 800 !important;
+            letter-spacing: 1px;
+            padding: 10px 8px !important;
+            width: 100%;
+            min-height: 42px;
+            margin-bottom: 6px !important;
+            box-shadow: 0 3px 0 #873600, inset 0 1px 0 rgba(255,255,255,0.25);
+            text-transform: uppercase;
+            transition: all 0.2s ease;
+        }
+        .btn-scenario:active {
+            box-shadow: 0 0 0 #873600;
+            transform: translateY(2px);
+        }
+        .btn-scenario.active-attack {
+            background: linear-gradient(to bottom, #c0392b 0%, #922b21 100%) !important;
+            border-color: #e74c3c !important;
+            animation: pulseAttack 1.2s infinite alternate;
+        }
+        @keyframes pulseAttack {
+            0% { box-shadow: 0 0 8px rgba(231, 76, 60, 0.4), 0 3px 0 #641e16; }
+            100% { box-shadow: 0 0 18px rgba(231, 76, 60, 0.9), 0 3px 0 #641e16; }
+        }
+
         .log-box {
             background-color: #050505;
             color: #00ff00;
@@ -994,6 +1024,7 @@
                     <!-- Primär avfyrningsknapp i tum-zon -->
                     <button class="action-btn btn-trigger" id="btn-trigger" onclick="window.pressTrigger()">💥 AVFYRA (KLICK / SPACE)</button>
                     <button class="action-btn btn-kontaktstot" id="btn-kontaktstot" onclick="window.performKontaktstot()">⚡ KONTAKTSTÖT (DRIVE STUN)</button>
+                    <button class="action-btn btn-scenario" id="btn-scenario" onclick="window.toggleScenario()">🚨 STARTA ANGREPP</button>
                     
                     <div class="btn-grid-compact">
                         <button class="action-btn" onclick="window.toggleCassette()">⏏️ Kassett</button>
