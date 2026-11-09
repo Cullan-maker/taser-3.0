@@ -8,16 +8,26 @@
     <meta property="og:title" content="Taser 7 - Procedursimulator v7.47">
     <meta property="og:description" content="Taser 7 procedur- och taktiksimulator i stående läge för fältmässig offline-träning.">
     
-    <!-- PWA & Mobile Meta Tags (Strikt Portrait) -->
+    <!-- PWA & Mobile Meta Tags (Strikt Portrait & GitHub Pages-kompatibel) -->
     <meta name="theme-color" content="#050505">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Taser 7">
     <link rel="manifest" href="./manifest.json">
-    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
-    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512x512.png">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then((reg) => console.log('[PWA] SW aktiv (scope):', reg.scope))
+            .catch((err) => console.warn('[PWA] SW registrering:', err));
+        });
+      }
+    </script>
 
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -286,6 +296,99 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.8);
         }
 
+        /* HELSKÄRMS RÖD FAIL OVERLAY VID ANGREPP INOM 0.8 M */
+        #fail-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            background: radial-gradient(circle at center, rgba(160, 20, 20, 0.95) 0%, rgba(55, 5, 5, 0.98) 100%);
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            animation: failPulse 0.4s infinite alternate ease-in-out;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        @keyframes failPulse {
+            0% { box-shadow: inset 0 0 60px rgba(255, 0, 0, 0.4); }
+            100% { box-shadow: inset 0 0 130px rgba(255, 0, 0, 0.85); }
+        }
+        .fail-box {
+            background: rgba(18, 0, 0, 0.9);
+            border: 3px solid #ff3333;
+            border-radius: 12px;
+            padding: 24px 22px;
+            max-width: 360px;
+            width: 90%;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.9), 0 0 35px rgba(231, 76, 60, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        .fail-icon {
+            font-size: 46px;
+            animation: bounceFailIcon 0.6s infinite alternate;
+        }
+        @keyframes bounceFailIcon {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-6px); }
+        }
+        .fail-banner-text {
+            color: #ff4d4d;
+            font-size: 16px;
+            font-weight: 900;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            margin: 0;
+            line-height: 1.3;
+            text-shadow: 0 0 15px rgba(255, 77, 77, 0.9);
+        }
+        .fail-subtext {
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin: 0;
+        }
+        .fail-desc {
+            color: #fca5a5;
+            font-size: 11px;
+            line-height: 1.4;
+            margin: 0;
+            font-family: 'Courier New', monospace;
+        }
+        .fail-reset-btn {
+            background: linear-gradient(180deg, #ff4444 0%, #b31010 100%);
+            color: #ffffff;
+            border: 2px solid #ff7777;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.4);
+            margin-top: 6px;
+            width: 100%;
+            transition: transform 0.08s ease;
+            touch-action: manipulation;
+        }
+        .fail-reset-btn:active {
+            transform: translateY(2px);
+        }
+
         .hud-overlay {
             position: absolute;
             top: 0;
@@ -458,32 +561,60 @@
         .display-icons { display: flex; gap: 8px; align-items: flex-end; padding-bottom: 2px; }
         .chamber-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 
+        .cassette-svg {
+            width: 22px;
+            height: 22px;
+            display: block;
+        }
+        .cassette-svg .box {
+            fill: none;
+            stroke: #ffff00;
+            stroke-width: 2;
+        }
+        .cassette-svg.loaded .box {
+            filter: drop-shadow(0 0 3px rgba(255, 255, 0, 0.4));
+        }
+        .cassette-svg.fired .cross {
+            stroke: #ffff00;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+        }
+        .cassette-svg.empty .box.dashed {
+            stroke: #ffff00;
+            stroke-dasharray: 4 2;
+            opacity: 0.85;
+        }
+        .cassette-svg.empty .slash {
+            stroke: #ffff00;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            opacity: 0.95;
+        }
+
+        /* Inverterade kassetter i Funktionskontroll (svarta vektorer på gul OLED) */
+        .oled-inverted .cassette-svg .box,
+        .funk-mode .cassette-svg .box,
+        .inverted .cassette-svg .box {
+            stroke: #050505 !important;
+            filter: none !important;
+        }
+        .oled-inverted .cassette-svg.fired .cross,
+        .funk-mode .cassette-svg.fired .cross,
+        .inverted .cassette-svg.fired .cross {
+            stroke: #050505 !important;
+        }
+        .oled-inverted .cassette-svg.empty .slash,
+        .funk-mode .cassette-svg.empty .slash,
+        .inverted .cassette-svg.empty .slash {
+            stroke: #050505 !important;
+        }
+
         .icon-cassette { width: 22px; height: 22px; border: 2px solid rgba(255,255,255,0.15); border-radius: 2px; }
         .icon-cassette.loaded { border-color: #ffff00; box-shadow: 0 0 5px rgba(255,255,0,0.3); }
         .icon-cassette.fired {
             border-color: #ffff00;
             background: linear-gradient(to top right, transparent calc(50% - 2px), #ffff00 calc(50% - 1px), #ffff00 calc(50% + 1px), transparent calc(50% + 2px)),
                         linear-gradient(to bottom right, transparent calc(50% - 2px), #ffff00 calc(50% - 1px), #ffff00 calc(50% + 1px), transparent calc(50% + 2px));
-        }
-
-        /* Inverterade kassetter i Funktionskontroll */
-        .oled-inverted .icon-cassette,
-        .funk-mode .icon-cassette,
-        .inverted .icon-cassette {
-            border-color: rgba(0,0,0,0.35) !important;
-        }
-        .oled-inverted .icon-cassette.loaded,
-        .funk-mode .icon-cassette.loaded,
-        .inverted .icon-cassette.loaded {
-            border-color: #050505 !important;
-            box-shadow: none !important;
-        }
-        .oled-inverted .icon-cassette.fired,
-        .funk-mode .icon-cassette.fired,
-        .inverted .icon-cassette.fired {
-            border-color: #050505 !important;
-            background: linear-gradient(to top right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px)),
-                        linear-gradient(to bottom right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px)) !important;
         }
 
         .icon-battery-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 5px; }
@@ -881,20 +1012,44 @@
             outline: none !important;
         }
 
+        /* Standard 3D-läge: Canvas fyller exakt containern (43% höjd) utan vertikal utsträckning */
+        #three-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            overflow: hidden;
+        }
+
+        #three-canvas canvas,
+        .viewport canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: transparent !important;
+        }
+
+        /* Endast i aktivt AR/WebXR-läge ska canvasen expanderas till helskärm (100vw x 100vh) */
         body.ar-active #three-canvas,
         body.webxr-mode #three-canvas,
         body.live-ai-active #three-canvas,
         body.ar-active #three-canvas canvas,
         body.webxr-mode #three-canvas canvas,
         body.live-ai-active #three-canvas canvas,
-        .viewport canvas,
-        #three-canvas canvas {
+        body.ar-active .viewport canvas,
+        body.webxr-mode .viewport canvas,
+        body.live-ai-active .viewport canvas {
             background: transparent !important;
             background-color: transparent !important;
             box-shadow: none !important;
             border: none !important;
             width: 100vw !important;
             height: 100vh !important;
+            height: 100dvh !important;
         }
 
         body.ar-active .camera-feed,
@@ -1099,7 +1254,7 @@
     </div>
 
     <!-- TACTICAL ERROR & WARNING BANNER (Synlig i vanliga läget och WebXR) -->
-    <div id="tactical-error-banner" role="alert">
+    <div id="tactical-error-banner" role="alert" style="display:none;">
         <div class="banner-inner">
             <div class="banner-header">
                 <span>⚠️ <span id="banner-title-text">VARNING</span></span>
@@ -1110,6 +1265,20 @@
     </div>
 
     <div class="simulator-wrapper">
+        <!-- HELSKÄRMS FAIL OVERLAY (NÄR ANGRIPAREN NÅR INOM 0.8 M) -->
+        <div id="fail-overlay" role="alertdialog" aria-modal="true" style="display:none;">
+            <div class="fail-box">
+                <div class="fail-icon">🚨</div>
+                <h2 class="fail-banner-text">ÖVNING AVBRUTEN</h2>
+                <div class="fail-subtext">ANGRIPAREN NÅDDE FRAM</div>
+                <p class="fail-desc">
+                    Avstånd: &lt; 0.8 M<br>
+                    Taser ej avfyrad i tid. Avtryckaren har spärrats för din säkerhet.
+                </p>
+                <button id="btn-fail-reset" class="fail-reset-btn">♻️ ÅTERSTÄLL ÖVNING</button>
+            </div>
+        </div>
+
         <!-- TOP HEADER BAR -->
         <div class="header-bar">
             <h1 class="main-title">TASER 7 ELITE</h1>
@@ -1256,7 +1425,7 @@
         <div class="modal-content">
             <button class="modal-close" onclick="window.closeModal('info-modal')">×</button>
             <h2>Lathund: Taser 7 Procedursimulator</h2>
-            <p><strong>Hot-Eskalering:</strong> Målet varnas verbalt. Efter ca 18 sekunder drar målet en kniv!</p>
+            <p><strong>Hot-Eskalering & Angreppsposer:</strong> Målet varnas verbalt. Vid angrepp väljer simulatorn slumpmässigt hot: <em>Kniv</em> (utsträckt stöt/hugg), <em>Batong</em> (hotfull slagvinkel) eller <em>Knytnävar</em> (boxargard framför ansiktet) med mjuk proceduriell armöverskuggning (Lerp) under fortlöpande gångcykel.</p>
             <p><strong>Kassetter & Spridningsvinklar:</strong></p>
             <ul>
                 <li><strong>Kammare 1 (CQB):</strong> 12° spridningsvinkel för näravstånd.</li>
@@ -1300,7 +1469,7 @@
     </script>
 
     <!-- Huvudapplikation (Relativ sökväg för GitHub Pages subpath-kompatibilitet) -->
-    <script type="module" src="./js/app.js?v=5"></script>
+    <script type="module" src="./js/app.js?v=6"></script>
 
 </body>
 </html>

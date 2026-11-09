@@ -8,7 +8,7 @@ if (typeof window !== 'undefined') window.THREE = THREE;
 import { TaserFSM, ChamberState } from './fsm.js';
 import { TaserAudio } from './audio.js';
 import { TaserBallistics } from './ballistics.js';
-import { TaserScene } from './scene.js';
+import { TaserScene } from './scene.js?v=6';
 import { TaserXR } from './xr.js';
 import { TaserPWA } from './pwa.js';
 import { TaserVoice } from './voice.js';
@@ -69,10 +69,13 @@ export class TaserApp {
 
     // Threat escalation & Verbal warnings
     this.threatLevel = 0;
+    this.threatWeapon = 'KNIFE'; // 'KNIFE' | 'BATON' | 'FISTS'
     this.threatInterval = null;
     this.nmiTimer = null;
     this.warningGiven = false;
     this.isScenarioActive = false;
+    this.isTased = false;
+    this.isGameOver = false;
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -363,6 +366,7 @@ export class TaserApp {
     this.setupTactileButton('btn-tilt', () => this.fsm.tiltWeapon());
     this.setupTactileButton('btn-warn', () => window.pressDualWarning());
     this.setupTactileButton('btn-reset', () => this.resetSimulator());
+    this.setupTactileButton('btn-fail-reset', () => this.resetSimulator());
     this.setupTactileButton('btn-clothing', () => this.fsm.toggleClothing());
     this.setupTactileButton('btn-voice', () => this.voice.toggle());
     this.setupTactileButton('btn-gyro', () => this.initGyro());
@@ -467,6 +471,14 @@ export class TaserApp {
   }
 
   handleTrigger() {
+    if (this.isGameOver) {
+      this.audio.init();
+      if (typeof this.audio.playClickSound === 'function') {
+        this.audio.playClickSound();
+      }
+      this.log("<span style='color:#e74c3c; font-weight:bold;'>AVTRYCKARE SPÄRRAD:</span> Angriparen har nått fram (< 0.8 m)! Tryck på Återställ för att börja om.");
+      return;
+    }
     this.audio.init();
     const result = this.fsm.pressTrigger((firedChamber) => {
       this.audio.playPopSound();
@@ -494,6 +506,7 @@ export class TaserApp {
       });
 
       if (evalResult.success) {
+        this.isTased = true;
         this.log(`<span style='color:#2ecc71; font-weight:bold;'>NMI UPPNÅDD!</span> ${evalResult.reason}`);
         this.showNMIOverlay(true, evalResult.reason, evalResult.spreadCm);
         this.fsm.startCycle('NMI påbörjad...', 'DARTS');
@@ -503,8 +516,10 @@ export class TaserApp {
         if (sub) sub.style.display = 'none';
         this.audio.suspectSpeak('Aaaargh!');
 
-        // Collapse mannequin to the floor
-        this.scene.collapseTarget();
+        // 1. & 2. Trigger NMI Stiff Fall: freeze pose in place and rotate stiffly like a falling tree
+        this.scene.triggerNMI(() => {
+          this.audio.playBodyFallSound();
+        });
       } else {
         this.log(`<span style='color:#c0392b; font-weight:bold;'>NMI MISSLYCKADES!</span> ${evalResult.reason}`);
         this.showNMIOverlay(false, evalResult.reason, evalResult.spreadCm);
@@ -553,18 +568,43 @@ export class TaserApp {
   }
 
   renderIconsHTML() {
-    const getIconClass = (state) => {
-      if (state === ChamberState.LOADED) return 'loaded';
-      if (state === ChamberState.FIRED) return 'fired';
-      return 'empty';
+    const renderBaySVG = (chamberState, chamberNum, isActive) => {
+      const activeGlow = isActive ? 'active-bay' : '';
+      if (chamberState === ChamberState.LOADED) {
+        return `
+          <svg class="cassette-svg loaded ${activeGlow}" viewBox="0 0 24 24" width="22" height="22">
+            <rect x="2" y="2" width="20" height="20" rx="2" class="box" />
+          </svg>
+        `;
+      } else if (chamberState === ChamberState.FIRED) {
+        // Spent / fired: box with distinct X cross
+        return `
+          <svg class="cassette-svg fired ${activeGlow}" viewBox="0 0 24 24" width="22" height="22">
+            <rect x="2" y="2" width="20" height="20" rx="2" class="box" />
+            <line x1="5" y1="5" x2="19" y2="19" class="cross" />
+            <line x1="19" y1="5" x2="5" y2="19" class="cross" />
+          </svg>
+        `;
+      } else {
+        // Empty bay: tactical dashed box with diagonal slash (/)
+        return `
+          <svg class="cassette-svg empty ${activeGlow}" viewBox="0 0 24 24" width="22" height="22">
+            <rect x="2" y="2" width="20" height="20" rx="2" class="box dashed" />
+            <line x1="5" y1="19" x2="19" y2="5" class="slash" />
+          </svg>
+        `;
+      }
     };
-    const line1 = this.fsm.activeChamber === 1 ? 'show' : '';
-    const line2 = this.fsm.activeChamber === 2 ? 'show' : '';
+
+    const isCh1Active = this.fsm.activeChamber === 1;
+    const isCh2Active = this.fsm.activeChamber === 2;
+    const line1 = isCh1Active ? 'show' : '';
+    const line2 = isCh2Active ? 'show' : '';
 
     return `
       <div class="display-icons">
         <div class="chamber-col">
-          <div class="icon-cassette ${getIconClass(this.fsm.chamber1)}"></div>
+          ${renderBaySVG(this.fsm.chamber1, 1, isCh1Active)}
           <div class="active-line ${line1}"></div>
         </div>
         <div class="icon-battery-wrap full">
@@ -572,7 +612,7 @@ export class TaserApp {
           <div class="batt-body"></div>
         </div>
         <div class="chamber-col">
-          <div class="icon-cassette ${getIconClass(this.fsm.chamber2)}"></div>
+          ${renderBaySVG(this.fsm.chamber2, 2, isCh2Active)}
           <div class="active-line ${line2}"></div>
         </div>
       </div>
@@ -667,6 +707,58 @@ export class TaserApp {
     if (overlay) overlay.style.display = 'none';
   }
 
+  triggerFailState() {
+    if (this.isGameOver) return;
+    this.isGameOver = true;
+
+    // 1. Halt scenario & advance
+    this.isScenarioActive = false;
+    this.fsm.isScenarioActive = false;
+    if (this.threatInterval) {
+      clearInterval(this.threatInterval);
+      this.threatInterval = null;
+    }
+
+    // 2. Freeze animation mixer completely (stop walking cycle and motion)
+    if (this.scene && this.scene.mixer) {
+      this.scene.mixer.timeScale = 0.0;
+    }
+
+    // 3. Audio & tactile warning
+    this.audio.init();
+    if (typeof this.audio.playClickSound === 'function') {
+      this.audio.playClickSound();
+    }
+    if (typeof this.audio.suspectSpeak === 'function') {
+      this.audio.suspectSpeak("Fick dig!");
+    }
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([250, 100, 250]);
+    }
+
+    // 4. Show full-screen fail overlay
+    this.showFailOverlay();
+
+    // 5. Update UI buttons and log
+    const btn = document.getElementById('btn-scenario');
+    if (btn) {
+      btn.innerHTML = '🚨 ANGREPP AVBRÖTS';
+      btn.classList.remove('active-attack');
+    }
+
+    this.log("<span style='color:#e74c3c; font-weight:bold;'>ÖVNING AVBRUTEN:</span> Angriparen nådde fram (&lt; 0.8 m)! Taser-avtryckaren har spärrats. Tryck Återställ för att starta om.");
+  }
+
+  showFailOverlay() {
+    const overlay = document.getElementById('fail-overlay');
+    if (overlay) overlay.style.display = 'flex';
+  }
+
+  hideFailOverlay() {
+    const overlay = document.getElementById('fail-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
   updateWarningUI() {
     const badge = document.getElementById('hud-warning');
     if (badge) {
@@ -678,6 +770,10 @@ export class TaserApp {
   }
 
   toggleScenario() {
+    if (this.isGameOver) {
+      this.resetSimulator();
+      return;
+    }
     if (this.isScenarioActive) {
       this.stopScenario();
     } else {
@@ -685,9 +781,34 @@ export class TaserApp {
     }
   }
 
+  rollThreatWeapon() {
+    const roll = Math.random();
+    if (roll < 0.40) {
+      this.threatWeapon = 'KNIFE'; // 40% Kniv
+    } else if (roll < 0.70) {
+      this.threatWeapon = 'BATON'; // 30% Batong / tillhygge
+    } else {
+      this.threatWeapon = 'FISTS'; // 30% Knytnävar / obeväpnad
+    }
+    if (this.scene) {
+      if (typeof this.scene.setThreatWeapon === 'function') {
+        this.scene.setThreatWeapon(this.threatWeapon);
+      } else {
+        this.scene.activeThreatWeapon = this.threatWeapon;
+        if (typeof this.scene.updateWeaponVisibility === 'function') {
+          this.scene.updateWeaponVisibility();
+        }
+      }
+    }
+    return this.threatWeapon;
+  }
+
   startScenario() {
     this.isScenarioActive = true;
     this.fsm.isScenarioActive = true;
+
+    // Slumpa hotvapen (Kniv, Batong eller Knytnävar) för detta angrepp
+    this.rollThreatWeapon();
 
     // 1. Explicitly restore 3D figure visibility (procedure phase exit / scenario start)
     this.scene.set3DVisibility(true);
@@ -744,7 +865,10 @@ export class TaserApp {
       }
     }
 
-    if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+    if (this.scene) {
+      this.scene.armOverrideWeight = 0;
+      this.scene.updateWeaponVisibility();
+    }
     this.scene.setAnimation('Idle', 0.2);
 
     this.log("<span style='color:#e74c3c; font-weight:bold;'>🚨 SCENARIOFAS STARTAD:</span> Hotet aktiverat! Var beredd!");
@@ -767,6 +891,7 @@ export class TaserApp {
   stopScenario() {
     this.isScenarioActive = false;
     this.fsm.isScenarioActive = false;
+    this.isTased = false;
 
     if (this.threatInterval) {
       clearInterval(this.threatInterval);
@@ -775,7 +900,18 @@ export class TaserApp {
     this.threatLevel = 0;
     if (typeof window !== 'undefined') window.threatLevel = 0;
 
-    if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+    this.threatWeapon = 'KNIFE';
+    if (this.scene) {
+      if (typeof this.scene.setThreatWeapon === 'function') {
+        this.scene.setThreatWeapon('KNIFE');
+      } else {
+        this.scene.activeThreatWeapon = 'KNIFE';
+      }
+      this.scene.armOverrideWeight = 0;
+      if (typeof this.scene.updateWeaponVisibility === 'function') {
+        this.scene.updateWeaponVisibility();
+      }
+    }
     this.warningGiven = false;
     this.updateWarningUI();
 
@@ -816,7 +952,10 @@ export class TaserApp {
   startThreatEscalation() {
     this.threatLevel = 0;
     if (typeof window !== 'undefined') window.threatLevel = 0;
-    if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+    if (this.scene) {
+      this.scene.armOverrideWeight = 0;
+      this.scene.updateWeaponVisibility();
+    }
     if (this.threatInterval) clearInterval(this.threatInterval);
     this.warningGiven = false;
     this.updateWarningUI();
@@ -841,13 +980,38 @@ export class TaserApp {
       if (this.threatLevel === 2) {
         this.suspectSpeak('Rör mig inte sa jag! Stick!');
       } else if (this.threatLevel === 3) {
-        this.suspectSpeak('Jag sprättar dig! Jag svär!');
-        if (this.scene.knifeMesh) this.scene.knifeMesh.visible = true;
+        // Hotfull eskalering: armarna intar attackpose och figuren avancerar
+        if (typeof this.scene.setThreatWeapon === 'function') {
+          this.scene.setThreatWeapon(this.threatWeapon);
+        } else {
+          this.scene.activeThreatWeapon = this.threatWeapon;
+          if (typeof this.scene.updateWeaponVisibility === 'function') {
+            this.scene.updateWeaponVisibility();
+          }
+        }
         this.scene.setAnimation('Walk', 0.5);
-        this.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit kniv! Omedelbar respons krävs!</span>");
-        if (tLabel) {
-          tLabel.textContent = 'PERSON: BEVÄPNAD';
-          tLabel.classList.add('armed');
+
+        if (this.threatWeapon === 'KNIFE') {
+          this.suspectSpeak('Jag sprättar dig! Jag svär!');
+          this.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit kniv! Omedelbar respons krävs!</span>");
+          if (tLabel) {
+            tLabel.textContent = 'PERSON: BEVÄPNAD (KNIV)';
+            tLabel.classList.add('armed');
+          }
+        } else if (this.threatWeapon === 'BATON') {
+          this.suspectSpeak('Jag slår ihjäl dig! Backa!');
+          this.log("<span style='color:red; font-weight:bold;'>VARNING: Målet har dragit en batong! Omedelbar respons krävs!</span>");
+          if (tLabel) {
+            tLabel.textContent = 'PERSON: BEVÄPNAD (BATONG)';
+            tLabel.classList.add('armed');
+          }
+        } else {
+          this.suspectSpeak('Jag ska spöa skiten ur dig!');
+          this.log("<span style='color:red; font-weight:bold;'>VARNING: Målet intar hotfull boxargard (knytnävar)!</span>");
+          if (tLabel) {
+            tLabel.textContent = 'PERSON: ANGREPP (KNYTNÄVAR)';
+            tLabel.classList.add('armed');
+          }
         }
       }
     }, 4500);
@@ -907,20 +1071,23 @@ export class TaserApp {
       return;
     }
 
-    // --- KOMMANDO: SLÄPP KNIVEN ---
+    // --- KOMMANDO: SLÄPP KNIVEN / VAPNET ---
     if (cmd === 'SLAPP_KNIVEN') {
-      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible);
+      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible) || (this.scene.batonMesh && this.scene.batonMesh.visible) || (this.threatWeapon === 'FISTS');
       if (isArmed) {
-        // Taktisk sannolikhetsbedömning: 30% chans att målet lyder och släpper kniven
+        // Taktisk sannolikhetsbedömning: 30% chans att målet lyder och släpper vapnet / sänker garden
         const obeys = Math.random() < 0.30;
         if (obeys) {
           if (this.threatInterval) clearInterval(this.threatInterval);
           this.threatLevel = 0;
           if (typeof window !== 'undefined') window.threatLevel = 0;
 
-          // Släpp kniven och återgå till stillastående
-          if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
-          this.scene.setAnimation('Idle', 0.4);
+          // Sänk garden / släpp vapen och återgå mjukt till stillastående
+          if (this.scene) {
+            this.scene.armOverrideWeight = 0;
+            this.scene.updateWeaponVisibility();
+            this.scene.setAnimation('Idle', 0.4);
+          }
 
           const tLabel = document.getElementById('target-label');
           if (tLabel) {
@@ -928,16 +1095,18 @@ export class TaserApp {
             tLabel.classList.remove('armed');
           }
 
-          this.log("<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES (30% chans):</span> Målet släpper kniven och kapitulerar!");
-          this.suspectSpeak('Okej! Skjut inte, jag släpper den!');
+          const weaponName = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'garden');
+          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES (30% chans):</span> Målet släpper ${weaponName} och kapitulerar!`);
+          this.suspectSpeak(this.threatWeapon === 'FISTS' ? 'Okej! Skjut inte, jag ger upp!' : `Okej! Skjut inte, jag släpper ${weaponName}!`);
         } else {
           // 70% risk: Målet vägrar och eskalerar
-          this.log("<span style='color:#e74c3c; font-weight:bold;'>⚠️ KOMMANDO IGNORERADES (70% risk):</span> Målet vägrar släppa kniven! Fortsätter anfallet!");
+          const weaponName = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'angreppet');
+          this.log(`<span style='color:#e74c3c; font-weight:bold;'>⚠️ KOMMANDO IGNORERADES (70% risk):</span> Målet vägrar avbryta ${weaponName}! Fortsätter anfallet!`);
           this.suspectSpeak('Aldrig i livet! Kom hit då!');
           this.scene.setAnimation('Walk', 0.3);
         }
       } else {
-        this.suspectSpeak('Jag har ingen kniv! Vad glor du på?!');
+        this.suspectSpeak('Jag har inget vapen! Vad glor du på?!');
         this.log("<span style='color:#f39c12'>Målet har ännu inte dragit något vapen.</span>");
       }
     } else if (cmd === 'STANNA') {
@@ -960,7 +1129,7 @@ export class TaserApp {
         this.suspectSpeak('Jag står ju still!');
       }
     } else if (cmd === 'LAGG_DIG_NER') {
-      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible);
+      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible) || (this.scene.batonMesh && this.scene.batonMesh.visible) || (this.threatWeapon === 'FISTS');
       if (isArmed) {
         // Taktisk eskalering med sannolikhetslogik:
         // Utan varning (warningGiven == false): endast 10% chans att figuren ger upp
@@ -973,9 +1142,12 @@ export class TaserApp {
           this.threatLevel = 0;
           if (typeof window !== 'undefined') window.threatLevel = 0;
 
-          // Målet släpper kniven och lägger sig ner på marken
-          if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
-          this.scene.collapseTarget();
+          // Målet lägger sig ner på marken och släpper hot
+          if (this.scene) {
+            this.scene.armOverrideWeight = 0;
+            this.scene.updateWeaponVisibility();
+            this.scene.collapseTarget();
+          }
 
           const tLabel = document.getElementById('target-label');
           if (tLabel) {
@@ -984,7 +1156,8 @@ export class TaserApp {
           }
 
           const chanceInfo = this.warningGiven ? '40% chans efter formell varning' : '10% chans utan varning';
-          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ MÅLET GER UPP (${chanceInfo})!</span> Målet släpper kniven och lägger sig platt på marken.`);
+          const weaponDesc = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'garden');
+          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ MÅLET GER UPP (${chanceInfo})!</span> Målet släpper ${weaponDesc} och lägger sig platt på marken.`);
           this.suspectSpeak('Okej! Jag lägger mig ner, skjut inte!');
         } else {
           const failInfo = this.warningGiven ? '60% risk trots delgiven varning' : '90% risk utan varning';
@@ -1163,8 +1336,10 @@ export class TaserApp {
   togglePlaceMode() {
     this.xr.placeMode = true;
     this.xr.figureLocked = false;
-    document.getElementById('standard-controls').style.display = 'none';
-    document.getElementById('placement-controls').style.display = 'block';
+    const stdEl = document.getElementById('standard-controls');
+    if (stdEl) stdEl.style.display = 'none';
+    const plcEl = document.getElementById('placement-controls');
+    if (plcEl) plcEl.style.display = 'block';
 
     this.scene.set3DVisibility(false);
     if (this.scene.placementMarker) this.scene.placementMarker.visible = true;
@@ -1211,8 +1386,10 @@ export class TaserApp {
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
 
-    document.getElementById('standard-controls').style.display = 'block';
-    document.getElementById('placement-controls').style.display = 'none';
+    const stdEl = document.getElementById('standard-controls');
+    if (stdEl) stdEl.style.display = 'block';
+    const plcEl = document.getElementById('placement-controls');
+    if (plcEl) plcEl.style.display = 'none';
 
     this.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
     this.stopScenario();
@@ -1277,6 +1454,18 @@ export class TaserApp {
       dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
     }
     this.fsm.reset();
+    this.isTased = false;
+    this.isGameOver = false;
+    this.hideFailOverlay();
+    if (this.scene && this.scene.mixer) {
+      this.scene.mixer.timeScale = 1.0;
+    }
+    this.scene.clearWiresAndDarts();
+    this.scene.resetTarget();
+    this.updateDisplay();
+    this.updateWarningUI();
+    this.stopScenario();
+    this.log("♻️ <span style='color:#2ecc71; font-weight:bold;'>Simulator återställd: Nya kassetter laddade (2/2 skarpa), mål och kablar rensade.</span>");
   }
 
   openModal(id) {
@@ -1298,25 +1487,31 @@ export class TaserApp {
 
       // Skeletal Animation update & Threat Escalation movement
       const delta = Math.min(this.scene.clock.getDelta(), 0.1);
-      this.scene.update(delta);
 
       const isScenarioActive = this.fsm.isScenarioActive || this.isScenarioActive;
       const currentThreat = (typeof window !== 'undefined' && typeof window.threatLevel === 'number')
         ? window.threatLevel
         : this.threatLevel;
 
-      if (isScenarioActive && currentThreat >= 3 && !this.scene.figureFallen && this.scene.taserGroup && this.scene.taserGroup.visible) {
+      // Update base skeletal animation and apply Procedural Bone Manipulation (Late Update)
+      this.scene.update(delta, {
+        isScenarioActive,
+        threatLevel: currentThreat,
+        threatWeapon: this.threatWeapon
+      });
+
+      if (isScenarioActive && currentThreat >= 3 && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver && this.scene.taserGroup && this.scene.taserGroup.visible) {
         if (this.scene.activeAction !== this.scene.actions['Walk']) {
-          this.scene.setAnimation('Walk', 0.5);
+          this.scene.setAnimation('Walk', 0.8);
         }
 
         // Advance target slowly towards camera along Z-axis only in active scenario
         if (!renderer.xr.isPresenting) {
-          const minDistance = 1.1; // minimum standoff in meters
+          const minDistance = 0.4; // allow advancing down past 0.8m fail threshold
           const currentDist = (this.scene.taserGroup.userData.startPos ? this.scene.taserGroup.userData.startPos.z : 0) + 3.0 - this.scene.taserGroup.position.z;
-          if (currentDist > minDistance) {
-            // Modulate velocity by walk action weight to prevent foot sliding during weight transfer
-            const walkWeight = (this.scene.actions['Walk'] && this.scene.activeAction === this.scene.actions['Walk'])
+          if (currentDist > minDistance && !this.isGameOver) {
+            // Modulate forward displacement by walk action weight to eliminate foot skating during crossfade inertia
+            const walkWeight = (this.scene.actions && this.scene.actions['Walk'])
               ? this.scene.actions['Walk'].getEffectiveWeight()
               : 0;
             this.scene.taserGroup.position.z += this.scene.walkSpeed * walkWeight * delta;
@@ -1324,9 +1519,29 @@ export class TaserApp {
             this.updateAimVisuals();
           }
         }
-      } else if ((!isScenarioActive || currentThreat < 3) && !this.scene.figureFallen) {
+      } else if ((!isScenarioActive || currentThreat < 3) && !this.scene.figureFallen && !this.isGameOver) {
         if (this.scene.activeAction === this.scene.actions['Walk']) {
-          this.scene.setAnimation('Idle', 0.5);
+          this.scene.setAnimation('Idle', 0.8);
+        }
+      }
+
+      // Fail state check: Attacker reaches closer than 0.8 meters and user has not completed NMI
+      if (!this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver) {
+        if (!renderer.xr.isPresenting) {
+          // Standard viewport: O(1) distance check
+          if (this.currentDistance <= 0.8) {
+            this.triggerFailState();
+          }
+        } else if (this.xr.figureLocked && this.scene.taserGroup && this.scene.taserGroup.visible) {
+          // WebXR: zero-allocation distanceToSquared check (0.8^2 = 0.64)
+          const chestPos = this.scene._v1.set(
+            this.scene.taserGroup.position.x,
+            this.scene.taserGroup.position.y + 1.35,
+            this.scene.taserGroup.position.z
+          );
+          if (activeCamera.position.distanceToSquared(chestPos) <= 0.64) {
+            this.triggerFailState();
+          }
         }
       }
 
@@ -1342,7 +1557,7 @@ export class TaserApp {
           );
           const rawDist = activeCamera.position.distanceTo(chestPos);
           if (!isNaN(rawDist) && rawDist > 0.1) {
-            this.currentDistance = Math.max(0.5, rawDist);
+            this.currentDistance = Math.max(0.4, rawDist);
             this.updateAimVisuals();
           }
         }

@@ -1,10 +1,10 @@
 {
-  "id": "/",
+  "id": "./",
   "name": "TASER 7 Procedursimulator",
   "short_name": "Taser 7",
   "description": "Taser 7 procedur- och taktiksimulator i stående läge för fältmässig offline-träning.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#050505",
@@ -12,19 +12,19 @@
   "categories": ["simulation", "training", "utilities"],
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-maskable-512.png",
+      "src": "icons/icon-maskable-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

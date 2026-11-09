@@ -9,16 +9,19 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-// Security and tactical asset headers
+// Security, cache invalidation and tactical asset headers
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.url.endsWith('.glb')) {
     res.setHeader('Content-Type', 'model/gltf-binary');
   } else if (req.url.endsWith('manifest.json')) {
     res.setHeader('Content-Type', 'application/manifest+json');
-  } else if (req.url.endsWith('sw.js') || req.url.endsWith('service-worker.js')) {
-    res.setHeader('Service-Worker-Allowed', '/');
     res.setHeader('Cache-Control', 'no-cache');
+  } else if (req.url.endsWith('.js') || req.url.includes('.js?') || req.url.endsWith('.html') || req.url === '/') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    if (req.url.endsWith('sw.js') || req.url.endsWith('service-worker.js')) {
+      res.setHeader('Service-Worker-Allowed', '/');
+    }
   }
   next();
 });

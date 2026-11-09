@@ -179,14 +179,17 @@ export class TaserXR {
       if (this.scenario === 'moving') {
         const startX = target.userData.startPos ? target.userData.startPos.x : 0;
         target.position.x = startX + Math.sin(timestamp * 0.001) * 1.2;
-        this.taserScene.setAnimation('Walk', 0.4);
+        this.taserScene.setAnimation('Walk', 0.8);
       } else if (this.scenario === 'charging') {
-        this.taserScene.setAnimation('Walk', 0.4);
+        this.taserScene.setAnimation('Walk', 0.8);
         const dir = this.taserScene._v1.subVectors(activeCamera.position, target.position);
         dir.y = 0;
         if (dir.length() > 1.2) {
           dir.normalize();
-          target.position.addScaledVector(dir, 0.015);
+          const walkWeight = (this.taserScene.actions && this.taserScene.actions['Walk'])
+            ? this.taserScene.actions['Walk'].getEffectiveWeight()
+            : 1.0;
+          target.position.addScaledVector(dir, 0.014 * walkWeight);
         }
       }
     }

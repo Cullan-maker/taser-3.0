@@ -121,10 +121,18 @@ if (!fs.existsSync(iconsDir)) {
   fs.mkdirSync(iconsDir, { recursive: true });
 }
 
-fs.writeFileSync(path.join(iconsDir, 'icon-192.png'), generateTacticalPNG(192, false));
-fs.writeFileSync(path.join(iconsDir, 'icon-512.png'), generateTacticalPNG(512, false));
-fs.writeFileSync(path.join(iconsDir, 'icon-maskable-512.png'), generateTacticalPNG(512, true));
-fs.writeFileSync(path.join(iconsDir, 'apple-touch-icon.png'), generateTacticalPNG(180, false));
+const p192 = generateTacticalPNG(192, false);
+const p512 = generateTacticalPNG(512, false);
+const pMaskable = generateTacticalPNG(512, true);
+const pApple = generateTacticalPNG(180, false);
+
+fs.writeFileSync(path.join(iconsDir, 'icon-192.png'), p192);
+fs.writeFileSync(path.join(iconsDir, 'icon-192x192.png'), p192);
+fs.writeFileSync(path.join(iconsDir, 'icon-512.png'), p512);
+fs.writeFileSync(path.join(iconsDir, 'icon-512x512.png'), p512);
+fs.writeFileSync(path.join(iconsDir, 'icon-maskable-512.png'), pMaskable);
+fs.writeFileSync(path.join(iconsDir, 'icon-maskable-512x512.png'), pMaskable);
+fs.writeFileSync(path.join(iconsDir, 'apple-touch-icon.png'), pApple);
 
 const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" rx="100" fill="#0a0a0a"/>

@@ -1,9 +1,11 @@
-const CACHE_NAME = 'taser7-tactical-v10';
+const CACHE_NAME = 'taser7-tactical-v12';
 
+// Relativa resurser för full kompatibilitet med GitHub Pages undermappar
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './sw.js',
   './service-worker.js',
   './ue_mannequin_retopology.glb',
   './js/app.js',
@@ -15,20 +17,24 @@ const PRECACHE_ASSETS = [
   './js/pwa.js',
   './js/voice.js',
   './js/pose.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png',
+  './icons/icon-maskable-512x512.png',
   './icons/apple-touch-icon.png',
   './icons/icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[TASER 7 SW v4] Förhandscachar taktiska resurser...');
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[TASER 7 SW] Icke-kritisk resurs:', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      console.log('[TASER 7 SW] Cachar app-skal och taktiska resurser...');
+      await Promise.allSettled(
+        PRECACHE_ASSETS.map((asset) =>
+          cache.add(asset).catch((err) => {
+            console.warn(`[TASER 7 SW] Kunde inte förhandscacha ${asset}:`, err.message);
+          })
+        )
+      );
     }).then(() => self.skipWaiting())
   );
 });
@@ -37,18 +43,22 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME).map((key) => {
+          console.log('[TASER 7 SW] Rensar gammal cache:', key);
+          return caches.delete(key);
+        })
       );
     }).then(() => self.clients.claim())
   );
 });
 
+// Chrome PWA-krav: fetch-lyssnare som hanterar nätverksanrop
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
-  // För applikationskod och navigation: Network-First (alltid färsk kod online, fallback till cache offline)
-  if (req.mode === 'navigate' || req.url.includes('/js/') || req.url.endsWith('index.html')) {
+  // 1. För sidnavigering (HTML): Network-first med offline-fallback till index.html
+  if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
         .then((networkResponse) => {
@@ -58,24 +68,39 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('/index.html')))
+        .catch(() => {
+          return caches.match('./index.html').then((cached) => cached || caches.match('./'));
+        })
     );
     return;
   }
 
-  // För tunga statiska 3D-modeller, ikoner och vendor-bibliotek: Cache-First med nätverksfallback
+  // 2. För statiska filer (JS, 3D-modell, ikoner, audio): Cache-first med nätverksfallback
   event.respondWith(
     caches.match(req).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
+      if (cachedResponse) {
+        fetch(req)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResponse));
+            }
+          })
+          .catch(() => {/* Tyst offline */});
+        return cachedResponse;
+      }
 
-      return fetch(req).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
+      return fetch(req)
+        .then((networkResponse) => {
+          if (!networkResponse || networkResponse.status !== 200) {
+            return networkResponse;
+          }
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
           return networkResponse;
-        }
-        const copy = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-        return networkResponse;
-      });
+        })
+        .catch((err) => {
+          console.warn('[TASER 7 SW] Nätverksfel vid hämtning av:', req.url, err);
+        });
     })
   );
 });

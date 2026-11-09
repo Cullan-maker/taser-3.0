@@ -29,6 +29,7 @@ export class TaserFSM {
     this.chamber1 = ChamberState.EMPTY;
     this.chamber2 = ChamberState.EMPTY;
     this.activeChamber = 1;
+    this.shotsFired = 0;
     this.stealthMode = false;
     this.heavyClothing = false;
     this.displayState = 'OFF'; // 'OFF' | 'BOOT' | 'FUNK_MODE' | 'ACTIVE' | 'CYCLING'
@@ -129,31 +130,32 @@ export class TaserFSM {
    * KRITISK TAKTISK REGEL: Vapnet MÅSTE vara säkrat innan kassetter matas ut eller byts!
    */
   toggleCassette() {
-    if (!this.isSafe) {
+    // Om båda kassetterna redan är laddade och vapnet är osäkrat, varna om säkerhet innan utmatning
+    if (!this.isSafe && this.chamber1 === ChamberState.LOADED && this.chamber2 === ChamberState.LOADED) {
       this.notify('LOG', {
-        message: "<span style='color:#e74c3c; font-weight:bold; font-size:9.5px;'>⚠️ TAKTISKT FEL: Vapnet måste SÄKRAS innan kassetter kan matas ut eller bytas!</span>"
+        message: "<span style='color:#e74c3c; font-weight:bold; font-size:9.5px;'>⚠️ TAKTISKT FEL: Vapnet måste SÄKRAS innan skarpa kassetter kan matas ut!</span>"
       });
       return false;
     }
 
-    if (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY) {
-      // Laddning av kassetter
+    // Om kassetterna är tomma eller någon/båda är förbrukade (skjutna): Ladda in nya kassetter omedelbart!
+    if (this.chamber1 !== ChamberState.LOADED || this.chamber2 !== ChamberState.LOADED) {
+      this.stopCycle();
       this.chamber1 = ChamberState.LOADED;
       this.chamber2 = ChamberState.LOADED;
       this.activeChamber = 1;
+      this.shotsFired = 0;
       this.notify('LOG', {
-        message: "<span style='color:#2ecc71; font-weight:bold;'>📥 Kassetter laddade (Kammare 1: 12° CQB | Kammare 2: 3.5° Standoff).</span>"
+        message: "<span style='color:#2ecc71; font-weight:bold;'>📥 NYA KASSETTER LADDADE (Kammare 1: 12° CQB | Kammare 2: 3.5° Standoff - 2/2 redo).</span>"
       });
     } else {
-      // Utmatning av kassetter (antingen laddade eller förbrukade)
-      const hadFired = (this.chamber1 === ChamberState.FIRED || this.chamber2 === ChamberState.FIRED);
+      // Vapnet är säkrat och båda kassetterna var laddade -> Mata ut kassetter
       this.chamber1 = ChamberState.EMPTY;
       this.chamber2 = ChamberState.EMPTY;
       this.activeChamber = 1;
+      this.shotsFired = 0;
       this.notify('LOG', {
-        message: hadFired
-          ? "<span style='color:#f39c12; font-weight:bold;'>⏏️ Förbrukade kassetter utkastade. Kammare tomma.</span>"
-          : "<span style='color:#bdc3c7; font-weight:bold;'>⏏️ Kassetter utmatade. Kammare tomma.</span>"
+        message: "<span style='color:#bdc3c7; font-weight:bold;'>⏏️ Kassetter utmatade. Kammare tomma.</span>"
       });
     }
 
@@ -379,9 +381,10 @@ export class TaserFSM {
       const firedChamber = this.activeChamber;
       if (firedChamber === 1) this.chamber1 = ChamberState.FIRED;
       else this.chamber2 = ChamberState.FIRED;
+      this.shotsFired = (this.chamber1 === ChamberState.FIRED ? 1 : 0) + (this.chamber2 === ChamberState.FIRED ? 1 : 0);
 
       this.notify('LOG', {
-        message: `<span style='color:red; font-weight:bold;'>💥 SKOTT AVFYRAT (Kammare ${firedChamber} - ${firedChamber === 1 ? '12°' : '3.5°'})</span>`
+        message: `<span style='color:red; font-weight:bold;'>💥 SKOTT AVFYRAT (Kammare ${firedChamber} - ${firedChamber === 1 ? '12°' : '3.5°'}) [${this.shotsFired}/2]</span>`
       });
 
       let ballisticsResult = null;
@@ -400,7 +403,7 @@ export class TaserFSM {
       this.notify('DISPLAY_CHANGED');
       return { fired: true, chamber: firedChamber, ballistics: ballisticsResult };
     } else if (currentChamberState === ChamberState.FIRED) {
-      this.notify('LOG', { message: 'Återaktiverar NMI i befintliga pilar.' });
+      this.notify('LOG', { message: 'Båda patronerna avfyrade. Återaktiverar elström...' });
       this.startCycle('Återaktiverar el...', 'DARTS');
       return { fired: false, reason: 'RE_ENERGIZED' };
     } else {
@@ -423,12 +426,14 @@ export class TaserFSM {
       this.bootTimer = null;
     }
     this.isFunkLocked = false;
-    this.chamber1 = ChamberState.EMPTY;
-    this.chamber2 = ChamberState.EMPTY;
+    this.chamber1 = ChamberState.LOADED;
+    this.chamber2 = ChamberState.LOADED;
     this.activeChamber = 1;
+    this.shotsFired = 0;
     this.displayState = this.isSafe ? 'OFF' : 'ACTIVE';
-    this.notify('LOG', { message: "♻️ <span style='color:#3498db; font-weight:bold;'>RESET: Vapnet återställt till utgångsläge (tomma kassetter).</span>" });
+    this.notify('LOG', { message: "♻️ <span style='color:#3498db; font-weight:bold;'>RESET: Vapnet återställt och omladdat (2/2 kassetter redo).</span>" });
     this.notify('RESET');
+    this.notify('CASSETTE_CHANGED');
     this.notify('DISPLAY_CHANGED');
   }
 }

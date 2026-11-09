@@ -20,12 +20,17 @@ export class TaserScene {
     this.taserGroup = null;
     this.dummyBody = null;
     this.knifeMesh = null;
+    this.batonMesh = null;
     this.placementGround = null;
     this.placementMarker = null;
 
     this.activeWires = [];
     this.activeDarts = [];
     this.figureFallen = false;
+    this.isTased = false;
+    this.fallVelocity = 0.0;
+    this.groundImpactDone = false;
+    this.onGroundImpactCallback = null;
     this.show3DModel = true;
     this.fallInterval = null;
 
@@ -34,17 +39,34 @@ export class TaserScene {
     this.mixer = null;
     this.actions = {};
     this.activeAction = null;
-    this.walkSpeed = 0.72; // Calibrated forward velocity (m/s) matching 0.65 timeScale gait cycle to eliminate foot skating
+    this.walkSpeed = 0.80; // Mathematically synchronized forward velocity (0.80 m/s = 1.20m stride / (1.2s clip / 0.80 timeScale)) to eliminate foot sliding
     this.aiPose = null; // AI-Based Person Pose & Dynamic Hitbox Engine
+
+    // Procedural Bone Manipulation (Late Update arm override & threat posing)
+    this.activeThreatWeapon = 'KNIFE'; // 'KNIFE' | 'BATON' | 'FISTS'
+    this.armOverrideWeight = 0.0; // 0.0 = pure walk/idle animation, 1.0 = full attack posture
+    this.proceduralTime = 0.0;
+    this.cachedBones = {
+      rUpperArm: null,
+      rForearm: null,
+      rHand: null,
+      lUpperArm: null,
+      lForearm: null,
+      lHand: null
+    };
 
     this.isSoftwareGl = false;
     this.raycaster = new THREE.Raycaster();
     this.placementRaycaster = new THREE.Raycaster();
 
-    // Reusable math vectors to ensure zero GC in animation loop
+    // Reusable math vectors and quaternions to ensure zero GC in animation loop
     this._v1 = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
     this._v3 = new THREE.Vector3();
+    this._qBase = new THREE.Quaternion();
+    this._qTarget = new THREE.Quaternion();
+    this._qDelta = new THREE.Quaternion();
+    this._euler = new THREE.Euler();
 
     this.init();
   }
@@ -134,8 +156,9 @@ export class TaserScene {
     // Composite Procedural Dummy Mannequin (Fallback + Zones)
     this.setupFallbackMannequin();
 
-    // Setup Knife for threat escalation
+    // Setup Knife and Baton for threat escalation
     this.setupKnife();
+    this.setupBaton();
 
     // Floor and Placement Marker
     this.setupGroundAndMarker();
@@ -148,13 +171,23 @@ export class TaserScene {
 
     // Window & container resize observer
     window.addEventListener('resize', this.onResize.bind(this));
+    window.addEventListener('orientationchange', () => setTimeout(() => this.onResize(), 100));
     if (typeof ResizeObserver !== 'undefined' && this.container) {
-      new ResizeObserver(() => this.onResize()).observe(this.container);
+      const ro = new ResizeObserver(() => this.onResize());
+      ro.observe(this.container);
+      if (this.container.parentElement) ro.observe(this.container.parentElement);
     }
+    // Mobile layout calibration
+    requestAnimationFrame(() => this.onResize());
+    setTimeout(() => this.onResize(), 120);
   }
 
   setupFallbackMannequin() {
-    const greenMat = new THREE.MeshStandardMaterial({ color: 0x219653, roughness: 0.5 });
+    const greenMat = new THREE.MeshStandardMaterial({
+      color: 0x219653,
+      roughness: 0.88,
+      metalness: 0.05
+    });
     const dummyBody = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.4, 0.3), greenMat);
     dummyBody.position.set(0, 0.7, 0);
     dummyBody.castShadow = true;
@@ -163,57 +196,128 @@ export class TaserScene {
     this.taserGroup.add(dummyBody);
     this.dummyBody = dummyBody;
 
-    // High danger forbidden zones
-    const yellowMat = new THREE.MeshStandardMaterial({
-      color: 0xf1c40f,
+    // Invisible Hitbox Material for Raycasting ballistics:
+    // visible = true so Three.js Raycaster still traverses the geometry and detects hits on
+    // 'Huvud/Hals', 'Hjärttrakten', and 'Genitalier', but transparent: true with opacity: 0 and colorWrite: false
+    // ensures ABSOLUTELY ZERO pixels are rendered to the screen (no floating balloons or boxes).
+    const createInvisibleHitboxMat = () => new THREE.MeshBasicMaterial({
       transparent: true,
-      opacity: 0.85,
-      emissive: 0xf1c40f,
-      emissiveIntensity: 0.4,
-      roughness: 0.3,
-      metalness: 0.8
+      opacity: 0.0,
+      depthWrite: false,
+      colorWrite: false
     });
 
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), yellowMat);
-    headMesh.position.set(0, 1.65, 0.0);
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), createInvisibleHitboxMat());
+    headMesh.position.set(0, 1.63, 0.0);
     headMesh.name = 'Huvud/Hals';
-    headMesh.castShadow = true;
+    headMesh.userData.isHitbox = true;
+    headMesh.castShadow = false;
     this.taserGroup.add(headMesh);
+    this.headHitbox = headMesh;
 
-    const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.2), yellowMat);
-    chestMesh.position.set(0, 1.35, 0.08);
+    // Upper Chest / Cardiac Danger Zone (strictly heart/sternum, completely clear of shoulders and abdomen)
+    // Width 0.13m (X: -0.065 to +0.065m), Height 0.17m (Y: 1.275 to 1.445m), Depth 0.14m (Z: 0.00 to 0.14m)
+    const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.17, 0.14), createInvisibleHitboxMat());
+    chestMesh.position.set(0, 1.36, 0.07);
     chestMesh.name = 'Hjärttrakten';
-    chestMesh.castShadow = true;
+    chestMesh.userData.isHitbox = true;
+    chestMesh.castShadow = false;
     this.taserGroup.add(chestMesh);
+    this.chestHitbox = chestMesh;
 
-    const groinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), yellowMat);
-    groinMesh.position.set(0, 0.85, 0.08);
+    // Groin / Genitalier Danger Zone (compact pubic triangle cup, completely clear of hips, thighs, and abdomen)
+    // Width 0.07m (X: -0.035 to +0.035m), Height 0.08m (Y: 0.80 to 0.88m), Depth 0.08m (Z: 0.01 to 0.09m)
+    const groinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.08), createInvisibleHitboxMat());
+    groinMesh.position.set(0, 0.84, 0.05);
     groinMesh.name = 'Genitalier';
-    groinMesh.castShadow = true;
+    groinMesh.userData.isHitbox = true;
+    groinMesh.castShadow = false;
     this.taserGroup.add(groinMesh);
+    this.groinHitbox = groinMesh;
   }
 
   setupKnife() {
     const knifeGroup = new THREE.Group();
+    knifeGroup.name = 'TacticalKnife';
+
+    // Bright high-visibility neon red MeshBasicMaterial as explicitly instructed
+    const neonRedMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
     const handle = new THREE.Mesh(
-      new THREE.BoxGeometry(0.03, 0.12, 0.03),
-      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
+      new THREE.BoxGeometry(0.04, 0.16, 0.05),
+      neonRedMat
     );
-    const blade = new THREE.Mesh(
-      new THREE.BoxGeometry(0.01, 0.25, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.1 })
-    );
-    blade.position.y = 0.18;
+    handle.position.y = -0.05;
     knifeGroup.add(handle);
+
+    const guard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.03, 0.02, 0.10),
+      neonRedMat
+    );
+    guard.position.y = 0.035;
+    knifeGroup.add(guard);
+
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, 0.35, 0.08),
+      neonRedMat
+    );
+    blade.position.y = 0.22;
     knifeGroup.add(blade);
 
-    knifeGroup.position.set(0.35, 1.1, 0.3);
-    knifeGroup.rotation.x = Math.PI / 2;
-    knifeGroup.rotation.z = -Math.PI / 8;
-    knifeGroup.visible = false;
+    // Explicit high-visibility scale and position offset
+    knifeGroup.scale.set(10, 10, 10);
+    knifeGroup.position.set(0.5, 0.5, 0.5);
+    knifeGroup.visible = true;
 
     this.knifeMesh = knifeGroup;
     this.taserGroup.add(knifeGroup);
+  }
+
+  setupBaton() {
+    const batonGroup = new THREE.Group();
+    batonGroup.name = 'TacticalBaton';
+
+    const neonRedMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 0.60, 16),
+      neonRedMat
+    );
+    shaft.position.y = 0.22;
+    batonGroup.add(shaft);
+
+    const tip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 16, 16),
+      neonRedMat
+    );
+    tip.position.y = 0.52;
+    batonGroup.add(tip);
+
+    // Explicit high-visibility scale and position offset
+    batonGroup.scale.set(10, 10, 10);
+    batonGroup.position.set(0.5, 0.5, 0.5);
+    batonGroup.visible = false;
+
+    this.batonMesh = batonGroup;
+    this.taserGroup.add(batonGroup);
+  }
+
+  setThreatWeapon(type = 'KNIFE') {
+    this.activeThreatWeapon = (type || 'KNIFE').toUpperCase();
+    this.updateWeaponVisibility();
+  }
+
+  updateWeaponVisibility() {
+    const isKniv = this.activeThreatWeapon === 'KNIFE';
+    const isBaton = this.activeThreatWeapon === 'BATON';
+
+    // Guaranteed visibility: active weapon is always visible when selected
+    if (this.knifeMesh) {
+      this.knifeMesh.visible = isKniv;
+    }
+    if (this.batonMesh) {
+      this.batonMesh.visible = isBaton;
+    }
   }
 
   setupGroundAndMarker() {
@@ -269,30 +373,163 @@ export class TaserScene {
         const scaledBox = new THREE.Box3().setFromObject(dummy);
         dummy.position.y = -scaledBox.min.y;
 
-        // Sanitize bone names so PropertyBinding reliably matches without space discrepancies
+        // Check if the GLTF contains multiple distinct sub-meshes or a monolithic SkinnedMesh
+        let meshCount = 0;
+        dummy.traverse((c) => {
+          if (c.isMesh) meshCount++;
+        });
+
+        // Matte materials (high roughness so it looks like matte rubber/plastic police training dummy)
+        const greenTrainingMat = new THREE.MeshStandardMaterial({
+          color: 0x219653, // Tactical Training Green
+          roughness: 0.88,
+          metalness: 0.05
+        });
+
+        const yellowDangerMat = new THREE.MeshStandardMaterial({
+          color: 0xf1c40f, // Safety Yellow
+          roughness: 0.85,
+          metalness: 0.05
+        });
+
+        // Sanitize bone names and configure mesh materials directly on the 3D model
         dummy.traverse((child) => {
           if (child.name) {
             child.name = child.name.replace(/\s+/g, '_');
           }
+
           if (child.isMesh) {
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0x219653,
-              roughness: 0.5,
-              metalness: 0.3
-            });
-            child.name = 'Godkand_Zon';
             child.castShadow = true;
             child.receiveShadow = true;
+
+            if (meshCount > 1) {
+              // CASE A: Model with separate sub-meshes for limbs/head/torso/pelvis
+              const nameLower = (child.name || '').toLowerCase();
+              const isDangerZone = /head|huvud|neck|hals|chest|torso|spine|bröst|hjärta|heart|pelvis|hip|groin|ljumske|skrev/i.test(nameLower);
+
+              if (isDangerZone) {
+                child.material = yellowDangerMat.clone();
+                child.name = 'Farlig_Zon';
+              } else {
+                child.material = greenTrainingMat.clone();
+                child.name = 'Godkand_Zon';
+              }
+            } else {
+              // CASE B: Monolithic SkinnedMesh (e.g. Unreal Engine Retopology Mannequin)
+              // Paint anatomical target zones directly into the mesh geometry via vertex colors,
+              // precisely matching the Taser 7 training target (image_9ab5cc6f.png):
+              // 1. Head & Neck: Crown down to the neck base.
+              // 2. Upper Chest / Cardiac Triangle: Strictly the upper chest between nipples and below collar,
+              //    completely leaving shoulders, deltoids, and entire abdomen/belly GREEN.
+              // 3. Groin: Compact pubic triangle cup, leaving hips, flanks, and thighs GREEN.
+              const geometry = child.geometry;
+              if (geometry && geometry.attributes && geometry.attributes.position) {
+                const pos = geometry.attributes.position;
+                const count = pos.count;
+                const colors = new Float32Array(count * 3);
+
+                const greenR = 0.129, greenG = 0.588, greenB = 0.325; // #219653 (Tactical Training Green)
+                const yellowR = 0.945, yellowG = 0.768, yellowB = 0.059; // #f1c40f (Safety Yellow)
+
+                for (let i = 0; i < count; i++) {
+                  const x = pos.getX(i);
+                  const y = pos.getY(i);
+                  const z = pos.getZ(i);
+
+                  // 1. Head & Neck:
+                  // Head crown down to neck. Neck tapers into clavicle notch (|x| < 8.5cm, |z| < 9cm).
+                  const isHead = (y > 156) || (y >= 147 && y <= 156 && Math.abs(x) < 8.5 && Math.abs(z) < 9.0);
+
+                  // 2. Upper Chest / Cardiac Triangle (Taser 7 target bib):
+                  // Strictly upper chest: y between 127 and 147 cm.
+                  // Width stays medial to the shoulder deltoids (half-width <= 11.0cm).
+                  // Front chest only: z > 4.0cm.
+                  // Shoulders (|x| > 11.5cm) and entire abdomen (y < 127cm) are 100% GREEN!
+                  const chestHalfWidth = (y > 143) ? 8.5 : ((y > 132) ? 11.0 : 8.5);
+                  const isChest = (y >= 127 && y < 147 && Math.abs(x) < chestHalfWidth && z > 4.0);
+
+                  // 3. Groin / Pubic cup:
+                  // Small compact patch centered strictly at the groin (y between 80 and 89 cm, |x| < 4.2 cm, z > 3.5 cm).
+                  // Hips, pelvis flanks, and thighs are 100% GREEN!
+                  const isGroin = (y >= 80 && y <= 89 && Math.abs(x) < 4.2 && z > 3.5);
+
+                  if (isHead || isChest || isGroin) {
+                    colors[i * 3] = yellowR;
+                    colors[i * 3 + 1] = yellowG;
+                    colors[i * 3 + 2] = yellowB;
+                  } else {
+                    colors[i * 3] = greenR;
+                    colors[i * 3 + 1] = greenG;
+                    colors[i * 3 + 2] = greenB;
+                  }
+                }
+
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+              }
+
+              child.material = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.88, // Matt plast/gummi
+                metalness: 0.05
+              });
+              child.name = 'Godkand_Zon';
+            }
           }
         });
 
-        // Re-parent knife to right hand bone if available
-        const handBone = dummy.getObjectByName('Bip001_R_Hand_034');
-        if (handBone && this.knifeMesh) {
-          this.taserGroup.remove(this.knifeMesh);
-          this.knifeMesh.position.set(0.02, 0.04, 0.01);
-          this.knifeMesh.rotation.set(Math.PI / 2, 0, -Math.PI / 4);
-          handBone.add(this.knifeMesh);
+        // Cache bones for Procedural Bone Manipulation (Late Update)
+        this.cacheBones(dummy);
+
+        // 1. SÄKER TRAVERSERING AV HÄNDER
+        let handBone = null;
+        dummy.traverse((c) => {
+          if (!handBone && c.name) {
+            const raw = c.name;
+            const normalized = raw.replace(/\s+/g, '_').toLowerCase();
+            if (
+              normalized.includes('mixamorigrighthand') ||
+              normalized.includes('r_hand') ||
+              normalized.includes('rhand') ||
+              normalized.includes('right_hand') ||
+              normalized.includes('righthand') ||
+              normalized.includes('hand_r') ||
+              normalized.includes('handr')
+            ) {
+              handBone = c;
+              console.log('[TaserScene] Confirmed right hand bone via traverse:', raw);
+            }
+          }
+        });
+
+        if (handBone) {
+          // Explicit large scale and offset from hand bone to guarantee visibility
+          if (this.knifeMesh) {
+            if (this.knifeMesh.parent) this.knifeMesh.parent.remove(this.knifeMesh);
+            this.knifeMesh.scale.set(10, 10, 10);
+            this.knifeMesh.position.set(0.5, 0.5, 0.5);
+            handBone.add(this.knifeMesh);
+          }
+          if (this.batonMesh) {
+            if (this.batonMesh.parent) this.batonMesh.parent.remove(this.batonMesh);
+            this.batonMesh.scale.set(10, 10, 10);
+            this.batonMesh.position.set(0.5, 0.5, 0.5);
+            handBone.add(this.batonMesh);
+          }
+        } else {
+          // Fallback: If right hand bone cannot be confirmed, leave weapons safely in the root group (taserGroup)
+          console.warn('[TaserScene] Right hand bone NOT confirmed! Keeping weapons in figure root group.');
+          if (this.knifeMesh) {
+            if (this.knifeMesh.parent) this.knifeMesh.parent.remove(this.knifeMesh);
+            this.knifeMesh.scale.set(10, 10, 10);
+            this.knifeMesh.position.set(0.5, 1.2, 0.5);
+            this.taserGroup.add(this.knifeMesh);
+          }
+          if (this.batonMesh) {
+            if (this.batonMesh.parent) this.batonMesh.parent.remove(this.batonMesh);
+            this.batonMesh.scale.set(10, 10, 10);
+            this.batonMesh.position.set(0.5, 1.2, 0.5);
+            this.taserGroup.add(this.batonMesh);
+          }
         }
 
         this.glbDummy = dummy;
@@ -302,7 +539,7 @@ export class TaserScene {
 
         // Setup Skeletal Animations (Mixamo/UE Pipeline)
         this.setupAnimations(dummy, gltf.animations || []);
-        console.log('[TaserScene] UE Mannequin retopology 3D model with skeletal animations loaded.');
+        console.log('[TaserScene] UE Mannequin retopology 3D model with skeletal animations and procedural bone rigging loaded.');
       },
       undefined,
       (err) => {
@@ -339,7 +576,7 @@ export class TaserScene {
     if (walkClip) {
       const action = this.mixer.clipAction(walkClip);
       action.loop = THREE.LoopRepeat;
-      action.timeScale = 0.65; // Calibrated for realistic menacing human stride
+      action.timeScale = 0.80; // Calibrated with 1.20m stride to eliminate foot sliding (0.80 m/s)
       this.actions['Walk'] = action;
     }
 
@@ -356,210 +593,177 @@ export class TaserScene {
       if (c.name) bones[c.name] = c;
     });
 
-    const yAxis = new THREE.Vector3(0, 1, 0);
+    const zAxis = new THREE.Vector3(0, 0, 1);
     const xAxis = new THREE.Vector3(1, 0, 0);
+    const yAxis = new THREE.Vector3(0, 1, 0);
+
+    const makeRotTrack = (boneName, times, angles, axis = zAxis) => {
+      const bone = bones[boneName];
+      if (!bone) return null;
+      const values = [];
+      const qRest = bone.quaternion;
+      for (let i = 0; i < angles.length; i++) {
+        const q = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(axis, angles[i]));
+        values.push(q.x, q.y, q.z, q.w);
+      }
+      return new THREE.QuaternionKeyframeTrack(bone.name + '.quaternion', times, values);
+    };
+
+    const makePosTrack = (boneName, times, offsets) => {
+      const bone = bones[boneName];
+      if (!bone) return null;
+      const values = [];
+      const pRest = bone.position;
+      for (let i = 0; i < offsets.length; i++) {
+        values.push(pRest.x + offsets[i][0], pRest.y + offsets[i][1], pRest.z + offsets[i][2]);
+      }
+      return new THREE.VectorKeyframeTrack(bone.name + '.position', times, values);
+    };
 
     // ==========================================
-    // 1. IDLE CLIP (2.4s loop: natural breathing, subtle postural shift)
+    // 1. IDLE CLIP (2.4s loop: grounded stance, natural breathing, knife at ready)
     // ==========================================
-    const timesIdle = [0, 0.6, 1.2, 1.8, 2.4];
+    const timesIdle = [0.0, 0.6, 1.2, 1.8, 2.4];
     const idleTracks = [];
 
+    // Pelvis breathing & micro-sway
+    const pIdlePos = makePosTrack('Bip001_Pelvis_03', timesIdle, [
+      [0, 0, 0], [0, 0.005, 0], [0, 0, 0], [0, -0.003, 0], [0, 0, 0]
+    ]);
+    if (pIdlePos) idleTracks.push(pIdlePos);
+
     // Spine breathing expansion
-    const spine = bones['Bip001_Spine_04'];
-    if (spine) {
-      const q = spine.quaternion.clone();
-      const qBreathIn = q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(xAxis, 0.035));
-      const qBreathSway = q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.015));
-      idleTracks.push(new THREE.QuaternionKeyframeTrack(spine.name + '.quaternion', timesIdle, [
-        q.x, q.y, q.z, q.w,
-        qBreathIn.x, qBreathIn.y, qBreathIn.z, qBreathIn.w,
-        qBreathSway.x, qBreathSway.y, qBreathSway.z, qBreathSway.w,
-        qBreathIn.x, qBreathIn.y, qBreathIn.z, qBreathIn.w,
-        q.x, q.y, q.z, q.w
-      ]));
-    }
+    const sIdleRot = makeRotTrack('Bip001_Spine_04', timesIdle, [0, 0.035, 0, 0.02, 0], xAxis);
+    if (sIdleRot) idleTracks.push(sIdleRot);
 
-    // Head subtle alertness
-    const head = bones['Bip001_Head_055'];
-    if (head) {
-      const qH = head.quaternion.clone();
-      const qH1 = qH.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.04));
-      const qH2 = qH.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.04));
-      idleTracks.push(new THREE.QuaternionKeyframeTrack(head.name + '.quaternion', timesIdle, [
-        qH.x, qH.y, qH.z, qH.w,
-        qH1.x, qH1.y, qH1.z, qH1.w,
-        qH.x, qH.y, qH.z, qH.w,
-        qH2.x, qH2.y, qH2.z, qH2.w,
-        qH.x, qH.y, qH.z, qH.w
-      ]));
-    }
+    // Head alert scanning
+    const hIdleRot = makeRotTrack('Bip001_Head_055', timesIdle, [0, 0.03, 0, -0.03, 0], yAxis);
+    if (hIdleRot) idleTracks.push(hIdleRot);
 
-    // Left Upper Arm
-    const lArm = bones['Bip001_L_UpperArm_08'];
-    if (lArm) {
-      const qA = lArm.quaternion.clone();
-      const qA1 = qA.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.03));
-      idleTracks.push(new THREE.QuaternionKeyframeTrack(lArm.name + '.quaternion', timesIdle, [
-        qA.x, qA.y, qA.z, qA.w,
-        qA1.x, qA1.y, qA1.z, qA1.w,
-        qA.x, qA.y, qA.z, qA.w,
-        qA1.x, qA1.y, qA1.z, qA1.w,
-        qA.x, qA.y, qA.z, qA.w
-      ]));
-    }
+    // Right arm holding knife at ready
+    const rArmIdle = makeRotTrack('Bip001_R_UpperArm_032', timesIdle, [0.42, 0.44, 0.42, 0.43, 0.42], zAxis);
+    if (rArmIdle) idleTracks.push(rArmIdle);
+    const rForearmIdle = makeRotTrack('Bip001_R_Forearm_033', timesIdle, [1.25, 1.28, 1.25, 1.27, 1.25], zAxis);
+    if (rForearmIdle) idleTracks.push(rForearmIdle);
 
-    // Right Upper Arm
-    const rArm = bones['Bip001_R_UpperArm_032'];
-    if (rArm) {
-      const qRA = rArm.quaternion.clone();
-      const qRA1 = qRA.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.03));
-      idleTracks.push(new THREE.QuaternionKeyframeTrack(rArm.name + '.quaternion', timesIdle, [
-        qRA.x, qRA.y, qRA.z, qRA.w,
-        qRA1.x, qRA1.y, qRA1.z, qRA1.w,
-        qRA.x, qRA.y, qRA.z, qRA.w,
-        qRA1.x, qRA1.y, qRA1.z, qRA1.w,
-        qRA.x, qRA.y, qRA.z, qRA.w
-      ]));
-    }
+    // Left arm raised defensive guard
+    const lArmIdle = makeRotTrack('Bip001_L_UpperArm_08', timesIdle, [-0.20, -0.22, -0.20, -0.21, -0.20], zAxis);
+    if (lArmIdle) idleTracks.push(lArmIdle);
+    const lForearmIdle = makeRotTrack('Bip001_L_Forearm_09', timesIdle, [0.60, 0.63, 0.60, 0.62, 0.60], zAxis);
+    if (lForearmIdle) idleTracks.push(lForearmIdle);
 
-    const idleClip = new THREE.AnimationClip('Idle', 2.4, idleTracks);
+    // Grounded stance legs (soft knees, wide stable base)
+    const lThighIdle = makeRotTrack('Bip001_L_Thigh_057', timesIdle, [0.04, 0.04, 0.04, 0.04, 0.04], zAxis);
+    if (lThighIdle) idleTracks.push(lThighIdle);
+    const rThighIdle = makeRotTrack('Bip001_R_Thigh_061', timesIdle, [-0.04, -0.04, -0.04, -0.04, -0.04], zAxis);
+    if (rThighIdle) idleTracks.push(rThighIdle);
+    const lCalfIdle = makeRotTrack('Bip001_L_Calf_058', timesIdle, [-0.08, -0.08, -0.08, -0.08, -0.08], zAxis);
+    if (lCalfIdle) idleTracks.push(lCalfIdle);
+    const rCalfIdle = makeRotTrack('Bip001_R_Calf_062', timesIdle, [-0.08, -0.08, -0.08, -0.08, -0.08], zAxis);
+    if (rCalfIdle) idleTracks.push(rCalfIdle);
+
+    const idleClip = new THREE.AnimationClip('Idle', 2.4, idleTracks.filter(Boolean));
 
     // ==========================================
-    // 2. WALK CLIP (1.0s loop: full biped gait cycle)
+    // 2. WALK CLIP (1.2s loop: 2-step bipedal gait cycle, 1.20m stride)
+    // Synchronized at 0.80 timeScale (1.50s effective duration -> v = 0.80 m/s)
     // ==========================================
-    const timesWalk = [0, 0.25, 0.5, 0.75, 1.0];
+    const timesWalk = [0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2];
     const walkTracks = [];
 
-    // Left Thigh
-    const lThigh = bones['Bip001_L_Thigh_057'];
-    if (lThigh) {
-      const qRest = lThigh.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.38));
-      const q1 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.05));
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.32));
-      const q3 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.12));
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(lThigh.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Pelvis vertical bounce (dip at double support, rise at midstance)
+    const pelvisPos = makePosTrack('Bip001_Pelvis_03', timesWalk, [
+      [0, -0.02, 0], [0, 0.01, 0], [0, 0.022, 0], [0, 0.0, 0],
+      [0, -0.02, 0], [0, 0.01, 0], [0, 0.022, 0], [0, 0.0, 0], [0, -0.02, 0]
+    ]);
+    if (pelvisPos) walkTracks.push(pelvisPos);
 
-    // Right Thigh (Opposite phase)
-    const rThigh = bones['Bip001_R_Thigh_061'];
-    if (rThigh) {
-      const qRest = rThigh.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.32));
-      const q1 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.12));
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.38));
-      const q3 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.05));
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(rThigh.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Pelvis yaw swivel (hip forward with swinging leg)
+    const pelvisYaw = makeRotTrack('Bip001_Pelvis_03', timesWalk, [
+      0.07, 0.03, 0.0, -0.04, -0.07, -0.03, 0.0, 0.04, 0.07
+    ], yAxis);
+    if (pelvisYaw) walkTracks.push(pelvisYaw);
 
-    // Left Calf (Knee Flexion during recovery swing t=0.75)
-    const lCalf = bones['Bip001_L_Calf_058'];
-    if (lCalf) {
-      const qRest = lCalf.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.05));
-      const q1 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.0));
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.05));
-      const q3 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.45));
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(lCalf.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Left Thigh (Sagittal pitch on Z: heel strike -> stance -> toe off -> swing)
+    const lThighWalk = makeRotTrack('Bip001_L_Thigh_057', timesWalk, [
+      0.38, 0.20, 0.0, -0.22, -0.30, -0.15, 0.12, 0.36, 0.38
+    ], zAxis);
+    if (lThighWalk) walkTracks.push(lThighWalk);
 
-    // Right Calf (Knee Flexion during recovery swing t=0.25)
-    const rCalf = bones['Bip001_R_Calf_062'];
-    if (rCalf) {
-      const qRest = rCalf.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.05));
-      const q1 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.45));
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.05));
-      const q3 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.0));
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(rCalf.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Right Thigh (Phase shifted by 0.6s)
+    const rThighWalk = makeRotTrack('Bip001_R_Thigh_061', timesWalk, [
+      -0.30, -0.15, 0.12, 0.36, 0.38, 0.20, 0.0, -0.22, -0.30
+    ], zAxis);
+    if (rThighWalk) walkTracks.push(rThighWalk);
 
-    // Left Upper Arm (Swings forward when right thigh swings forward at t=0.5)
-    if (lArm) {
-      const qRest = lArm.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.28));
-      const q1 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.0));
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.32));
-      const q3 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.0));
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(lArm.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Left Calf (Knee flexion on Z during swing for ground clearance)
+    const lCalfWalk = makeRotTrack('Bip001_L_Calf_058', timesWalk, [
+      0.05, 0.12, 0.0, -0.10, -0.35, -0.85, -0.95, -0.18, 0.05
+    ], zAxis);
+    if (lCalfWalk) walkTracks.push(lCalfWalk);
 
-    // Right Upper Arm (Swings forward when left thigh swings forward at t=0.0)
-    if (rArm) {
-      const qRest = rArm.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.32));
-      const q1 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.0));
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.28));
-      const q3 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.0));
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(rArm.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Right Calf (Knee flexion on Z during swing, phase shifted)
+    const rCalfWalk = makeRotTrack('Bip001_R_Calf_062', timesWalk, [
+      -0.35, -0.85, -0.95, -0.18, 0.05, 0.12, 0.0, -0.10, -0.35
+    ], zAxis);
+    if (rCalfWalk) walkTracks.push(rCalfWalk);
 
-    // Spine counter-rotation
-    if (spine) {
-      const qRest = spine.quaternion.clone();
-      const q0 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, 0.04));
-      const q1 = qRest.clone();
-      const q2 = qRest.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, -0.04));
-      const q3 = qRest.clone();
-      const q4 = q0.clone();
-      walkTracks.push(new THREE.QuaternionKeyframeTrack(spine.name + '.quaternion', timesWalk, [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-        q4.x, q4.y, q4.z, q4.w
-      ]));
-    }
+    // Left Foot (Ankle pitch on Z: heel strike dorsiflexion -> flat -> push-off)
+    const lFootWalk = makeRotTrack('Bip001_L_Foot_059', timesWalk, [
+      0.16, 0.0, 0.0, -0.15, -0.32, 0.05, 0.0, 0.14, 0.16
+    ], zAxis);
+    if (lFootWalk) walkTracks.push(lFootWalk);
 
-    const walkClip = new THREE.AnimationClip('Walk', 1.0, walkTracks);
+    // Right Foot (Phase shifted)
+    const rFootWalk = makeRotTrack('Bip001_R_Foot_063', timesWalk, [
+      -0.32, 0.05, 0.0, 0.14, 0.16, 0.0, 0.0, -0.15, -0.32
+    ], zAxis);
+    if (rFootWalk) walkTracks.push(rFootWalk);
+
+    // Spine aggressive forward threat lean
+    const spineLean = makeRotTrack('Bip001_Spine_04', timesWalk, [
+      0.08, 0.07, 0.06, 0.07, 0.08, 0.07, 0.06, 0.07, 0.08
+    ], zAxis);
+    if (spineLean) walkTracks.push(spineLean);
+
+    // Spine counter-swivel yaw (balances pelvis rotation)
+    const spineYaw = makeRotTrack('Bip001_Spine_04', timesWalk, [
+      -0.05, -0.02, 0.0, 0.03, 0.05, 0.02, 0.0, -0.03, -0.05
+    ], yAxis);
+    if (spineYaw) walkTracks.push(spineYaw);
+
+    // Head stabilized towards target
+    const headWalk = makeRotTrack('Bip001_Head_055', timesWalk, [
+      0.02, 0.0, -0.02, 0.0, 0.02, 0.0, -0.02, 0.0, 0.02
+    ], yAxis);
+    if (headWalk) walkTracks.push(headWalk);
+
+    // Right Arm: Knife held poised at ready with rhythmic muscular step tension
+    const rArmWalk = makeRotTrack('Bip001_R_UpperArm_032', timesWalk, [
+      0.45, 0.43, 0.41, 0.43, 0.45, 0.47, 0.49, 0.47, 0.45
+    ], zAxis);
+    if (rArmWalk) walkTracks.push(rArmWalk);
+    const rForearmWalk = makeRotTrack('Bip001_R_Forearm_033', timesWalk, [
+      1.25, 1.23, 1.20, 1.23, 1.25, 1.28, 1.30, 1.28, 1.25
+    ], zAxis);
+    if (rForearmWalk) walkTracks.push(rForearmWalk);
+
+    // Left Arm: Counter-swing balancing opposite leg
+    const lArmWalk = makeRotTrack('Bip001_L_UpperArm_08', timesWalk, [
+      -0.24, -0.10, 0.10, 0.26, 0.32, 0.20, 0.0, -0.18, -0.24
+    ], zAxis);
+    if (lArmWalk) walkTracks.push(lArmWalk);
+    const lForearmWalk = makeRotTrack('Bip001_L_Forearm_09', timesWalk, [
+      0.35, 0.45, 0.55, 0.50, 0.40, 0.45, 0.55, 0.45, 0.35
+    ], zAxis);
+    if (lForearmWalk) walkTracks.push(lForearmWalk);
+
+    const walkClip = new THREE.AnimationClip('Walk', 1.2, walkTracks.filter(Boolean));
 
     return { idleClip, walkClip };
   }
 
-  setAnimation(name, duration = 0.5) {
+  setAnimation(name, duration = 0.8) {
     if (!this.actions || !this.actions[name]) return;
     const nextAction = this.actions[name];
     const prevAction = this.activeAction;
@@ -568,21 +772,282 @@ export class TaserScene {
     // Reset and enable incoming action
     nextAction.reset();
     nextAction.enabled = true;
-    nextAction.setEffectiveTimeScale(name === 'Walk' ? 0.65 : 1.0);
+    nextAction.setEffectiveTimeScale(name === 'Walk' ? 0.80 : 1.0);
     nextAction.setEffectiveWeight(1.0);
 
     // Smoothly blend from previous action with warp: true for realistic weight transfer and synchronized phase
     if (prevAction) {
-      nextAction.crossFadeFrom(prevAction, duration, true);
+      prevAction.crossFadeTo(nextAction, duration, true);
+    } else {
+      nextAction.fadeIn(duration);
     }
 
     nextAction.play();
     this.activeAction = nextAction;
   }
 
-  update(delta) {
-    if (this.mixer && !this.figureFallen && this.show3DModel) {
+  cacheBones(root) {
+    this.cachedBones = {
+      rUpperArm: null,
+      rForearm: null,
+      rHand: null,
+      lUpperArm: null,
+      lForearm: null,
+      lHand: null,
+      fingers: []
+    };
+
+    root.traverse((c) => {
+      const rawName = c.name || '';
+      const name = rawName.replace(/\s+/g, '_');
+
+      // Right arm chain (supports Mixamo, UE Biped, and Generic rigs)
+      if (!this.cachedBones.rUpperArm && (name === 'mixamorigRightArm' || name.includes('R_UpperArm') || name === 'RightArm')) {
+        this.cachedBones.rUpperArm = c;
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+      if (!this.cachedBones.rForearm && (name === 'mixamorigRightForeArm' || name.includes('R_Forearm') || name === 'RightForeArm')) {
+        this.cachedBones.rForearm = c;
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+      if (!this.cachedBones.rHand && (name === 'mixamorigRightHand' || name.includes('R_Hand') || name === 'RightHand')) {
+        this.cachedBones.rHand = c;
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+
+      // Left arm chain
+      if (!this.cachedBones.lUpperArm && (name === 'mixamorigLeftArm' || name.includes('L_UpperArm') || name === 'LeftArm')) {
+        this.cachedBones.lUpperArm = c;
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+      if (!this.cachedBones.lForearm && (name === 'mixamorigLeftForeArm' || name.includes('L_Forearm') || name === 'LeftForeArm')) {
+        this.cachedBones.lForearm = c;
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+      if (!this.cachedBones.lHand && (name === 'mixamorigLeftHand' || name.includes('L_Hand') || name === 'LeftHand')) {
+        this.cachedBones.lHand = c;
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+
+      // Finger bones for tight clenched fists
+      if (rawName && /Finger[0-9]/i.test(rawName) && !/Nub/i.test(rawName)) {
+        this.cachedBones.fingers.push(c);
+        c.userData.restQuaternion = c.quaternion.clone();
+      }
+    });
+
+    console.log('[TaserScene] Cached arm bones for procedural manipulation:', {
+      rUpperArm: this.cachedBones.rUpperArm?.name,
+      rForearm: this.cachedBones.rForearm?.name,
+      lUpperArm: this.cachedBones.lUpperArm?.name,
+      lForearm: this.cachedBones.lForearm?.name,
+      fingersCount: this.cachedBones.fingers.length
+    });
+  }
+
+  applyProceduralArmPoses(delta, scenarioState = {}) {
+    if (!this.cachedBones.rUpperArm) return;
+
+    const rUpper = this.cachedBones.rUpperArm;
+    const rFore = this.cachedBones.rForearm;
+    const lUpper = this.cachedBones.lUpperArm;
+    const lFore = this.cachedBones.lForearm;
+
+    const restRU = rUpper.userData.restQuaternion || rUpper.quaternion;
+    const restRF = rFore ? (rFore.userData.restQuaternion || rFore.quaternion) : null;
+    const restLU = lUpper ? (lUpper.userData.restQuaternion || lUpper.quaternion) : null;
+    const restLF = lFore ? (lFore.userData.restQuaternion || lFore.quaternion) : null;
+
+    const isTasedOrFallen = this.isTased || this.figureFallen;
+
+    // 1. NMI / VILA / FALLET: Släpp attacken omedelbart och slerpa alla ben tillbaka till vilopose
+    if (isTasedOrFallen) {
+      this.armOverrideWeight = THREE.MathUtils.damp(this.armOverrideWeight, 0.0, 10.0, delta);
+      this.updateWeaponVisibility();
+
+      const returnSpeed = Math.min(1.0, 8.5 * delta);
+      rUpper.quaternion.slerp(restRU, returnSpeed);
+      if (rFore && restRF) rFore.quaternion.slerp(restRF, returnSpeed);
+      if (lUpper && restLU) lUpper.quaternion.slerp(restLU, returnSpeed);
+      if (lFore && restLF) lFore.quaternion.slerp(restLF, returnSpeed);
+
+      if (this.cachedBones.fingers && this.cachedBones.fingers.length > 0) {
+        for (let i = 0; i < this.cachedBones.fingers.length; i++) {
+          const f = this.cachedBones.fingers[i];
+          if (f.userData.restQuaternion) {
+            f.quaternion.slerp(f.userData.restQuaternion, returnSpeed);
+          }
+        }
+      }
+      return;
+    }
+
+    if (!this.show3DModel) {
+      this.armOverrideWeight = 0;
+      this.updateWeaponVisibility();
+      return;
+    }
+
+    const isScenarioActive = !!scenarioState.isScenarioActive;
+    const threatLevel = typeof scenarioState.threatLevel === 'number' ? scenarioState.threatLevel : 0;
+    const isAttackActive = isScenarioActive && threatLevel >= 2;
+    const targetWeight = isAttackActive ? 1.0 : 0.0;
+
+    this.armOverrideWeight = THREE.MathUtils.damp(this.armOverrideWeight, targetWeight, 6.0, delta);
+    this.updateWeaponVisibility();
+
+    if (this.armOverrideWeight < 0.001) {
+      const restSpeed = Math.min(1.0, 6.0 * delta);
+      rUpper.quaternion.slerp(restRU, restSpeed);
+      if (rFore && restRF) rFore.quaternion.slerp(restRF, restSpeed);
+      if (lUpper && restLU) lUpper.quaternion.slerp(restLU, restSpeed);
+      if (lFore && restLF) lFore.quaternion.slerp(restLF, restSpeed);
+
+      if (this.cachedBones.fingers && this.cachedBones.fingers.length > 0) {
+        for (let i = 0; i < this.cachedBones.fingers.length; i++) {
+          const f = this.cachedBones.fingers[i];
+          if (f.userData.restQuaternion) {
+            f.quaternion.slerp(f.userData.restQuaternion, restSpeed);
+          }
+        }
+      }
+      return;
+    }
+
+    const isMixamo = (rUpper.name || '').toLowerCase().includes('mixamo');
+    const weapon = (scenarioState.threatWeapon || this.activeThreatWeapon || 'KNIFE').toUpperCase();
+
+    // =========================================================================
+    // 1. KNYTNÄVAR / OBEVÄPNAD (SYMMETRISK BOXARGARD PÅ BÅDA SIDOR)
+    // =========================================================================
+    if (weapon === 'FISTS') {
+      if (isMixamo) {
+        // Mixamo Standard Rig:
+        // Höger och vänster axel lyfts uppåt/framåt
+        this._qDelta.setFromEuler(new THREE.Euler(0.85, -0.35, -0.20, 'XYZ'));
+        this._qTarget.copy(restRU).multiply(this._qDelta);
+        rUpper.quaternion.copy(rUpper.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+
+        if (rFore && restRF) {
+          // Höger underarm: kraftig flexion (~95°) inåt/uppåt
+          this._qDelta.setFromEuler(new THREE.Euler(0.0, 1.65, 0.0, 'XYZ'));
+          this._qTarget.copy(restRF).multiply(this._qDelta);
+          rFore.quaternion.copy(rFore.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+
+        if (lUpper && restLU) {
+          // Vänster axel: spegling
+          this._qDelta.setFromEuler(new THREE.Euler(0.85, 0.35, 0.20, 'XYZ'));
+          this._qTarget.copy(restLU).multiply(this._qDelta);
+          lUpper.quaternion.copy(lUpper.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+
+        if (lFore && restLF) {
+          // Vänster underarm: speglad flexion
+          this._qDelta.setFromEuler(new THREE.Euler(0.0, -1.65, 0.0, 'XYZ'));
+          this._qTarget.copy(restLF).multiply(this._qDelta);
+          lFore.quaternion.copy(lFore.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+      } else {
+        // UE Mannequin Biped Rig:
+        // Transversell rotation runt lokal Z-axel:
+        // Överarmar lyfts framåt/uppåt (-0.40 rad):
+        this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -0.40);
+        this._qTarget.copy(restRU).multiply(this._qDelta);
+        rUpper.quaternion.copy(rUpper.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+
+        if (rFore && restRF) {
+          // Höger armbåge böjs kraftigt inåt/uppåt (-1.45 rad / ~85 grader) framför hakan/bröstet
+          this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -1.45);
+          this._qTarget.copy(restRF).multiply(this._qDelta);
+          rFore.quaternion.copy(rFore.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+
+        if (lUpper && restLU) {
+          // Vänster överarm lyfts symmetriskt (-0.40 rad)
+          this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -0.40);
+          this._qTarget.copy(restLU).multiply(this._qDelta);
+          lUpper.quaternion.copy(lUpper.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+
+        if (lFore && restLF) {
+          // Vänster armbåge böjs symmetriskt inåt/uppåt (-1.45 rad)
+          this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -1.45);
+          this._qTarget.copy(restLF).multiply(this._qDelta);
+          lFore.quaternion.copy(lFore.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+      }
+
+      // Knytnävar (Stängda fingrar):
+      if (this.cachedBones.fingers && this.cachedBones.fingers.length > 0) {
+        for (let i = 0; i < this.cachedBones.fingers.length; i++) {
+          const f = this.cachedBones.fingers[i];
+          const restF = f.userData.restQuaternion || f.quaternion;
+          this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -0.65);
+          this._qTarget.copy(restF).multiply(this._qDelta);
+          f.quaternion.copy(f.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+      }
+
+    } else {
+      // =========================================================================
+      // 2. BEVÄPNAD (KNIV ELLER BATONG)
+      // Höger arm pekar framåt med vapnet riktat mot målet
+      // Vänster arm intar defensiv gard
+      // =========================================================================
+      if (isMixamo) {
+        this._qDelta.setFromAxisAngle(this._v1.set(1, 0, 0), 0.45);
+        this._qTarget.copy(restRU).multiply(this._qDelta);
+        rUpper.quaternion.copy(rUpper.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+
+        if (rFore && restRF) {
+          this._qDelta.setFromAxisAngle(this._v1.set(1, 0, 0), 0.30);
+          this._qTarget.copy(restRF).multiply(this._qDelta);
+          rFore.quaternion.copy(rFore.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+      } else {
+        // UE Biped:
+        this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -0.35);
+        this._qTarget.copy(restRU).multiply(this._qDelta);
+        rUpper.quaternion.copy(rUpper.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+
+        if (rFore && restRF) {
+          this._qDelta.setFromAxisAngle(this._v1.set(0, 0, 1), -0.30);
+          this._qTarget.copy(restRF).multiply(this._qDelta);
+          rFore.quaternion.copy(rFore.quaternion).slerp(this._qTarget, this.armOverrideWeight);
+        }
+      }
+
+      // Släpp knutna fingrar tillbaka till neutralt grepp runt vapnet
+      if (this.cachedBones.fingers && this.cachedBones.fingers.length > 0) {
+        for (let i = 0; i < this.cachedBones.fingers.length; i++) {
+          const f = this.cachedBones.fingers[i];
+          if (f.userData.restQuaternion) {
+            f.quaternion.slerp(f.userData.restQuaternion, Math.min(1.0, 6.0 * delta));
+          }
+        }
+      }
+    }
+  }
+
+  update(delta, scenarioState = {}) {
+    if (this.isTased && this.taserGroup) {
+      // PROCEDURAL STIFF FALL (TRÄDFALLET)
+      // When NMI is triggered, mixer is frozen (timeScale = 0).
+      // Rotate whole taserGroup backwards around heels smoothly with gravitational acceleration:
+      this.updateStiffFall(delta);
+
+      // Smoothly relax arms to neutral resting pose flat along torso sides so they don't point up in the air
+      this.applyProceduralArmPoses(delta, scenarioState);
+    } else if (this.mixer && !this.figureFallen && this.show3DModel) {
+      // 1. Advance base keyframe skeletal animation
       this.mixer.update(delta);
+
+      // 2. PROCEDURAL BONE MANIPULATION (LATE UPDATE)
+      // Runs EXPLICITLY after mixer.update(delta) has evaluated animation clips,
+      // but BEFORE scene rendering, safely blending the arms into attack poses
+      // while lower body walking/stride continues uninterrupted!
+      this.applyProceduralArmPoses(delta, scenarioState);
     }
     if (this.aiPose) {
       this.aiPose.update(delta);
@@ -771,25 +1236,88 @@ export class TaserScene {
     return { hit1: null, hit2: null, hitWall1: true, hitWall2: true };
   }
 
-  collapseTarget() {
-    if (this.figureFallen || !this.taserGroup) return;
+  triggerNMI(onImpact) {
+    if (this.isTased) return;
+    this.isTased = true;
     this.figureFallen = true;
+    this.groundImpactDone = false;
+    this.fallVelocity = 0.0;
+    this.onGroundImpactCallback = onImpact;
 
-    // Fade out active animation action when collapsing
-    if (this.activeAction) {
-      this.activeAction.fadeOut(0.2);
+    // 1. FREEZE ANIMATION MIXER IMMEDIATELY (Muskellåsning)
+    // Tetanic muscle lock: freeze animation in the exact current frame (boxer guard, knife thrust, running)
+    if (this.mixer) {
+      this.mixer.timeScale = 0.0;
     }
 
-    if (this.fallInterval) clearInterval(this.fallInterval);
-    let fallAngle = 0;
-    this.fallInterval = setInterval(() => {
-      fallAngle -= 0.08;
-      this.taserGroup.rotation.x = fallAngle;
-      if (fallAngle <= -Math.PI / 2 + 0.2) {
-        clearInterval(this.fallInterval);
-        this.fallInterval = null;
+    // 2. Cache starting position before fall
+    if (this.taserGroup) {
+      if (!this.taserGroup.userData.preFallPos) {
+        this.taserGroup.userData.preFallPos = this.taserGroup.position.clone();
+      } else {
+        this.taserGroup.userData.preFallPos.copy(this.taserGroup.position);
       }
-    }, 20);
+    }
+  }
+
+  updateStiffFall(delta) {
+    if (!this.isTased || !this.taserGroup) return;
+
+    const targetAngle = -Math.PI / 2; // Flat on back (-90 degrees)
+    const currentAngle = this.taserGroup.rotation.x;
+
+    if (currentAngle > targetAngle + 0.005) {
+      // Gravitational acceleration: angular velocity increases as center of mass shifts backwards
+      const progress = Math.abs(currentAngle) / (Math.PI / 2); // 0 to 1
+      const gravAccel = 4.2 + Math.sin(progress * Math.PI * 0.5) * 11.5; // rad/s^2
+      this.fallVelocity += gravAccel * delta;
+
+      let nextAngle = currentAngle - this.fallVelocity * delta;
+      if (nextAngle <= targetAngle) {
+        nextAngle = targetAngle;
+        if (!this.groundImpactDone) {
+          this.groundImpactDone = true;
+          this.onGroundImpact();
+        }
+      }
+      this.taserGroup.rotation.x = nextAngle;
+
+      // Anti-clipping floor clearance offset:
+      // A human body has a depth/thickness of ~0.24m. As the body rotates -90 deg onto its back,
+      // elevate base so shoulders, back and head rest flat on y = 0 without cutting into floor!
+      const theta = Math.abs(nextAngle);
+      const cosT = Math.cos(theta);
+
+      const basePos = this.taserGroup.userData.preFallPos || this.taserGroup.userData.startPos || this._v1.set(0, 0, 0);
+
+      // Vertical elevation to avoid cutting through virtual floor:
+      const floorClearance = (1.0 - cosT) * 0.12;
+      this.taserGroup.position.y = basePos.y + floorClearance;
+
+      // Heel anchor shift so the feet stay grounded as the rotational fulcrum
+      const heelAnchorOffset = (1.0 - cosT) * 0.06;
+      this.taserGroup.position.z = basePos.z - heelAnchorOffset;
+    } else {
+      // Fully settled flat on the floor
+      this.taserGroup.rotation.x = targetAngle;
+      const basePos = this.taserGroup.userData.preFallPos || this.taserGroup.userData.startPos || this._v1.set(0, 0, 0);
+      this.taserGroup.position.y = basePos.y + 0.12;
+      this.taserGroup.position.z = basePos.z - 0.06;
+    }
+  }
+
+  onGroundImpact() {
+    // Tactile haptic floor impact
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([60, 30, 80]); } catch (_) {}
+    }
+    if (this.onGroundImpactCallback) {
+      this.onGroundImpactCallback();
+    }
+  }
+
+  collapseTarget(onImpact) {
+    this.triggerNMI(onImpact);
   }
 
   resetTarget() {
@@ -797,14 +1325,45 @@ export class TaserScene {
       clearInterval(this.fallInterval);
       this.fallInterval = null;
     }
+    this.isTased = false;
     this.figureFallen = false;
+    this.groundImpactDone = false;
+    this.fallVelocity = 0.0;
+    this.armOverrideWeight = 0;
+    this.updateWeaponVisibility();
+
     if (this.taserGroup) {
       this.taserGroup.rotation.x = 0;
-      if (this.taserGroup.userData.startPos) {
-        this.taserGroup.position.copy(this.taserGroup.userData.startPos);
+      this.taserGroup.rotation.y = 0;
+      this.taserGroup.rotation.z = 0;
+      const startPos = this.taserGroup.userData.startPos || new THREE.Vector3(0, 0, 0);
+      this.taserGroup.position.copy(startPos);
+      if (this.taserGroup.userData.preFallPos) {
+        this.taserGroup.userData.preFallPos.copy(startPos);
       }
     }
     this.clearWiresAndDarts();
+
+    // 5. Återställning: Dra ur pilar, nollställ fall och sätt igång AnimationMixer igen (timeScale = 1.0)
+    if (this.mixer) {
+      this.mixer.timeScale = 1.0;
+    }
+
+    // Reset arm bones explicitly to cached rest quaternions
+    if (this.cachedBones) {
+      if (this.cachedBones.rUpperArm && this.cachedBones.rUpperArm.userData.restQuaternion) {
+        this.cachedBones.rUpperArm.quaternion.copy(this.cachedBones.rUpperArm.userData.restQuaternion);
+      }
+      if (this.cachedBones.rForearm && this.cachedBones.rForearm.userData.restQuaternion) {
+        this.cachedBones.rForearm.quaternion.copy(this.cachedBones.rForearm.userData.restQuaternion);
+      }
+      if (this.cachedBones.lUpperArm && this.cachedBones.lUpperArm.userData.restQuaternion) {
+        this.cachedBones.lUpperArm.quaternion.copy(this.cachedBones.lUpperArm.userData.restQuaternion);
+      }
+      if (this.cachedBones.lForearm && this.cachedBones.lForearm.userData.restQuaternion) {
+        this.cachedBones.lForearm.quaternion.copy(this.cachedBones.lForearm.userData.restQuaternion);
+      }
+    }
 
     // Reset skeletal animation back to 'Idle'
     this.setAnimation('Idle', 0.2);
@@ -874,24 +1433,36 @@ export class TaserScene {
       this.taserGroup.visible = isVisible;
       this.taserGroup.traverse((child) => {
         if (child.isMesh) {
+          // Keep Raycasting hitboxes 100% invisible to the user at all times
+          if (child.userData && child.userData.isHitbox) {
+            if (child.material) {
+              child.material.transparent = true;
+              child.material.opacity = 0.0;
+              child.material.colorWrite = false;
+              child.material.depthWrite = false;
+            }
+            return;
+          }
           // If GLTF mannequin is loaded, keep the procedural box dummyBody hidden
           if (this.hasGLBMannequin && child === this.dummyBody) {
             child.visible = false;
             return;
           }
-          // Knife visibility is controlled separately by threat escalation
-          if (child === this.knifeMesh || (child.parent && child.parent === this.knifeMesh)) {
+          // Knife and Baton visibility is controlled separately by threat escalation
+          if (
+            child === this.knifeMesh || (child.parent && child.parent === this.knifeMesh) ||
+            child === this.batonMesh || (child.parent && child.parent === this.batonMesh)
+          ) {
             return;
           }
           child.visible = isVisible;
           if (child.material) {
             child.material.colorWrite = true;
-            if (child.material.opacity === 0) {
-              child.material.opacity = 1.0;
-            }
+            child.material.opacity = 1.0;
           }
         }
       });
+      this.updateWeaponVisibility();
     }
   }
 
@@ -1182,10 +1753,12 @@ export class TaserScene {
 
   onResize() {
     if (!this.container || !this.renderer || !this.camera) return;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const width = this.container.clientWidth || (this.container.parentElement ? this.container.parentElement.clientWidth : 0);
+    const height = this.container.clientHeight || (this.container.parentElement ? this.container.parentElement.clientHeight : 0);
+    if (width <= 0 || height <= 0) return;
+
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(width, height, true);
   }
 }

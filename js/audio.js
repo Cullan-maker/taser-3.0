@@ -181,6 +181,33 @@ export class TaserAudio {
     }
   }
 
+  playBodyFallSound() {
+    this.init();
+    if (!this.audioCtx) return;
+
+    try {
+      const now = this.audioCtx.currentTime;
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+
+      // Heavy body impact thud (85Hz down to 26Hz with soft low-end resonance)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(85, now);
+      osc.frequency.exponentialRampToValueAtTime(26, now + 0.28);
+
+      gain.gain.setValueAtTime(0.85, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+
+      osc.connect(gain);
+      gain.connect(this.pannerNode || this.audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.34);
+    } catch (e) {
+      console.warn('Audio playBodyFall failed:', e);
+    }
+  }
+
   startElectricSound() {
     this.init();
     if (!this.audioCtx) return;
