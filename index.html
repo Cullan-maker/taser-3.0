@@ -130,14 +130,20 @@
             z-index: 5;
         }
 
-        .camera-feed {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            z-index: 1;
+        .camera-feed,
+        #camera-feed {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            object-fit: cover !important;
+            z-index: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
             display: none;
         }
 
@@ -380,18 +386,7 @@
         }
 
         .warning-arc {
-            position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 105px;
-            height: 20px;
-            background: repeating-linear-gradient(90deg, transparent, transparent 5px, #a8eb12 8px, #ffffff 12px);
-            filter: drop-shadow(0 0 8px #a8eb12) drop-shadow(0 0 16px #a8eb12);
-            border-radius: 8px;
-            display: none;
-            animation: electricity 0.05s infinite alternate;
-            z-index: 20;
+            display: none !important;
         }
 
         .sights { display: flex; justify-content: center; gap: 34px; padding-top: 6px; }
@@ -440,39 +435,103 @@
             letter-spacing: 1px;
             transition: all 0.2s;
         }
-        .display-screen.inverted { background-color: #ffff00; color: #050505; text-shadow: none; }
+        /* INVERTERAT LÄGE / FUNKTIONSKONTROLL (GUL BAKGRUND, SVART TEXT & IKONER) */
+        .display-screen.oled-inverted,
+        .display-screen.funk-mode,
+        .display-screen.inverted {
+            background-color: #ffff00 !important;
+            background: #ffff00 !important;
+            color: #050505 !important;
+            text-shadow: none !important;
+            border: 1px solid rgba(0,0,0,0.4);
+        }
+        .display-screen.oled-inverted *,
+        .display-screen.funk-mode *,
+        .display-screen.inverted *,
+        .display-screen.oled-inverted .funk-text,
+        .display-screen.funk-mode .funk-text {
+            color: #050505 !important;
+            text-shadow: none !important;
+        }
         .display-screen.dimmed { opacity: 0.25; }
 
         .display-icons { display: flex; gap: 8px; align-items: flex-end; padding-bottom: 2px; }
         .chamber-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 
         .icon-cassette { width: 22px; height: 22px; border: 2px solid rgba(255,255,255,0.15); border-radius: 2px; }
-        .inverted .icon-cassette { border-color: rgba(0,0,0,0.25); }
         .icon-cassette.loaded { border-color: #ffff00; box-shadow: 0 0 5px rgba(255,255,0,0.3); }
-        .inverted .icon-cassette.loaded { border-color: #050505; box-shadow: none; }
         .icon-cassette.fired {
             border-color: #ffff00;
             background: linear-gradient(to top right, transparent calc(50% - 2px), #ffff00 calc(50% - 1px), #ffff00 calc(50% + 1px), transparent calc(50% + 2px)),
                         linear-gradient(to bottom right, transparent calc(50% - 2px), #ffff00 calc(50% - 1px), #ffff00 calc(50% + 1px), transparent calc(50% + 2px));
         }
+
+        /* Inverterade kassetter i Funktionskontroll */
+        .oled-inverted .icon-cassette,
+        .funk-mode .icon-cassette,
+        .inverted .icon-cassette {
+            border-color: rgba(0,0,0,0.35) !important;
+        }
+        .oled-inverted .icon-cassette.loaded,
+        .funk-mode .icon-cassette.loaded,
+        .inverted .icon-cassette.loaded {
+            border-color: #050505 !important;
+            box-shadow: none !important;
+        }
+        .oled-inverted .icon-cassette.fired,
+        .funk-mode .icon-cassette.fired,
         .inverted .icon-cassette.fired {
-            border-color: #050505;
+            border-color: #050505 !important;
             background: linear-gradient(to top right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px)),
-                        linear-gradient(to bottom right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px));
+                        linear-gradient(to bottom right, transparent calc(50% - 2px), #050505 calc(50% - 1px), #050505 calc(50% + 1px), transparent calc(50% + 2px)) !important;
         }
 
         .icon-battery-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 5px; }
         .batt-nub { width: 7px; height: 3px; background-color: transparent; }
         .batt-body { width: 13px; height: 23px; border: 2px solid rgba(255,255,255,0.15); box-sizing: border-box; border-radius: 1px; }
-        .inverted .batt-body { border-color: rgba(0,0,0,0.25); }
         .icon-battery-wrap.full .batt-nub { background-color: #ffff00; }
         .icon-battery-wrap.full .batt-body { background-color: #ffff00; border-color: #ffff00; }
-        .inverted .icon-battery-wrap.full .batt-nub { background-color: #050505; }
-        .inverted .icon-battery-wrap.full .batt-body { background-color: #050505; border-color: #050505; }
+
+        /* Inverterat batteri i Funktionskontroll */
+        .oled-inverted .batt-body,
+        .funk-mode .batt-body,
+        .inverted .batt-body {
+            border-color: rgba(0,0,0,0.35) !important;
+        }
+        .oled-inverted .icon-battery-wrap.full .batt-nub,
+        .funk-mode .icon-battery-wrap.full .batt-nub,
+        .inverted .icon-battery-wrap.full .batt-nub {
+            background-color: #050505 !important;
+        }
+        .oled-inverted .icon-battery-wrap.full .batt-body,
+        .funk-mode .icon-battery-wrap.full .batt-body,
+        .inverted .icon-battery-wrap.full .batt-body {
+            background-color: #050505 !important;
+            border-color: #050505 !important;
+        }
 
         .active-line { width: 26px; height: 3px; background-color: transparent; }
         .active-line.show { background-color: #ffff00; }
-        .inverted .active-line.show { background-color: #050505; }
+        .oled-inverted .active-line.show,
+        .funk-mode .active-line.show,
+        .inverted .active-line.show {
+            background-color: #050505 !important;
+        }
+
+        /* SVG-ikoner i inverterat läge */
+        .oled-inverted svg,
+        .funk-mode svg,
+        .inverted svg {
+            fill: #050505 !important;
+            stroke: #050505 !important;
+            color: #050505 !important;
+        }
+        .oled-inverted svg *,
+        .funk-mode svg *,
+        .inverted svg * {
+            fill: #050505 !important;
+            stroke: #050505 !important;
+        }
 
         /* AMBIDEXTROUS VARNINGSKNAPPAR (Symmetriska för enhands/tvåhandsgrepp) */
         .warning-btn-wrapper { position: absolute; top: 96px; width: 22px; height: 52px; }
@@ -524,40 +583,53 @@
         .safety-switch.unsafe::after { left: 38px; }
         .safety-label { text-align: center; font-weight: bold; margin-top: 4px; color: #111; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
 
-        /* KONTROLLPANEL (TUM-ZON FÖR STÅENDE GREPP) */
+        /* KONTROLLPANEL (TUM-ZON FÖR STÅENDE GREPP - TASER 7 POLYMER-CHASSI) */
         .sim-controls {
             width: min(295px, 92vw);
-            background-color: #2c3e50;
-            padding: 16px 8px 8px 8px;
-            border-radius: 0 0 14px 14px;
-            box-shadow: 0 10px 22px rgba(0,0,0,0.85);
+            background: linear-gradient(180deg, #1e2229 0%, #131519 100%);
+            padding: 16px 8px 10px 8px;
+            border-radius: 0 0 16px 16px;
+            box-shadow: 0 14px 30px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08);
             margin-top: -14px;
-            border: 2px solid #1a252f;
-            border-top: none;
+            border: 2px solid #2c313a;
+            border-top: 1px solid #101215;
             position: relative;
             z-index: 1;
             flex-shrink: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
         }
 
         button.action-btn {
             width: 100%;
-            background: linear-gradient(to bottom, #34495e 0%, #2c3e50 100%);
-            color: white;
-            border: 1px solid #1a252f;
+            background: linear-gradient(180deg, #2f343e 0%, #1e2127 100%);
+            color: #e4e7eb;
+            border: 1px solid #101215;
+            border-top: 1px solid rgba(255,255,255,0.18);
+            border-bottom: 1px solid rgba(0,0,0,0.7);
             padding: 8px 4px;
             margin-bottom: 4px;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
-            font-weight: bold;
+            font-weight: 700;
             font-size: 9px;
             touch-action: manipulation;
-            transition: 0.1s;
-            box-shadow: 0 2px 0 #1a252f, inset 0 1px 0 rgba(255,255,255,0.1);
+            transition: transform 0.06s ease, box-shadow 0.06s ease, background 0.06s ease;
+            box-shadow: 0 3px 0 #0b0d10, 0 4px 8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.4);
             text-transform: uppercase;
-            letter-spacing: 1px;
-            min-height: 36px;
+            letter-spacing: 0.8px;
+            min-height: 38px;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
-        button.action-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; }
+        button.action-btn:active,
+        button.action-btn.active-press {
+            transform: translateY(2px) !important;
+            box-shadow: 0 1px 0 #0b0d10, inset 0 2px 4px rgba(0,0,0,0.75) !important;
+            background: linear-gradient(180deg, #17191d 0%, #23272f 100%) !important;
+        }
 
         .btn-grid-compact {
             display: grid;
@@ -569,63 +641,116 @@
 
         /* PRIMÄR AVFYRA-KNAPP (STOR, ERGONOMISK TUMKNAPP) */
         .btn-trigger {
-            background: linear-gradient(to bottom, #c0392b 0%, #a93226 100%) !important;
-            border-color: #7b241c !important;
+            background: linear-gradient(180deg, #d32f2f 0%, #b71c1c 50%, #8e1515 100%) !important;
+            border: 1px solid #5a0e0e !important;
+            border-top: 1px solid rgba(255,255,255,0.35) !important;
+            color: #ffffff !important;
             font-size: 13px !important;
+            font-weight: 900 !important;
             padding: 12px 6px !important;
             text-transform: uppercase;
-            box-shadow: 0 4px 0 #7b241c, inset 0 1px 0 rgba(255,255,255,0.2);
+            box-shadow: 0 4px 0 #420808, 0 7px 14px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -2px 0 rgba(0,0,0,0.45) !important;
             margin-top: 4px !important;
             margin-bottom: 6px !important;
             width: 100%;
             min-height: 48px;
             letter-spacing: 1.5px;
+            text-shadow: 0 -1px 2px rgba(0,0,0,0.8);
         }
-        .btn-trigger:active { box-shadow: 0 0 0 #7b241c; transform: translateY(3px); }
+        .btn-trigger:active,
+        .btn-trigger.active-press {
+            box-shadow: 0 1px 0 #420808, inset 0 3px 6px rgba(0,0,0,0.85) !important;
+            transform: translateY(3px) !important;
+            background: linear-gradient(180deg, #8e1515 0%, #b71c1c 100%) !important;
+        }
 
-        .btn-warn { border-color: rgba(241, 196, 15, 0.5) !important; color: #f1c40f !important; }
-        .btn-info { background: linear-gradient(to bottom, #2980b9 0%, #2471a3 100%) !important; border-color: #1a252f !important; }
-        .btn-clothing { background: linear-gradient(to bottom, #8e44ad 0%, #732d91 100%) !important; border-color: #5b2272 !important; }
-        .btn-voice { background: linear-gradient(to bottom, #16a085 0%, #117864 100%) !important; border-color: #0e6252 !important; }
-        .btn-voice.listening { background: linear-gradient(to bottom, #27ae60 0%, #219653 100%) !important; border-color: #2ecc71 !important; color: white !important; box-shadow: 0 0 8px rgba(46, 204, 113, 0.8) !important; }
-        .btn-gyro { background: linear-gradient(to bottom, #34495e 0%, #2c3e50 100%) !important; border-color: #1a252f !important; }
-        .btn-gyro.active-gyro { background: linear-gradient(to bottom, #27ae60 0%, #219653 100%) !important; border-color: #2ecc71 !important; color: white !important; box-shadow: 0 0 8px rgba(46, 204, 113, 0.8) !important; }
-        .btn-cmd { background: #1a252f !important; font-size: 8px !important; padding: 4px 2px !important; border-color: #2c3e50 !important; color: #bdc3c7 !important; min-height: 28px !important; }
-        .btn-cmd:active { color: #f1c40f !important; border-color: #f1c40f !important; }
+        .btn-warn {
+            border-color: rgba(241, 196, 15, 0.6) !important;
+            color: #f1c40f !important;
+            box-shadow: 0 3px 0 #0b0d10, inset 0 1px 0 rgba(241, 196, 15, 0.2) !important;
+        }
+        .btn-info {
+            background: linear-gradient(180deg, #243342 0%, #18222c 100%) !important;
+            border-color: #0f171e !important;
+            color: #9ac2e8 !important;
+        }
+        .btn-clothing {
+            background: linear-gradient(180deg, #3a2b48 0%, #251b2e 100%) !important;
+            border-color: #17111c !important;
+            color: #d2a8f0 !important;
+        }
+        .btn-voice {
+            background: linear-gradient(180deg, #1d3e38 0%, #122824 100%) !important;
+            border-color: #0b1a17 !important;
+            color: #79d7c4 !important;
+        }
+        .btn-voice.listening {
+            background: linear-gradient(180deg, #27ae60 0%, #1e8449 100%) !important;
+            border-color: #145a32 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 10px rgba(46, 204, 113, 0.7), 0 3px 0 #0e3e22 !important;
+        }
+        .btn-gyro {
+            background: linear-gradient(180deg, #2f343e 0%, #1e2127 100%) !important;
+        }
+        .btn-gyro.active-gyro {
+            background: linear-gradient(180deg, #27ae60 0%, #1e8449 100%) !important;
+            border-color: #145a32 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 10px rgba(46, 204, 113, 0.7), 0 3px 0 #0e3e22 !important;
+        }
+        .btn-cmd {
+            background: #14171a !important;
+            font-size: 8px !important;
+            padding: 4px 2px !important;
+            border-color: #22262c !important;
+            color: #bdc3c7 !important;
+            min-height: 28px !important;
+        }
+        .btn-cmd:active, .btn-cmd.active-press { color: #f1c40f !important; border-color: #f1c40f !important; }
 
         .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
         .status-box {
-            background: #050505;
-            padding: 4px;
+            background: #08090b;
+            padding: 6px 4px;
             text-align: center;
-            border-radius: 3px;
+            border-radius: 4px;
             font-size: 9px;
-            font-weight: bold;
+            font-weight: 800;
             border: 1px solid rgba(231, 76, 60, 0.5);
             color: #e74c3c;
-            letter-spacing: 1px;
+            letter-spacing: 0.8px;
             text-transform: uppercase;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.05);
         }
         .status-box.ok { border-color: rgba(46, 204, 113, 0.5); color: #2ecc71; }
         .status-box.stealth { border-color: rgba(155, 89, 182, 0.5); color: #9b59b6; grid-column: span 2; }
 
         .btn-kontaktstot {
-            background: linear-gradient(to bottom, #e67e22 0%, #d35400 100%) !important;
-            border-color: #ba4a00 !important;
+            background: linear-gradient(180deg, #e67e22 0%, #d35400 50%, #a04000 100%) !important;
+            border: 1px solid #6e2c00 !important;
+            border-top: 1px solid rgba(255,255,255,0.3) !important;
+            color: #ffffff !important;
             font-size: 11px !important;
+            font-weight: 800 !important;
             padding: 8px !important;
             display: none;
-            box-shadow: 0 3px 0 #ba4a00, inset 0 1px 0 rgba(255,255,255,0.2);
+            box-shadow: 0 3px 0 #562300, 0 5px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25) !important;
             margin-bottom: 6px !important;
             width: 100%;
             min-height: 40px;
         }
-        .btn-kontaktstot:active { box-shadow: 0 0 0 #ba4a00; transform: translateY(2px); }
+        .btn-kontaktstot:active,
+        .btn-kontaktstot.active-press {
+            box-shadow: 0 1px 0 #562300, inset 0 2px 4px rgba(0,0,0,0.8) !important;
+            transform: translateY(2px) !important;
+        }
 
         /* TAKTISK SCENARIO / PROCEDUR-KNAPP */
         .btn-scenario {
-            background: linear-gradient(to bottom, #d35400 0%, #b94a00 100%) !important;
+            background: linear-gradient(180deg, #d35400 0%, #b94a00 50%, #873600 100%) !important;
             border: 1px solid #e67e22 !important;
+            border-top: 1px solid rgba(255,255,255,0.3) !important;
             color: #ffffff !important;
             font-size: 11px !important;
             font-weight: 800 !important;
@@ -634,22 +759,23 @@
             width: 100%;
             min-height: 42px;
             margin-bottom: 6px !important;
-            box-shadow: 0 3px 0 #873600, inset 0 1px 0 rgba(255,255,255,0.25);
+            box-shadow: 0 3px 0 #562300, 0 5px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25);
             text-transform: uppercase;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
         }
-        .btn-scenario:active {
-            box-shadow: 0 0 0 #873600;
+        .btn-scenario:active,
+        .btn-scenario.active-press {
+            box-shadow: 0 1px 0 #562300, inset 0 2px 5px rgba(0,0,0,0.8) !important;
             transform: translateY(2px);
         }
         .btn-scenario.active-attack {
-            background: linear-gradient(to bottom, #c0392b 0%, #922b21 100%) !important;
+            background: linear-gradient(180deg, #c0392b 0%, #922b21 100%) !important;
             border-color: #e74c3c !important;
             animation: pulseAttack 1.2s infinite alternate;
         }
         @keyframes pulseAttack {
-            0% { box-shadow: 0 0 8px rgba(231, 76, 60, 0.4), 0 3px 0 #641e16; }
-            100% { box-shadow: 0 0 18px rgba(231, 76, 60, 0.9), 0 3px 0 #641e16; }
+            0% { box-shadow: 0 0 8px rgba(231, 76, 60, 0.4), 0 3px 0 #4a150e; }
+            100% { box-shadow: 0 0 18px rgba(231, 76, 60, 0.9), 0 3px 0 #4a150e; }
         }
 
         .log-box {
@@ -686,41 +812,62 @@
         }
         .btn-confirm:active { background: #219653 !important; transform: translateY(3px); box-shadow: 0 0 0 #1e8449; }
 
-        /* WEBXR & AR-ACTIVE FULLSKÄRMSTRANSPARENS */
+        /* WEBXR, AR-ACTIVE & LIVE-AI FULLSKÄRMSTRANSPARENS */
         html.ar-active,
         html.webxr-mode,
+        html.live-ai-active,
         body.ar-active,
-        body.webxr-mode {
+        body.webxr-mode,
+        body.live-ai-active {
             background: transparent !important;
             background-color: transparent !important;
         }
 
         body.ar-active .simulator-wrapper,
-        body.webxr-mode .simulator-wrapper {
+        body.webxr-mode .simulator-wrapper,
+        body.live-ai-active .simulator-wrapper {
             background: transparent !important;
             background-color: transparent !important;
             box-shadow: none !important;
             max-width: none !important;
             padding: 0 !important;
             margin: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
         }
 
         body.ar-active .header-bar,
-        body.webxr-mode .header-bar {
+        body.webxr-mode .header-bar,
+        body.live-ai-active .header-bar {
             display: none !important;
         }
 
-        /* ÖVRE HALVAN: VIEWPORT & THREE-CANVAS TVINGAS TILL 100% TRANSPARENS */
+        /* HINDRA ATT LANDSCAPE GUARD TÄCKER AR/XR MED EN SVART SKÄRM */
+        body.ar-active #landscape-guard,
+        body.webxr-mode #landscape-guard,
+        body.live-ai-active #landscape-guard,
+        html.ar-active #landscape-guard,
+        html.webxr-mode #landscape-guard,
+        html.live-ai-active #landscape-guard {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+
+        /* ÖVRE HALVAN: VIEWPORT & THREE-CANVAS TVINGAS TILL 100% TRANSPARENS OCH HELSKÄRM */
         body.ar-active .viewport,
         body.webxr-mode .viewport,
+        body.live-ai-active .viewport,
         body.ar-active #viewport,
-        body.webxr-mode #viewport {
+        body.webxr-mode #viewport,
+        body.live-ai-active #viewport {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            max-height: none !important;
+            height: 100dvh !important;
+            max-height: 100vh !important;
             min-height: 0 !important;
             flex: none !important;
             border: none !important;
@@ -736,28 +883,44 @@
 
         body.ar-active #three-canvas,
         body.webxr-mode #three-canvas,
+        body.live-ai-active #three-canvas,
         body.ar-active #three-canvas canvas,
-        body.webxr-mode #three-canvas canvas {
+        body.webxr-mode #three-canvas canvas,
+        body.live-ai-active #three-canvas canvas,
+        .viewport canvas,
+        #three-canvas canvas {
             background: transparent !important;
             background-color: transparent !important;
             box-shadow: none !important;
             border: none !important;
+            width: 100vw !important;
+            height: 100vh !important;
+        }
+
+        body.ar-active .camera-feed,
+        body.live-ai-active .camera-feed,
+        body.ar-active #camera-feed,
+        body.live-ai-active #camera-feed {
+            display: block !important;
         }
 
         body.ar-active .fixed-aim-layer,
-        body.webxr-mode .fixed-aim-layer {
+        body.webxr-mode .fixed-aim-layer,
+        body.live-ai-active .fixed-aim-layer {
             pointer-events: none !important;
             z-index: 10 !important;
         }
 
         body.ar-active .hud-overlay,
-        body.webxr-mode .hud-overlay {
+        body.webxr-mode .hud-overlay,
+        body.live-ai-active .hud-overlay {
             pointer-events: none !important;
             z-index: 15 !important;
         }
 
         body.ar-active .main-container,
-        body.webxr-mode .main-container {
+        body.webxr-mode .main-container,
+        body.live-ai-active .main-container {
             position: fixed !important;
             bottom: 0 !important;
             left: 50% !important;
@@ -769,7 +932,8 @@
         }
 
         body.ar-active .sim-controls,
-        body.webxr-mode .sim-controls {
+        body.webxr-mode .sim-controls,
+        body.live-ai-active .sim-controls {
             background-color: rgba(44, 62, 80, 0.92) !important;
             box-shadow: 0 -4px 20px rgba(0,0,0,0.6) !important;
             border: 1px solid rgba(241, 196, 15, 0.4) !important;
@@ -778,7 +942,8 @@
         }
 
         body.ar-active .log-box,
-        body.webxr-mode .log-box {
+        body.webxr-mode .log-box,
+        body.live-ai-active .log-box {
             display: none !important;
         }
 
@@ -1003,11 +1168,11 @@
                     <div id="taser-display" class="display-screen"></div>
                 </div>
                 <!-- Symmetriska varningsknappar -->
-                <div class="warning-btn-wrapper left"><button class="warning-btn" id="warn-left" onclick="window.pressSingleWarning()"></button></div>
-                <div class="warning-btn-wrapper right"><button class="warning-btn" id="warn-right" onclick="window.pressSingleWarning()"></button></div>
+                <div class="warning-btn-wrapper left"><button class="warning-btn" id="warn-left"></button></div>
+                <div class="warning-btn-wrapper right"><button class="warning-btn" id="warn-right"></button></div>
                 <div class="safety-container">
                     <div>
-                        <div id="safety-switch" class="safety-switch" onclick="window.toggleSafety()"></div>
+                        <div id="safety-switch" class="safety-switch"></div>
                         <div id="safety-label" class="safety-label">SÄKRAD</div>
                     </div>
                 </div>
@@ -1022,38 +1187,34 @@
                     </div>
 
                     <!-- Primär avfyrningsknapp i tum-zon -->
-                    <button class="action-btn btn-trigger" id="btn-trigger" onclick="window.pressTrigger()">💥 AVFYRA (KLICK / SPACE)</button>
-                    <button class="action-btn btn-kontaktstot" id="btn-kontaktstot" onclick="window.performKontaktstot()">⚡ KONTAKTSTÖT (DRIVE STUN)</button>
-                    <button class="action-btn btn-scenario" id="btn-scenario" onclick="window.toggleScenario()">🚨 STARTA ANGREPP</button>
+                    <button class="action-btn btn-trigger" id="btn-trigger">⚡ AVFYRA</button>
+                    <button class="action-btn btn-kontaktstot" id="btn-kontaktstot">⚡ KONTAKTSTÖT (DRIVE STUN)</button>
+                    <button class="action-btn btn-scenario" id="btn-scenario">🚨 STARTA ANGREPP</button>
                     
                     <div class="btn-grid-compact">
-                        <button class="action-btn" onclick="window.toggleCassette()">⏏️ Kassett</button>
-                        <button class="action-btn" onclick="window.toggleBattery()">🔋 Batteri</button>
-                        <button class="action-btn btn-stealth" onclick="window.activateStealth()">🥷 Dolt</button>
+                        <button class="action-btn" id="btn-cassette">⏏️ Kassett</button>
+                        <button class="action-btn" id="btn-battery">🔋 Batteri</button>
+                        <button class="action-btn btn-stealth" id="btn-stealth">🥷 Dolt</button>
                     </div>
                     
                     <div class="btn-grid-compact">
-                        <button class="action-btn" onclick="window.tiltWeapon()">🔄 Tilt (Z/X)</button>
-                        <button class="action-btn btn-warn" id="btn-warn" onclick="window.pressDualWarning()">⚠️ Funk. Kontroll</button>
-                        <button class="action-btn btn-reset" onclick="window.resetSimulator()">♻️ Återställ</button>
+                        <button class="action-btn" id="btn-tilt">🔄 Vinkla (Tilt)</button>
+                        <button class="action-btn btn-warn" id="btn-warn">⚠️ Funk. Kontroll</button>
+                        <button class="action-btn btn-reset" id="btn-reset">♻️ Återställ</button>
                     </div>
                     <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr 1fr;">
-                        <button class="action-btn btn-clothing" id="btn-clothing" onclick="window.toggleClothing()">🧥 Kläder: NORMAL</button>
-                        <button class="action-btn btn-voice" id="btn-voice" onclick="window.toggleVoice()">🎙️ Röst: AV</button>
-                        <button class="action-btn btn-gyro" id="btn-gyro" onclick="window.initGyro()">📱 Gyro: AV</button>
+                        <button class="action-btn btn-clothing" id="btn-clothing">🧥 Kläder: NORMAL</button>
+                        <button class="action-btn btn-voice" id="btn-voice">🎙️ Röst: AV</button>
+                        <button class="action-btn btn-gyro" id="btn-gyro">📱 Gyro: AV</button>
                     </div>
 
                     <div id="secondary-controls">
-                        <div class="btn-grid-compact">
-                            <button class="action-btn btn-camera" id="btn-camera" onclick="window.toggleCamera()">🤖 Live AI (Kamera)</button>
-                            <button class="action-btn" id="btn-webxr" onclick="window.openScenarioModal()">🌐 WebXR</button>
-                            <button class="action-btn" id="btn-place" onclick="window.togglePlaceMode()">📍 Flytta figur</button>
+                        <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr;">
+                            <button class="action-btn" id="btn-webxr">🌐 WebXR Scenarier</button>
+                            <button class="action-btn" id="btn-place">📍 Flytta figur</button>
                         </div>
-
-                        <div class="btn-grid-compact">
-                            <button class="action-btn" onclick="window.initGyro()">🎯 Kalibrera Gyro</button>
-                            <button class="action-btn btn-invert" id="btn-invert" onclick="window.toggleInvertMouse()">↕️ Inv. Mus</button>
-                            <button class="action-btn btn-info" onclick="window.openModal('info-modal')">ℹ️ Lathund</button>
+                        <div style="margin-top: 4px;">
+                            <button class="action-btn btn-info" id="btn-info">ℹ️ Taktisk Lathund & Manual</button>
                         </div>
                     </div>
 
@@ -1062,7 +1223,7 @@
                 <div id="placement-controls">
                     <p style="color: #2ecc71; font-size: 11px; font-weight: bold; margin-bottom: 3px; margin-top: 0;">📍 AR Placeringsläge</p>
                     <p style="color: #ecf0f1; font-size: 10px; margin-bottom: 10px;">Rikta kameran mot golvet och vänta på markören. Tryck nedan när det ser bra ut.</p>
-                    <button class="action-btn btn-confirm" onclick="window.confirmPlacement()">✅ FASTSTÄLL POSITION</button>
+                    <button class="action-btn btn-confirm" id="btn-confirm">✅ FASTSTÄLL POSITION</button>
                 </div>
 
                 <div class="log-box" id="log"></div>
@@ -1073,20 +1234,20 @@
     <!-- WebXR / AR Scenario Modal -->
     <div id="scenario-modal" class="modal-overlay">
         <div class="modal-content">
-            <button class="modal-close" onclick="window.closeModal('scenario-modal')">×</button>
+            <button class="modal-close" id="btn-close-scenario" onclick="window.closeModal('scenario-modal')">×</button>
             <h2>Välj Träningsläge</h2>
             <p style="font-size: 10px; color: #bdc3c7; margin-bottom: 8px;">Välj mellan verklig människa via Live AI-kamera eller virtuell 3D-modell i rummet.</p>
-            <button id="btn-start-real-person-xr" class="scenario-btn" onclick="window.startRealPersonAI()" style="border: 2px solid #2ecc71; background: rgba(46, 204, 113, 0.15);">
+            <button id="btn-start-real-person-xr" class="scenario-btn" style="border: 2px solid #2ecc71; background: rgba(46, 204, 113, 0.15);">
                 🤖 1. STARTA MED VERKLIG PERSON I WEBXR (LIVE AI)
                 <span style="color:#2ecc71; font-weight:bold;">Ingen 3D-figur! Läser av en verklig person i rummet med dynamiska träffzoner.</span>
             </button>
             <div style="font-size: 10px; color: #bdc3c7; margin: 4px 0 10px 0; padding: 6px; background: rgba(0,0,0,0.3); border-radius: 4px;">
                 💡 <b>Tips för mobil:</b> Om preview-rutan blockerar kameran, <a href="https://ais-pre-oqfnntkcjbmle7zu7sxpze-521049562048.europe-west2.run.app" target="_blank" style="color:#f1c40f; text-decoration:underline; font-weight:bold;">klicka här för att öppna i egen flik</a> så startar telefonens fysiska bakre kamera direkt utan GitHub!
             </div>
-            <button class="scenario-btn" onclick="window.startXR('static')">2. VIRTUELL FIGUR (STATISKT MÅL)<span>Placerar den gröna 3D-figuren stillastående på golvet.</span></button>
-            <button class="scenario-btn" onclick="window.startXR('moving')">3. VIRTUELL FIGUR (RÖRLIGT MÅL)<span>Den gröna 3D-figuren rör sig i sidled i rummet.</span></button>
-            <button class="scenario-btn" onclick="window.startXR('charging')">4. VIRTUELL FIGUR (ANSTORMNING)<span>Den gröna 3D-figuren rusar aggressivt mot din position!</span></button>
-            <button class="action-btn" onclick="window.closeModal('scenario-modal')" style="margin-top:12px; background:#c0392b;">Avbryt</button>
+            <button class="scenario-btn" id="btn-xr-static">2. VIRTUELL FIGUR (STATISKT MÅL)<span>Placerar den gröna 3D-figuren stillastående på golvet.</span></button>
+            <button class="scenario-btn" id="btn-xr-moving">3. VIRTUELL FIGUR (RÖRLIGT MÅL)<span>Den gröna 3D-figuren rör sig i sidled i rummet.</span></button>
+            <button class="scenario-btn" id="btn-xr-charging">4. VIRTUELL FIGUR (ANSTORMNING)<span>Den gröna 3D-figuren rusar aggressivt mot din position!</span></button>
+            <button class="action-btn" id="btn-cancel-scenario" style="margin-top:12px; background:#c0392b;">Avbryt</button>
         </div>
     </div>
 

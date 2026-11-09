@@ -189,28 +189,63 @@ export class TaserAudio {
     this.updateMediaSessionPlayback('playing');
 
     try {
+      // 1. High-voltage power supply transformer buzz (sawtooth 58-65 Hz)
       this.electricOsc = this.audioCtx.createOscillator();
       this.electricGain = this.audioCtx.createGain();
 
-      // TASER 7 operates at 19 pulses per second with high harmonic content
       this.electricOsc.type = 'sawtooth';
-      this.electricOsc.frequency.setValueAtTime(55, this.audioCtx.currentTime);
-
-      this.electricGain.gain.setValueAtTime(0.7, this.audioCtx.currentTime);
+      this.electricOsc.frequency.setValueAtTime(58, this.audioCtx.currentTime);
+      this.electricGain.gain.setValueAtTime(0.55, this.audioCtx.currentTime);
 
       this.electricOsc.connect(this.electricGain);
       this.electricGain.connect(this.pannerNode || this.audioCtx.destination);
-
       this.electricOsc.start();
 
-      // Spark jitter
+      // 2. High-frequency explosive spark snaps (50,000V ionization discharge)
+      // Generates procedural white noise burst buffer
+      const noiseLen = Math.floor(this.audioCtx.sampleRate * 0.04); // 40ms burst
+      const noiseBuffer = this.audioCtx.createBuffer(1, noiseLen, this.audioCtx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noiseLen; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (noiseLen * 0.25));
+      }
+
+      this.playSparkSnap = () => {
+        if (!this.audioCtx || this.audioCtx.state === 'closed') return;
+        try {
+          const noiseSrc = this.audioCtx.createBufferSource();
+          noiseSrc.buffer = noiseBuffer;
+
+          const filter = this.audioCtx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(2600 + Math.random() * 1400, this.audioCtx.currentTime);
+          filter.Q.setValueAtTime(2.8, this.audioCtx.currentTime);
+
+          const snapGain = this.audioCtx.createGain();
+          snapGain.gain.setValueAtTime(0.85, this.audioCtx.currentTime);
+          snapGain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.035);
+
+          noiseSrc.connect(filter);
+          filter.connect(snapGain);
+          snapGain.connect(this.pannerNode || this.audioCtx.destination);
+
+          noiseSrc.start();
+          noiseSrc.stop(this.audioCtx.currentTime + 0.04);
+        } catch (_) {}
+      };
+
+      // Play immediate first snap for instant auditory response
+      this.playSparkSnap();
+
+      // TASER 7 discharges at ~19-22 pulses per second (approx every 48ms)
       this.electricInterval = setInterval(() => {
         if (this.electricGain && this.electricOsc && this.audioCtx) {
-          const jitterGain = Math.random() * 0.4 + 0.6;
+          const jitterGain = Math.random() * 0.35 + 0.45;
           this.electricGain.gain.setValueAtTime(jitterGain, this.audioCtx.currentTime);
-          this.electricOsc.frequency.setValueAtTime(50 + Math.random() * 65, this.audioCtx.currentTime);
+          this.electricOsc.frequency.setValueAtTime(54 + Math.random() * 65, this.audioCtx.currentTime);
+          this.playSparkSnap();
         }
-      }, 30);
+      }, 48);
     } catch (e) {
       console.warn('Audio startElectric failed:', e);
     }
@@ -222,10 +257,11 @@ export class TaserAudio {
       clearInterval(this.electricInterval);
       this.electricInterval = null;
     }
+    this.playSparkSnap = null;
     if (this.electricOsc && this.electricGain && this.audioCtx) {
       try {
-        this.electricGain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.08);
-        this.electricOsc.stop(this.audioCtx.currentTime + 0.09);
+        this.electricGain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.05);
+        this.electricOsc.stop(this.audioCtx.currentTime + 0.06);
       } catch (e) {}
       this.electricOsc = null;
       this.electricGain = null;

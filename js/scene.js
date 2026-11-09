@@ -126,6 +126,11 @@ export class TaserScene {
     this.taserGroup.userData.startPos = new THREE.Vector3(0, 0, 0);
     this.scene.add(this.taserGroup);
 
+    // First-Person TASER Weapon Model Group (Camera-synced local space)
+    this.taserModel = new THREE.Group();
+    this.taserModel.name = 'Taser7_FirstPersonModel';
+    this.scene.add(this.taserModel);
+
     // Composite Procedural Dummy Mannequin (Fallback + Zones)
     this.setupFallbackMannequin();
 
@@ -134,6 +139,9 @@ export class TaserScene {
 
     // Floor and Placement Marker
     this.setupGroundAndMarker();
+
+    // High-Voltage Warning Arc (Three.js 3D Dynamic Arc)
+    this.setupWarningArc();
 
     // Load Retopologized UE Mannequin if available
     this.loadGLBMannequin();
@@ -847,18 +855,305 @@ export class TaserScene {
     if (this.renderer) {
       this.renderer.setClearColor(0x000000, 0);
     }
+    setTimeout(() => this.onResize(), 50);
   }
 
   disableARMode() {
     this.scene.background = this.defaultBackground;
     if (this.renderer) {
-      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.setClearColor(0x0a0a0a, 1.0);
     }
+    setTimeout(() => this.onResize(), 50);
   }
 
   set3DVisibility(isVisible) {
     this.show3DModel = isVisible;
     if (this.taserGroup) this.taserGroup.visible = isVisible;
+  }
+
+  createArcGlowTexture() {
+    if (this._arcGlowTexture) return this._arcGlowTexture;
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+    grad.addColorStop(0.2, 'rgba(180, 245, 255, 0.95)');
+    grad.addColorStop(0.45, 'rgba(0, 220, 255, 0.6)');
+    grad.addColorStop(0.8, 'rgba(0, 160, 255, 0.15)');
+    grad.addColorStop(1.0, 'rgba(0, 120, 255, 0.0)');
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+
+    this._arcGlowTexture = new THREE.CanvasTexture(canvas);
+    this._arcGlowTexture.colorSpace = THREE.SRGBColorSpace;
+    return this._arcGlowTexture;
+  }
+
+  setupWarningArc() {
+    this.warningArcActive = false;
+    this.warningArcSegments = 14;
+
+    // Pre-allocated Vector3 curve points for zero heap allocation in render loop
+    this.curvePoints = Array.from({ length: this.warningArcSegments + 1 }, () => new THREE.Vector3());
+
+    // 1. Procedural TASER 7 Muzzle Housing & Physical Electrode Pins
+    // Local coordinates: positioned at x = ±0.045, y = -0.038, z = -0.22 in front of camera
+    this.muzzleModel = new THREE.Group();
+    this.muzzleModel.name = 'Taser7_MuzzleAssembly';
+    this.muzzleModel.frustumCulled = false;
+
+    const pinGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.016, 8);
+    const pinMat = new THREE.MeshStandardMaterial({
+      color: 0xeeeeee,
+      metalness: 0.95,
+      roughness: 0.15,
+      depthTest: false,
+      depthWrite: false
+    });
+
+    const leftPin = new THREE.Mesh(pinGeo, pinMat);
+    leftPin.position.set(-0.045, -0.038, -0.22);
+    leftPin.rotation.x = Math.PI / 2;
+    leftPin.frustumCulled = false;
+    leftPin.renderOrder = 998;
+    this.muzzleModel.add(leftPin);
+
+    const rightPin = new THREE.Mesh(pinGeo, pinMat);
+    rightPin.position.set(0.045, -0.038, -0.22);
+    rightPin.rotation.x = Math.PI / 2;
+    rightPin.frustumCulled = false;
+    rightPin.renderOrder = 998;
+    this.muzzleModel.add(rightPin);
+
+    // Yellow cartridge bay hoods
+    const hoodMat = new THREE.MeshStandardMaterial({
+      color: 0xf1c40f,
+      roughness: 0.35,
+      metalness: 0.25,
+      depthTest: false,
+      depthWrite: false
+    });
+    const leftHood = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.018, 0.022), hoodMat);
+    leftHood.position.set(-0.045, -0.048, -0.224);
+    leftHood.frustumCulled = false;
+    leftHood.renderOrder = 998;
+    this.muzzleModel.add(leftHood);
+
+    const rightHood = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.018, 0.022), hoodMat);
+    rightHood.position.set(0.045, -0.048, -0.224);
+    rightHood.frustumCulled = false;
+    rightHood.renderOrder = 998;
+    this.muzzleModel.add(rightHood);
+
+    // Matte black composite frame bridge
+    const bridgeMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1a1a,
+      roughness: 0.8,
+      metalness: 0.2,
+      depthTest: false,
+      depthWrite: false
+    });
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.014, 0.02), bridgeMat);
+    bridge.position.set(0, -0.048, -0.226);
+    bridge.frustumCulled = false;
+    bridge.renderOrder = 998;
+    this.muzzleModel.add(bridge);
+
+    this.muzzleModel.visible = false;
+    this.taserModel.add(this.muzzleModel);
+
+    // 2. Initial Straight Baseline Curve Points
+    const xL = -0.045, yL = -0.038, zL = -0.22;
+    const xR = 0.045, yR = -0.038, zR = -0.22;
+    for (let i = 0; i <= this.warningArcSegments; i++) {
+      const t = i / this.warningArcSegments;
+      this.curvePoints[i].set(xL + (xR - xL) * t, yL, zL);
+    }
+    const initialCurve = new THREE.CatmullRomCurve3(this.curvePoints);
+
+    // 3. Volumetric Outer Cyan Glow Tube (THREE.Mesh + THREE.TubeGeometry)
+    // Physical 3D volume (8.4mm diameter) completely bypasses WebGL 1-pixel line restriction!
+    this.warningArcTubeGeo = new THREE.TubeGeometry(initialCurve, 14, 0.0042, 8, false);
+    this.warningArcTubeMat = new THREE.MeshBasicMaterial({
+      color: 0x00f7ff,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+      side: THREE.DoubleSide
+    });
+    this.warningArcTubeMesh = new THREE.Mesh(this.warningArcTubeGeo, this.warningArcTubeMat);
+    this.warningArcTubeMesh.visible = false;
+    this.warningArcTubeMesh.renderOrder = 999;
+    this.warningArcTubeMesh.frustumCulled = false;
+    this.taserModel.add(this.warningArcTubeMesh);
+
+    // 4. Volumetric Inner Pure White Plasma Core Tube (4.4mm diameter)
+    // Uses NormalBlending with opacity 1.0 to guarantee solid 1.0 alpha write for WebXR alpha compositing
+    this.warningArcCoreTubeGeo = new THREE.TubeGeometry(initialCurve, 14, 0.0022, 8, false);
+    this.warningArcCoreTubeMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 1.0,
+      blending: THREE.NormalBlending,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+      side: THREE.DoubleSide
+    });
+    this.warningArcCoreTubeMesh = new THREE.Mesh(this.warningArcCoreTubeGeo, this.warningArcCoreTubeMat);
+    this.warningArcCoreTubeMesh.visible = false;
+    this.warningArcCoreTubeMesh.renderOrder = 1000;
+    this.warningArcCoreTubeMesh.frustumCulled = false;
+    this.taserModel.add(this.warningArcCoreTubeMesh);
+
+    // 5. High-Voltage Corona Sprite Cluster (Lysande THREE.Sprite orbs)
+    this.arcSpriteGroup = new THREE.Group();
+    this.arcSpriteGroup.name = 'ArcGlowSpriteCluster';
+    this.arcSpriteGroup.frustumCulled = false;
+    this.arcSpriteGroup.visible = false;
+
+    const glowTex = this.createArcGlowTexture();
+    this.arcSpriteMat = new THREE.SpriteMaterial({
+      map: glowTex,
+      color: 0xaaffff,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false
+    });
+
+    this.arcSprites = [];
+    const spriteCount = 5;
+    for (let s = 0; s < spriteCount; s++) {
+      const sprite = new THREE.Sprite(this.arcSpriteMat);
+      sprite.scale.set(0.035, 0.035, 1.0);
+      sprite.renderOrder = 1001;
+      sprite.frustumCulled = false;
+      this.arcSpriteGroup.add(sprite);
+      this.arcSprites.push(sprite);
+    }
+    this.taserModel.add(this.arcSpriteGroup);
+
+    // 6. Dynamic flickering PointLight at muzzle
+    this.warningArcLight = new THREE.PointLight(0x70d6ff, 0, 3.5, 2.0);
+    this.warningArcLight.position.set(0, yL, zL + 0.01);
+    this.taserModel.add(this.warningArcLight);
+  }
+
+  startWarningArc() {
+    this.warningArcActive = true;
+    if (this.warningArcTubeMesh) this.warningArcTubeMesh.visible = true;
+    if (this.warningArcCoreTubeMesh) this.warningArcCoreTubeMesh.visible = true;
+    if (this.muzzleModel) this.muzzleModel.visible = true;
+    if (this.arcSpriteGroup) this.arcSpriteGroup.visible = true;
+  }
+
+  stopWarningArc() {
+    this.warningArcActive = false;
+    if (this.warningArcTubeMesh) this.warningArcTubeMesh.visible = false;
+    if (this.warningArcCoreTubeMesh) this.warningArcCoreTubeMesh.visible = false;
+    if (this.muzzleModel) this.muzzleModel.visible = false;
+    if (this.arcSpriteGroup) this.arcSpriteGroup.visible = false;
+    if (this.warningArcLight) this.warningArcLight.intensity = 0;
+  }
+
+  updateWarningArc(activeCamera) {
+    if (activeCamera && this.taserModel) {
+      this.taserModel.position.copy(activeCamera.position);
+      this.taserModel.quaternion.copy(activeCamera.quaternion);
+      this.taserModel.updateMatrixWorld(true);
+    }
+
+    if (!this.warningArcActive) return;
+
+    // Local electrode coordinates on the Taser 7 muzzle
+    const xL = -0.045;
+    const yL = -0.038;
+    const zL = -0.22;
+
+    const xR = 0.045;
+    const yR = -0.038;
+    const zR = -0.22;
+
+    const dx = xR - xL;
+    const segs = this.warningArcSegments;
+
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      let x = xL + dx * t;
+      let y = yL;
+      let z = zL;
+
+      // Jitter intermediate discharge vertices with electrical convection rise
+      if (i > 0 && i < segs) {
+        const envelope = Math.sin(t * Math.PI); // 0 at electrodes, peak at midpoint
+        const jitterMag = 0.016 * envelope;
+        const jx = (Math.random() - 0.5) * (jitterMag * 0.45);
+        const jy = (Math.random() - 0.5) * jitterMag + (Math.random() * 0.007 * envelope);
+        const jz = (Math.random() - 0.5) * (jitterMag * 0.5);
+
+        x += jx;
+        y += jy;
+        z += jz;
+      }
+
+      this.curvePoints[i].set(x, y, z);
+    }
+
+    const curve = new THREE.CatmullRomCurve3(this.curvePoints);
+
+    // Dispose old tube geometries to prevent WebGL GPU memory leaks
+    if (this.warningArcTubeMesh.geometry) {
+      this.warningArcTubeMesh.geometry.dispose();
+    }
+    if (this.warningArcCoreTubeMesh.geometry) {
+      this.warningArcCoreTubeMesh.geometry.dispose();
+    }
+
+    // Recreate volumetric 3D tubes with new jagged spline curve
+    const tubeGeo = new THREE.TubeGeometry(curve, 14, 0.0042, 8, false);
+    tubeGeo.computeBoundingSphere();
+    this.warningArcTubeMesh.geometry = tubeGeo;
+    this.warningArcTubeMesh.frustumCulled = false;
+
+    const coreGeo = new THREE.TubeGeometry(curve, 14, 0.0022, 8, false);
+    coreGeo.computeBoundingSphere();
+    this.warningArcCoreTubeMesh.geometry = coreGeo;
+    this.warningArcCoreTubeMesh.frustumCulled = false;
+
+    // Position corona billboard sprites at discharge nodes
+    if (this.arcSprites && this.arcSprites.length > 0) {
+      const nodeIndices = [0, 3, 7, 11, 14];
+      for (let s = 0; s < this.arcSprites.length; s++) {
+        const pIdx = nodeIndices[s];
+        if (this.curvePoints[pIdx]) {
+          this.arcSprites[s].position.copy(this.curvePoints[pIdx]);
+          const scale = (s === 0 || s === this.arcSprites.length - 1)
+            ? (Math.random() * 0.01 + 0.035) // intense electrode contact flare
+            : (Math.random() * 0.015 + 0.028); // high-voltage spark orb
+          this.arcSprites[s].scale.set(scale, scale, 1.0);
+          this.arcSprites[s].material.opacity = Math.random() * 0.3 + 0.7;
+          this.arcSprites[s].frustumCulled = false;
+        }
+      }
+    }
+
+    // High-voltage flicker: intensity fluctuates dynamically between 4.0 and 8.0
+    this.warningArcLight.position.set(0, yL, zL + 0.01);
+    this.warningArcLight.intensity = Math.random() * 4.0 + 4.0;
+    this.warningArcLight.color.setHex(Math.random() > 0.2 ? 0x70d6ff : 0xffffff);
+
+    // Modulate opacity slightly for authentic strobe feel
+    this.warningArcTubeMat.opacity = Math.random() * 0.25 + 0.75;
   }
 
   onResize() {

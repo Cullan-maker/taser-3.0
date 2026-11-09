@@ -32,6 +32,7 @@ export class TaserFSM {
     this.stealthMode = false;
     this.heavyClothing = false;
     this.displayState = 'OFF'; // 'OFF' | 'BOOT' | 'FUNK_MODE' | 'ACTIVE' | 'CYCLING'
+    this.isFunkLocked = false; // Latching State för Funktionskontroll
     
     // Procedural training vs Tactical Scenario phase
     this.isScenarioActive = false;
@@ -65,10 +66,8 @@ export class TaserFSM {
     if (!this.hasBattery) return DeviceState.UNPOWERED;
     if (this.cycleTimer !== null) return DeviceState.CYCLING;
     if (this.displayState === 'BOOT') return DeviceState.BOOT;
+    if (this.isFunkLocked || this.displayState === 'FUNK_MODE') return DeviceState.FUNK_MODE;
     if (this.isSafe) return DeviceState.SAFE;
-    if (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY) {
-      return DeviceState.FUNK_MODE;
-    }
     return DeviceState.ACTIVE;
   }
 
@@ -97,6 +96,7 @@ export class TaserFSM {
         this.bootTimer = null;
       }
       this.stopCycle();
+      this.isFunkLocked = false;
       this.stealthMode = false;
       this.displayState = 'OFF';
       this.notify('LOG', { message: 'Batteri urtaget. Enhet avstängd.' });
@@ -112,9 +112,7 @@ export class TaserFSM {
             this.displayState = 'OFF';
             this.notify('LOG', { message: 'BOOT klar. Vapnet är säkrat och displayen släcks.' });
           } else {
-            this.displayState = (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY)
-              ? 'FUNK_MODE'
-              : 'ACTIVE';
+            this.displayState = 'ACTIVE';
           }
           this.notify('DISPLAY_CHANGED');
         }
@@ -159,10 +157,10 @@ export class TaserFSM {
       });
     }
 
-    if (!this.isSafe && this.hasBattery) {
-      this.displayState = (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY)
-        ? 'FUNK_MODE'
-        : 'ACTIVE';
+    if (this.isFunkLocked) {
+      this.displayState = 'FUNK_MODE';
+    } else if (!this.isSafe && this.hasBattery) {
+      this.displayState = 'ACTIVE';
     }
 
     this.notify('CASSETTE_CHANGED');
@@ -171,8 +169,9 @@ export class TaserFSM {
   }
 
   /**
-   * 2. Osäkra vapnet (utan kassetter i) -> Vapnet går in i "Funk-läge" (Infomeny).
+   * 2. Osäkra vapnet -> Vapnet går till ACTIVE (skarpt läge med sikte och svart OLED-display).
    * 4. Säkra vapnet -> Skärmen stängs av.
+   * Urstigning ur låst funktionskontroll sker ENDAST via säkringsknappen!
    */
   toggleSafety() {
     if (!this.hasBattery) {
@@ -185,6 +184,10 @@ export class TaserFSM {
       this.stopCycle();
     }
 
+    // Säkringsknappen är den ENDA interaktionen som bryter ett låst Funktionskontroll-läge
+    const wasFunkLocked = this.isFunkLocked;
+    this.isFunkLocked = false;
+
     this.isSafe = !this.isSafe;
 
     if (this.isSafe) {
@@ -195,18 +198,15 @@ export class TaserFSM {
       }
       if (this.stealthMode) this.stealthMode = false;
       this.displayState = 'OFF';
-      this.notify('LOG', { message: 'Vapnet är SÄKRAT. Display avstängd.' });
+      this.notify('LOG', {
+        message: wasFunkLocked
+          ? 'Funktionskontroll avslutad. Vapnet är SÄKRAT (display släckt).'
+          : 'Vapnet är SÄKRAT. Display avstängd.'
+      });
     } else {
-      // Osäkrat vapen:
-      // Om kassetter saknas -> FUNK_MODE (Infomeny)
-      // Om kassetter finns -> ACTIVE (Skarpt läge)
-      if (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY) {
-        this.displayState = 'FUNK_MODE';
-        this.notify('LOG', { message: "<span style='color:#f1c40f'><b>Vapnet är OSÄKRAT (utan kassetter).</b> Går in i Funktionskontroll (Infomeny).</span>" });
-      } else {
-        this.displayState = 'ACTIVE';
-        this.notify('LOG', { message: "<span style='color:#f1c40f'><b>Vapnet är OSÄKRAT.</b> Skarpt sikte aktiverat.</span>" });
-      }
+      // Osäkrat vapen: Går ALLTID till ACTIVE (skarpt läge med svart OLED-bakgrund)
+      this.displayState = 'ACTIVE';
+      this.notify('LOG', { message: "<span style='color:#f1c40f'><b>Vapnet är OSÄKRAT.</b> Skarpt sikte aktiverat.</span>" });
     }
 
     this.notify('SAFETY_CHANGED');
@@ -285,25 +285,38 @@ export class TaserFSM {
    * 3. Användaren trycker på någon av varningsknapparna -> Varningsbågen testas (visuellt och ljud).
    */
   pressSingleWarning() {
-    if (!this.hasBattery || this.isSafe || this.cycleTimer) return false;
-    const isFunk = this.displayState === 'FUNK_MODE' || (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY);
+    if (!this.hasBattery || this.cycleTimer) return false;
+    // Tillåt varningsbåge om vapnet är osäkrat ELLER i låst funktionskontroll
+    if (this.isSafe && !this.isFunkLocked && this.displayState !== 'FUNK_MODE') return false;
+
+    const isFunk = this.isFunkLocked || this.displayState === 'FUNK_MODE';
     this.startCycle(isFunk ? 'Funktionskontroll: Testar varningsbåge...' : 'Skarp varningsbåge!', 'WARNING_ARC');
     return true;
   }
 
   pressDualWarning() {
-    if (!this.hasBattery || !this.isSafe) return false;
-    this.displayState = 'BOOT';
-    this.notify('LOG', { message: 'Display (BOOT) aktiv i 3s. Firmware v1.4.10, Batteri 94%.' });
+    if (!this.hasBattery) {
+      this.notify('LOG', { message: "<span style='color:#e74c3c'>Sätt i batteri för att utföra funktionskontroll.</span>" });
+      return false;
+    }
+
+    if (this.cycleTimer) return false;
+
+    // Lås tillståndet i Funktionskontroll (Latching State)
+    this.isFunkLocked = true;
+    this.displayState = 'FUNK_MODE';
+
+    // Rensa eventuell bootTimer - INGEN timeout får någonsin släcka funktionskontrollen!
+    if (this.bootTimer) {
+      clearTimeout(this.bootTimer);
+      this.bootTimer = null;
+    }
+
+    this.notify('LOG', {
+      message: "<span style='color:#f1c40f; font-weight:bold;'>⚠️ FUNKTIONSKONTROLL AKTIVERAD:</span> Displayen är låst i gult läge med svarta ikoner. Testar varningsbåge..."
+    });
     this.notify('DISPLAY_CHANGED');
-    
-    if (this.bootTimer) clearTimeout(this.bootTimer);
-    this.bootTimer = setTimeout(() => {
-      if (this.displayState === 'BOOT' && this.isSafe) {
-        this.displayState = 'OFF';
-        this.notify('DISPLAY_CHANGED');
-      }
-    }, 3000);
+    this.startCycle('Funktionskontroll: Testar varningsbåge...', 'WARNING_ARC');
     return true;
   }
 
@@ -311,8 +324,9 @@ export class TaserFSM {
     if (this.cycleTimer) return false;
     this.cycleType = type;
     this.cycleCount = 1;
+    const isFunk = this.isFunkLocked || this.displayState === 'FUNK_MODE';
     this.displayState = 'CYCLING';
-    this.notify('CYCLE_STARTED', { message: msg, type });
+    this.notify('CYCLE_STARTED', { message: msg, type, isFunk });
     this.notify('DISPLAY_CHANGED');
 
     this.cycleTimer = setInterval(() => {
@@ -336,13 +350,13 @@ export class TaserFSM {
     this.cycleType = null;
     this.cycleCount = 0;
 
-    // Restore state after cycle
-    if (this.isSafe) {
+    // Återställ tillstånd efter cykel - låst Funktionskontroll förblir aktivt!
+    if (this.isFunkLocked) {
+      this.displayState = 'FUNK_MODE';
+    } else if (this.isSafe) {
       this.displayState = 'OFF';
     } else {
-      this.displayState = (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY)
-        ? 'FUNK_MODE'
-        : 'ACTIVE';
+      this.displayState = 'ACTIVE';
     }
 
     this.notify('CYCLE_ENDED', { type: endedType });
@@ -408,10 +422,11 @@ export class TaserFSM {
       clearTimeout(this.bootTimer);
       this.bootTimer = null;
     }
+    this.isFunkLocked = false;
     this.chamber1 = ChamberState.EMPTY;
     this.chamber2 = ChamberState.EMPTY;
     this.activeChamber = 1;
-    this.displayState = this.isSafe ? 'OFF' : 'FUNK_MODE';
+    this.displayState = this.isSafe ? 'OFF' : 'ACTIVE';
     this.notify('LOG', { message: "♻️ <span style='color:#3498db; font-weight:bold;'>RESET: Vapnet återställt till utgångsläge (tomma kassetter).</span>" });
     this.notify('RESET');
     this.notify('DISPLAY_CHANGED');

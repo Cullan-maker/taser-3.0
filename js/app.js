@@ -66,7 +66,6 @@ export class TaserApp {
     this.currentDistance = 3.0; // meters
     this.aimX = 50; // percentage
     this.aimY = 50; // percentage
-    this.invertMouseY = false;
 
     // Threat escalation & Verbal warnings
     this.threatLevel = 0;
@@ -101,10 +100,25 @@ export class TaserApp {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function' && !this.xr.gyroEnabled) {
         this.initGyro();
       }
-      return this.fsm.toggleBattery();
+      const res = this.fsm.toggleBattery();
+      this.updateDisplay();
+      return res;
     };
-    window.toggleCassette = () => this.fsm.toggleCassette();
-    window.toggleSafety = () => this.fsm.toggleSafety();
+    window.toggleCassette = () => {
+      const res = this.fsm.toggleCassette();
+      this.updateDisplay();
+      return res;
+    };
+    window.toggleSafety = () => {
+      // Omedelbar rensning av alla inverterade varningsfärger vid säkringsinteraktion
+      const dEl = document.getElementById('taser-display');
+      if (dEl) {
+        dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+      }
+      const res = this.fsm.toggleSafety();
+      this.updateDisplay();
+      return res;
+    };
     window.tiltWeapon = () => this.fsm.tiltWeapon();
     window.activateStealth = () => this.fsm.activateStealth();
     window.toggleClothing = () => this.fsm.toggleClothing();
@@ -130,22 +144,11 @@ export class TaserApp {
     window.togglePlaceMode = () => this.togglePlaceMode();
     window.confirmPlacement = () => this.confirmPlacement();
     window.initGyro = () => this.initGyro();
-    window.toggleInvertMouse = () => this.toggleInvertMouse();
     window.openModal = (id) => this.openModal(id);
     window.closeModal = (id) => this.closeModal(id);
     window.promptInstall = () => this.pwa.promptInstall();
     window.toggleVoice = () => this.voice.toggle();
     window.testVoiceCommand = (cmd) => this.voice.simulateCommand(cmd);
-
-    // Direct event listener for the real-person WebXR/AI button
-    const btnRealPerson = document.getElementById('btn-start-real-person-xr');
-    if (btnRealPerson) {
-      btnRealPerson.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.startRealPersonAI();
-      });
-    }
   }
 
   initFSMSubscriptions() {
@@ -158,13 +161,21 @@ export class TaserApp {
           bEl.textContent = fsm.hasBattery ? '🔋 Batteri i' : '🔋 Batteri ur';
           bEl.classList.toggle('ok', fsm.hasBattery);
         }
+        const btnBatt = document.getElementById('btn-battery');
+        if (btnBatt) {
+          btnBatt.style.borderColor = fsm.hasBattery ? '#2ecc71' : '';
+        }
         this.updateDisplay();
       } else if (event === 'CASSETTE_CHANGED') {
         const cEl = document.getElementById('stat-cassette');
+        const hasLoaded = fsm.chamber1 === ChamberState.LOADED;
         if (cEl) {
-          const hasLoaded = fsm.chamber1 === ChamberState.LOADED;
           cEl.textContent = hasLoaded ? '⏏️ Kassetter i' : '⏏️ Kassetter ur';
           cEl.classList.toggle('ok', hasLoaded);
+        }
+        const btnCass = document.getElementById('btn-cassette');
+        if (btnCass) {
+          btnCass.style.borderColor = hasLoaded ? '#2ecc71' : '';
         }
         if (fsm.chamber1 === ChamberState.EMPTY) {
           this.scene.clearWiresAndDarts();
@@ -173,6 +184,10 @@ export class TaserApp {
         }
         this.updateDisplay();
       } else if (event === 'SAFETY_CHANGED') {
+        const dEl = document.getElementById('taser-display');
+        if (dEl) {
+          dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+        }
         const sSwitch = document.getElementById('safety-switch');
         const sLabel = document.getElementById('safety-label');
         const secControls = document.getElementById('secondary-controls');
@@ -211,11 +226,22 @@ export class TaserApp {
           const lightning = document.getElementById('lightning');
           if (lightning) lightning.style.display = 'block';
         } else {
-          const warnArc = document.getElementById('warning-arc');
-          if (warnArc) warnArc.style.display = 'block';
+          // Warning Arc: Start Three.js 3D dynamic arc & pointlight, plus rhythmic pulse haptics
+          this.scene.startWarningArc();
+          this.startWarningArcHaptics();
         }
         this.audio.startElectricSound();
-        this.updateDisplay();
+        const dEl = document.getElementById('taser-display');
+        if (dEl) {
+          // EXKLUSIVT funktionskontroll får gul inverterad skärm
+          const isFunk = payload.isFunk && (this.fsm.isFunkLocked || this.fsm.displayState === 'FUNK_MODE') && !this.fsm.isSafe;
+          if (isFunk) {
+            dEl.classList.add('oled-inverted', 'funk-mode', 'inverted');
+          } else {
+            dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+          }
+          dEl.innerHTML = `5 SEK<br>CYKEL: 1`;
+        }
       } else if (event === 'CYCLE_TICK') {
         const dEl = document.getElementById('taser-display');
         if (dEl) {
@@ -226,14 +252,28 @@ export class TaserApp {
         if (canvas) canvas.classList.remove('flash');
         const lightning = document.getElementById('lightning');
         if (lightning) lightning.style.display = 'none';
-        const warnArc = document.getElementById('warning-arc');
-        if (warnArc) warnArc.style.display = 'none';
+
+        // Stop 3D Warning Arc and haptics
+        this.scene.stopWarningArc();
+        this.stopWarningArcHaptics();
 
         this.audio.stopElectricSound();
         this.log('Strömcykel avslutad.');
+
+        const dEl = document.getElementById('taser-display');
+        if (dEl && (!this.fsm.isFunkLocked || this.fsm.isSafe)) {
+          dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+        }
+
         this.updateDisplay();
       } else if (event === 'RESET') {
+        const dEl = document.getElementById('taser-display');
+        if (dEl) {
+          dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+        }
         this.hideNMIOverlay();
+        this.scene.stopWarningArc();
+        this.stopWarningArcHaptics();
         this.currentDistance = 3.0;
         this.aimX = 50;
         this.aimY = 50;
@@ -262,15 +302,14 @@ export class TaserApp {
         this.initGyro(true);
       }
       window.removeEventListener('pointerdown', unlockAudio);
-      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
     };
     window.addEventListener('pointerdown', unlockAudio, { once: true });
-    window.addEventListener('keydown', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
 
-    // Keyboard Shortcuts & Physical Hardware Keys
+    // Physical Hardware Volume Keys (Mapped to Warning Arc on mobile devices)
     window.addEventListener('keydown', (e) => {
-      const k = e.key.toLowerCase();
-      // Physical Volume Keys / Media Keys mapped to Warning Arc
+      const k = e.key ? e.key.toLowerCase() : '';
       if (
         k === 'audiovolumeup' || 
         k === 'audiovolumedown' || 
@@ -281,39 +320,17 @@ export class TaserApp {
       ) {
         e.preventDefault();
         window.pressSingleWarning();
-        return;
-      }
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        this.handleTrigger();
-      } else if (k === 'c' || e.key === 'Shift') {
-        e.preventDefault();
-        window.pressSingleWarning();
-      } else if (k === 'z') {
-        this.fsm.setChamber(1);
-      } else if (k === 'x') {
-        this.fsm.setChamber(2);
       }
     });
 
-    // Viewport aiming with mouse or touch
+    // Mobile Viewport Aiming via Touch
     const viewport = document.getElementById('viewport');
     if (viewport) {
-      viewport.addEventListener('mousedown', (e) => {
-        if (this.xr.placeMode) return;
-        if (e.button === 0) {
-          e.preventDefault();
-          this.handleTrigger();
-        }
-      });
-
-      const handlePointerMove = (e) => {
+      const handleTouchAim = (touch) => {
         if (this.xr.gyroEnabled || this.xr.placeMode || this.xr.xrSession) return;
         const rect = viewport.getBoundingClientRect();
-        this.aimX = ((e.clientX - rect.left) / rect.width) * 100;
-        const yPct = ((e.clientY - rect.top) / rect.height) * 100;
-        this.aimY = this.invertMouseY ? 100 - yPct : yPct;
+        this.aimX = ((touch.clientX - rect.left) / rect.width) * 100;
+        this.aimY = ((touch.clientY - rect.top) / rect.height) * 100;
 
         if (isNaN(this.aimX)) this.aimX = 50;
         if (isNaN(this.aimY)) this.aimY = 50;
@@ -323,18 +340,64 @@ export class TaserApp {
         this.updateAimVisuals();
       };
 
-      viewport.addEventListener('mousemove', handlePointerMove);
       viewport.addEventListener('touchmove', (e) => {
         if (e.touches && e.touches[0]) {
-          handlePointerMove(e.touches[0]);
+          handleTouchAim(e.touches[0]);
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches[0]) {
+          handleTouchAim(e.touches[0]);
         }
       }, { passive: true });
     }
 
+    // Touch- & pointer-optimized physical button bindings (0ms latency, haptics, mechanical depression)
+    this.setupTactileButton('btn-trigger', () => this.handleTrigger());
+    this.setupTactileButton('btn-kontaktstot', () => this.fsm.performKontaktstot());
+    this.setupTactileButton('btn-scenario', () => this.toggleScenario());
+    this.setupTactileButton('btn-cassette', () => window.toggleCassette());
+    this.setupTactileButton('btn-battery', () => window.toggleBattery());
+    this.setupTactileButton('btn-stealth', () => this.fsm.activateStealth());
+    this.setupTactileButton('btn-tilt', () => this.fsm.tiltWeapon());
+    this.setupTactileButton('btn-warn', () => window.pressDualWarning());
+    this.setupTactileButton('btn-reset', () => this.resetSimulator());
+    this.setupTactileButton('btn-clothing', () => this.fsm.toggleClothing());
+    this.setupTactileButton('btn-voice', () => this.voice.toggle());
+    this.setupTactileButton('btn-gyro', () => this.initGyro());
+    this.setupTactileButton('btn-webxr', () => this.openModal('scenario-modal'));
+    this.setupTactileButton('btn-place', () => this.togglePlaceMode());
+    this.setupTactileButton('btn-info', () => this.openModal('info-modal'));
+    this.setupTactileButton('warn-left', () => window.pressSingleWarning());
+    this.setupTactileButton('warn-right', () => window.pressSingleWarning());
+    this.setupTactileButton('safety-switch', () => window.toggleSafety());
+    this.setupTactileButton('btn-confirm', () => this.confirmPlacement());
+
+    // Scenario modal buttons
+    this.setupTactileButton('btn-start-real-person-xr', () => {
+      this.closeModal('scenario-modal');
+      this.startRealPersonAI();
+    });
+    this.setupTactileButton('btn-xr-static', () => {
+      this.closeModal('scenario-modal');
+      this.startWebXR('static');
+    });
+    this.setupTactileButton('btn-xr-moving', () => {
+      this.closeModal('scenario-modal');
+      this.startWebXR('moving');
+    });
+    this.setupTactileButton('btn-xr-charging', () => {
+      this.closeModal('scenario-modal');
+      this.startWebXR('charging');
+    });
+    this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
+    this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
+
     // Reticle placement tap in WebXR
     this.scene.renderer.domElement.addEventListener('pointerdown', (e) => {
       if (this.xr.placeMode && this.xr.xrSession) {
-        const rect = viewport.getBoundingClientRect();
+        const rect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
         const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
         const hits = this.scene.setPlacementFromScreen(x, y);
@@ -344,6 +407,62 @@ export class TaserApp {
           this.scene.placementMarker.visible = true;
         }
       }
+    });
+  }
+
+  setupTactileButton(elementOrId, callback) {
+    const el = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
+    if (!el) return;
+
+    let lastActionTs = 0;
+
+    const fireAction = (e) => {
+      const now = Date.now();
+      // Debounce window to prevent double invocation from pointerdown + synthetic click
+      if (now - lastActionTs < 350) {
+        if (e && e.cancelable) e.preventDefault();
+        return;
+      }
+      lastActionTs = now;
+
+      if (this.audio) {
+        this.audio.init();
+      }
+
+      if (navigator.vibrate) {
+        try { navigator.vibrate(14); } catch (err) {}
+      }
+
+      el.classList.add('active-press');
+
+      try {
+        callback(e);
+      } catch (err) {
+        console.error('Tactile button error on', el.id, err);
+      }
+
+      if (e && e.cancelable && e.type !== 'click') {
+        e.preventDefault();
+      }
+    };
+
+    // Primary responsive event: pointerdown gives 0ms immediate response for touch and mouse
+    el.addEventListener('pointerdown', fireAction);
+
+    const clearPress = () => el.classList.remove('active-press');
+    el.addEventListener('pointerup', clearPress);
+    el.addEventListener('pointercancel', clearPress);
+    el.addEventListener('pointerleave', clearPress);
+
+    // Click handler fallback with 400ms guard to ensure no double-fire
+    el.addEventListener('click', (e) => {
+      const now = Date.now();
+      if (now - lastActionTs < 400) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      fireAction(e);
     });
   }
 
@@ -470,24 +589,34 @@ export class TaserApp {
     if (!this.fsm.hasBattery) {
       dEl.innerHTML = '';
       dEl.className = 'display-screen';
+      dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
       this.updateProjectors();
       return;
     }
 
     dEl.classList.toggle('dimmed', this.fsm.stealthMode);
 
-    if (this.fsm.displayState === 'BOOT') {
-      dEl.innerHTML = 'v1.4.10<br>[||||] 94%';
-      dEl.classList.remove('inverted');
-    } else if (this.fsm.displayState === 'FUNK_MODE') {
+    // Stenhård isolering av Funktionskontroll:
+    // Displayen ska EXKLUSIVT vara inverterad/gul om tillståndet är exakt FUNK_MODE och osäkrat
+    const isFunkMode = (this.fsm.displayState === 'FUNK_MODE' || this.fsm.isFunkLocked) && !this.fsm.isSafe;
+
+    if (isFunkMode) {
+      // EXKLUSIVT FUNKTIONSKONTROLL: Gul bakgrund med svarta ikoner
       dEl.innerHTML = this.renderIconsHTML();
-      dEl.classList.add('inverted');
-    } else if (this.fsm.displayState === 'ACTIVE') {
-      dEl.innerHTML = this.renderIconsHTML();
-      dEl.classList.remove('inverted');
+      dEl.classList.add('oled-inverted', 'funk-mode', 'inverted');
     } else {
-      dEl.innerHTML = '';
-      dEl.classList.remove('inverted');
+      // I ALLA ANDRA FALL (DEFAULT): Svart OLED-bakgrund med lysande text/ikoner
+      dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+
+      if (this.fsm.displayState === 'BOOT') {
+        dEl.innerHTML = 'v1.4.10<br>[||||] 94%';
+      } else if (this.fsm.displayState === 'ACTIVE' || !this.fsm.isSafe) {
+        // Skarpt osäkrat läge: Svart OLED med lysande gula symboler
+        dEl.innerHTML = this.renderIconsHTML();
+      } else {
+        // Säkrat läge: Släckt skärm
+        dEl.innerHTML = '';
+      }
     }
 
     this.updateProjectors();
@@ -843,6 +972,9 @@ export class TaserApp {
 
       if (!isActive) {
         // Om användaren klickade för att stänga av kameran
+        document.body.classList.remove('ar-active', 'live-ai-active');
+        document.documentElement.classList.remove('ar-active', 'live-ai-active');
+        this.scene.disableARMode();
         if (btnCamera) {
           btnCamera.innerHTML = '🤖 Live AI (Kamera)';
           btnCamera.classList.remove('active-cam');
@@ -855,6 +987,11 @@ export class TaserApp {
         this.stopScenario();
         return;
       }
+
+      // Aktivera helskärms-AR och Live-AI klasser samt Three.js transparent bakgrund
+      document.body.classList.add('ar-active', 'live-ai-active');
+      document.documentElement.classList.add('ar-active', 'live-ai-active');
+      this.scene.enableARMode();
 
       const isSimulated = !!this.xr.isSimulatedCamera;
       this.aiPose.isSimulated = isSimulated;
@@ -886,6 +1023,9 @@ export class TaserApp {
       }
     } catch (err) {
       console.warn('[STARTUP SEQUENCE NOTICE] Faller tillbaka till simulerad AI-person:', err);
+      document.body.classList.add('ar-active', 'live-ai-active');
+      document.documentElement.classList.add('ar-active', 'live-ai-active');
+      this.scene.enableARMode();
       this.aiPose.isSimulated = true;
       this.aiPose.start(cameraFeed);
       if (btnCamera) {
@@ -916,7 +1056,7 @@ export class TaserApp {
 
   onXRSessionStart(session, scenario) {
     document.body.classList.add('ar-active', 'webxr-mode');
-    document.documentElement.classList.add('ar-active');
+    document.documentElement.classList.add('ar-active', 'webxr-mode');
     this.scene.enableARMode();
 
     const btnWebXR = document.getElementById('btn-webxr');
@@ -935,7 +1075,7 @@ export class TaserApp {
 
   onXRSessionEnd() {
     document.body.classList.remove('ar-active', 'webxr-mode');
-    document.documentElement.classList.remove('ar-active');
+    document.documentElement.classList.remove('ar-active', 'webxr-mode');
     this.scene.disableARMode();
 
     const btnWebXR = document.getElementById('btn-webxr');
@@ -1047,18 +1187,17 @@ export class TaserApp {
         this.log("<span style='color:#e74c3c; font-weight:bold;'>Rörelsesensor nekades.</span> Tillåt rörelse och riktning i Safari/webbläsarinställningar.");
       } else if (res && res.permission === 'unsupported' && !silent) {
         if (btn) btn.innerHTML = '📱 Gyro: EJ STÖD';
-        this.log("<span style='color:#bdc3c7'>Enheten saknar hårdvarugyroskop. Använd '🔄 Tilt (Z/X)' knapparna.</span>");
+        this.log("<span style='color:#bdc3c7'>Enheten saknar hårdvarugyroskop. Använd '🔄 Vinkla (Tilt)' knappen.</span>");
       }
     });
   }
 
-  toggleInvertMouse() {
-    this.invertMouseY = !this.invertMouseY;
-    this.log(`Inverterad mus/pekare: ${this.invertMouseY ? 'PÅ' : 'AV'}`);
-  }
-
   resetSimulator() {
     this.audio.init();
+    const dEl = document.getElementById('taser-display');
+    if (dEl) {
+      dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+    }
     this.fsm.reset();
   }
 
@@ -1131,13 +1270,22 @@ export class TaserApp {
         }
       }
 
-      if (renderer.xr.isPresenting) {
-        this.scene.scene.background = null;
-      } else {
-        // Desktop / Mobile Non-XR Perspective Viewport Orbit
-        const isARActive = this.xr.useCamera || document.body.classList.contains('ar-active') || document.body.classList.contains('webxr-mode');
-        this.scene.scene.background = isARActive ? null : this.scene.defaultBackground;
+      const isARActive = renderer.xr.isPresenting || this.xr.useCamera || document.body.classList.contains('ar-active') || document.body.classList.contains('webxr-mode') || document.body.classList.contains('live-ai-active');
 
+      if (isARActive) {
+        if (this.scene.scene.background !== null) {
+          this.scene.scene.background = null;
+        }
+        renderer.setClearColor(0x000000, 0);
+      } else {
+        if (this.scene.scene.background !== this.scene.defaultBackground) {
+          this.scene.scene.background = this.scene.defaultBackground;
+        }
+        renderer.setClearColor(0x0a0a0a, 1.0);
+      }
+
+      if (!renderer.xr.isPresenting) {
+        // Desktop / Mobile Non-XR Perspective Viewport Orbit
         if (isNaN(this.currentDistance) || this.currentDistance < 0.5) this.currentDistance = 3.0;
         if (isNaN(this.aimX)) this.aimX = 50;
         if (isNaN(this.aimY)) this.aimY = 50;
@@ -1153,7 +1301,7 @@ export class TaserApp {
 
         const lookTarget = this.scene._v2.copy(targetPos);
         const panX = (50 - this.aimX) * 0.015 * this.currentDistance;
-        const activeAimY = this.invertMouseY ? 100 - this.aimY : this.aimY;
+        const activeAimY = this.aimY;
         const panY = (activeAimY - 50) * 0.015 * this.currentDistance;
 
         lookTarget.y += panY;
@@ -1164,9 +1312,40 @@ export class TaserApp {
       // Dynamic Wire updates
       this.scene.updateWireDynamics(activeCamera);
 
+      // Dynamic High-Voltage Warning Arc updates (3D jitter, AdditiveBlending, pointlight)
+      this.scene.updateWarningArc(activeCamera);
+
       // Render the scene
       renderer.render(this.scene.scene, activeCamera);
     });
+  }
+
+  startWarningArcHaptics() {
+    this.stopWarningArcHaptics();
+    if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+
+    // Real TASER 7 discharges at 19-22 pulses/sec
+    // Fast rhythmic pulse pattern: 20ms buzz, 30ms gap
+    const pulsePattern = [20, 30, 20, 30, 20, 30, 20, 30, 20];
+    try { navigator.vibrate(pulsePattern); } catch (_) {}
+
+    this.warningHapticInterval = setInterval(() => {
+      if (this.scene && this.scene.warningArcActive && navigator.vibrate) {
+        try { navigator.vibrate(pulsePattern); } catch (_) {}
+      } else {
+        this.stopWarningArcHaptics();
+      }
+    }, 250);
+  }
+
+  stopWarningArcHaptics() {
+    if (this.warningHapticInterval) {
+      clearInterval(this.warningHapticInterval);
+      this.warningHapticInterval = null;
+    }
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(0); } catch (_) {}
+    }
   }
 }
 
