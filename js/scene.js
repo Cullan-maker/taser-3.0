@@ -295,6 +295,8 @@ export class TaserScene {
           handBone.add(this.knifeMesh);
         }
 
+        this.glbDummy = dummy;
+        this.hasGLBMannequin = true;
         this.taserGroup.add(dummy);
         if (this.dummyBody) this.dummyBody.visible = false;
 
@@ -868,7 +870,29 @@ export class TaserScene {
 
   set3DVisibility(isVisible) {
     this.show3DModel = isVisible;
-    if (this.taserGroup) this.taserGroup.visible = isVisible;
+    if (this.taserGroup) {
+      this.taserGroup.visible = isVisible;
+      this.taserGroup.traverse((child) => {
+        if (child.isMesh) {
+          // If GLTF mannequin is loaded, keep the procedural box dummyBody hidden
+          if (this.hasGLBMannequin && child === this.dummyBody) {
+            child.visible = false;
+            return;
+          }
+          // Knife visibility is controlled separately by threat escalation
+          if (child === this.knifeMesh || (child.parent && child.parent === this.knifeMesh)) {
+            return;
+          }
+          child.visible = isVisible;
+          if (child.material) {
+            child.material.colorWrite = true;
+            if (child.material.opacity === 0) {
+              child.material.opacity = 1.0;
+            }
+          }
+        }
+      });
+    }
   }
 
   createArcGlowTexture() {

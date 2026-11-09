@@ -689,6 +689,64 @@ export class TaserApp {
     this.isScenarioActive = true;
     this.fsm.isScenarioActive = true;
 
+    // 1. Explicitly restore 3D figure visibility (procedure phase exit / scenario start)
+    this.scene.set3DVisibility(true);
+    if (this.scene.taserGroup) {
+      this.scene.taserGroup.visible = true;
+
+      // 2. If figure had fallen in previous engagement, reset upright position and animations
+      if (this.scene.figureFallen) {
+        this.scene.resetTarget();
+      }
+
+      // 3. Standoff distance & Z-axis coordinates
+      if (this.xr && this.xr.xrSession) {
+        // In WebXR AR space
+        this.xr.placeMode = false;
+        this.xr.figureLocked = true;
+        const plcCtrl = document.getElementById('placement-controls');
+        if (plcCtrl) plcCtrl.style.display = 'none';
+        const stdCtrl = document.getElementById('standard-controls');
+        if (stdCtrl) stdCtrl.style.display = 'block';
+        const hint = document.getElementById('place-hint');
+        if (hint) hint.classList.remove('visible');
+        if (this.scene.placementMarker) this.scene.placementMarker.visible = false;
+
+        const cam = this.scene.renderer.xr.getCamera(this.scene.camera);
+        const camPos = cam.position;
+        const currentPos = this.scene.taserGroup.position;
+        const distToCam = currentPos.distanceTo(camPos);
+
+        // If at world origin (0,0,0) or behind/inside camera frustum, spawn 3.0m in front along gaze
+        if (!this.scene.taserGroup.userData.startPos || distToCam < 0.8 || (currentPos.x === 0 && currentPos.y === 0 && currentPos.z === 0)) {
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+          forward.y = 0;
+          if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+          forward.normalize().multiplyScalar(3.0);
+
+          this.scene.taserGroup.position.set(
+            camPos.x + forward.x,
+            0, // ground level
+            camPos.z + forward.z
+          );
+          this.scene.taserGroup.lookAt(camPos.x, 0, camPos.z);
+          this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
+        }
+      } else {
+        // Standard 3D perspective viewport
+        if (!this.scene.taserGroup.userData.startPos) {
+          this.scene.taserGroup.userData.startPos = new THREE.Vector3(0, 0, 0);
+        }
+        this.scene.taserGroup.position.copy(this.scene.taserGroup.userData.startPos);
+        this.scene.taserGroup.rotation.set(0, 0, 0);
+        this.currentDistance = 3.0;
+        this.updateAimVisuals();
+      }
+    }
+
+    if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
+    this.scene.setAnimation('Idle', 0.2);
+
     this.log("<span style='color:#e74c3c; font-weight:bold;'>🚨 SCENARIOFAS STARTAD:</span> Hotet aktiverat! Var beredd!");
 
     const btn = document.getElementById('btn-scenario');
@@ -720,6 +778,10 @@ export class TaserApp {
     if (this.scene.knifeMesh) this.scene.knifeMesh.visible = false;
     this.warningGiven = false;
     this.updateWarningUI();
+
+    // Ensure 3D figure remains visible in procedural phase (never disappear)
+    this.scene.set3DVisibility(true);
+    if (this.scene.taserGroup) this.scene.taserGroup.visible = true;
 
     // Smoothly ensure figure is strictly in Idle animation
     if (!this.scene.figureFallen) {
@@ -760,6 +822,15 @@ export class TaserApp {
     this.updateWarningUI();
     this.scene.setAnimation('Idle', 0.4);
 
+    // Initial suspect vocalization at 700ms so user receives rapid feedback
+    setTimeout(() => {
+      if (this.isScenarioActive && !this.scene.figureFallen) {
+        this.threatLevel = 1;
+        if (typeof window !== 'undefined') window.threatLevel = this.threatLevel;
+        this.suspectSpeak('Vad fan glor du på?! Backa!');
+      }
+    }, 700);
+
     this.threatInterval = setInterval(() => {
       if (!this.isScenarioActive || this.scene.figureFallen || !this.scene.taserGroup || !this.scene.taserGroup.visible) return;
 
@@ -767,9 +838,7 @@ export class TaserApp {
       if (typeof window !== 'undefined') window.threatLevel = this.threatLevel;
 
       const tLabel = document.getElementById('target-label');
-      if (this.threatLevel === 1) {
-        this.suspectSpeak('Vad fan glor du på?! Backa!');
-      } else if (this.threatLevel === 2) {
+      if (this.threatLevel === 2) {
         this.suspectSpeak('Rör mig inte sa jag! Stick!');
       } else if (this.threatLevel === 3) {
         this.suspectSpeak('Jag sprättar dig! Jag svär!');
@@ -1110,22 +1179,31 @@ export class TaserApp {
 
   confirmPlacement() {
     const marker = this.scene.placementMarker;
-    if (!marker || !marker.visible) {
-      if (!this.xr.xrSession) {
-        this.log("<span style='color:#f39c12'>Använder standardavstånd.</span>");
-      } else {
-        return;
+    if (this.xr.xrSession && (!marker || !marker.visible)) {
+      const xrCam = this.scene.renderer.xr.getCamera(this.scene.camera);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
+      forward.y = 0;
+      if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+      forward.normalize().multiplyScalar(3.0);
+      if (this.scene.taserGroup) {
+        this.scene.taserGroup.position.set(
+          xrCam.position.x + forward.x,
+          0,
+          xrCam.position.z + forward.z
+        );
+        this.scene.taserGroup.lookAt(xrCam.position.x, 0, xrCam.position.z);
+        this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
+        this.scene.taserGroup.visible = true;
       }
-    }
-
-    this.xr.placeMode = false;
-    this.xr.figureLocked = true;
-
-    if (this.scene.taserGroup && marker && marker.visible) {
+      this.log("<span style='color:#f39c12'>Standardposition vald (3m rakt framför dig).</span>");
+    } else if (this.scene.taserGroup && marker && marker.visible) {
       this.scene.taserGroup.position.copy(marker.position);
       this.scene.taserGroup.visible = true;
       this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
     }
+
+    this.xr.placeMode = false;
+    this.xr.figureLocked = true;
 
     this.scene.set3DVisibility(true);
     if (marker) marker.visible = false;
