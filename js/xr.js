@@ -29,6 +29,18 @@ export class TaserXR {
     this.calibBeta = null;
     this.lastTiltTime = 0;
     this.tiltState = 'neutral'; // 'neutral' | 'left' | 'right'
+
+    // Pre-cache WebXR immersive-ar support asynchronously to avoid blocking gesture turn
+    this.xrSupported = null;
+    if (this.isWebXRSupported() && typeof navigator.xr.isSessionSupported === 'function') {
+      navigator.xr.isSessionSupported('immersive-ar')
+        .then((supported) => {
+          this.xrSupported = supported;
+        })
+        .catch(() => {
+          this.xrSupported = false;
+        });
+    }
   }
 
   isWebXRSupported() {
@@ -37,9 +49,12 @@ export class TaserXR {
 
   async checkXRSupport() {
     if (!this.isWebXRSupported()) return false;
+    if (this.xrSupported !== null) return this.xrSupported;
     try {
-      return await navigator.xr.isSessionSupported('immersive-ar');
+      this.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+      return this.xrSupported;
     } catch (e) {
+      this.xrSupported = false;
       return false;
     }
   }
@@ -52,31 +67,35 @@ export class TaserXR {
       throw err;
     }
 
-    const isSupported = await this.checkXRSupport();
-    if (!isSupported) {
+    if (this.xrSupported === false) {
       const err = new Error('WebXR Immersive-AR stöds inte på denna enhet eller i denna webbläsare.');
       console.error('[WEBXR ERROR]', err);
       throw err;
     }
 
-    // Release camera stream if currently held by WebRTC to prevent camera HAL hardware conflict in ARCore
+    // Release camera stream synchronously if held by WebRTC to prevent camera HAL hardware conflict
     if (this.useCamera && this.videoStream) {
-      console.log('[WEBXR PREP] Frigör WebRTC-kameran inför WebXR ARCore-initiering...');
-      this.videoStream.getTracks().forEach((track) => track.stop());
+      console.log('[WEBXR PREP] Frigör WebRTC-kameran synkront inför WebXR...');
+      try {
+        this.videoStream.getTracks().forEach((track) => track.stop());
+      } catch (e) {}
       this.videoStream = null;
       this.useCamera = false;
-      await new Promise((r) => setTimeout(r, 200));
     }
 
+    // End existing session synchronously if active without delay
     if (this.xrSession) {
-      await this.endXRSession();
-      await new Promise((r) => setTimeout(r, 200));
+      try {
+        this.xrSession.end();
+      } catch (e) {}
+      this.xrSession = null;
     }
 
+    // Immediately invoke navigator.xr.requestSession within active transient user activation context
     try {
       const session = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test', 'local-floor'],
-        optionalFeatures: ['dom-overlay', 'camera-access'],
+        requiredFeatures: ['hit-test'],
+        optionalFeatures: ['dom-overlay', 'camera-access', 'local-floor', 'local'],
         domOverlay: { root: document.body }
       });
 
@@ -90,7 +109,13 @@ export class TaserXR {
 
       const renderer = this.taserScene.renderer;
       renderer.xr.enabled = true;
-      renderer.xr.setReferenceSpaceType('local-floor');
+      try {
+        renderer.xr.setReferenceSpaceType('local-floor');
+      } catch (e) {
+        try {
+          renderer.xr.setReferenceSpaceType('local');
+        } catch (e2) {}
+      }
       await renderer.xr.setSession(session);
 
       session.addEventListener('end', this.onSessionEnded.bind(this));
@@ -414,34 +439,45 @@ export class TaserXR {
     this.tiltState = 'neutral';
     this.gyroEnabled = true;
 
-    // Tactical Hysteresis and Filter Constants for Portrait Grip
-    const TILT_TRIGGER_THRESHOLD = 30; // degrees roll (gamma) for conscious flick
-    const NEUTRAL_RESET_THRESHOLD = 15; // degrees roll to reset state back to neutral
-    const COOLDOWN_MS = 600; // minimum debounce between consecutive tilts
+    // Tactical Constants for Snärt / Wrist Tilt (TASER 7 Tilt Select)
+    // Snärt med handleden når normalt 30-45 graders lutning (gamma) under 100-250ms
+    const TILT_ANGLE_THRESHOLD = 32; // 32 graders vinkel för direkt tilt
+    const NEUTRAL_RESET_THRESHOLD = 16; // Återgå till < 16 grader för att nollställa tillståndet
+    const COOLDOWN_MS = 380; // 380ms cooldown för att förhindra studs
 
-    window.addEventListener('deviceorientation', (event) => {
+    let lastGamma = null;
+    let lastGammaTime = 0;
+
+    const handleOrientation = (event) => {
       // 1. NaN and Undefined Sanitizer
       const rawAlpha = typeof event.alpha === 'number' && !isNaN(event.alpha) ? event.alpha : null;
       const rawBeta = typeof event.beta === 'number' && !isNaN(event.beta) ? event.beta : null;
       const rawGamma = typeof event.gamma === 'number' && !isNaN(event.gamma) ? event.gamma : null;
 
-      // 2. Physical Tilt Detection (Gamma axis = Roll in portrait orientation)
+      // 2. Physical Tilt Detection (Gamma axis = Roll i porträttläge)
       if (rawGamma !== null && typeof onPhysicalTilt === 'function') {
         const now = Date.now();
+        const absGamma = Math.abs(rawGamma);
+        const dt = lastGammaTime > 0 ? (now - lastGammaTime) / 1000 : 0.016;
+        const angularVelocity = (lastGamma !== null && dt > 0.005) ? Math.abs(rawGamma - lastGamma) / dt : 0;
+
+        lastGamma = rawGamma;
+        lastGammaTime = now;
+
+        // Snärt-detektering:
+        // Antingen vinkling över 32 grader ELLER snabb snärt (vinkelhastighet > 80 deg/s och vinkel > 20 deg)
+        const isFlick = (absGamma >= TILT_ANGLE_THRESHOLD) || (angularVelocity > 80 && absGamma >= 20);
 
         if (this.tiltState === 'neutral') {
-          if (rawGamma > TILT_TRIGGER_THRESHOLD && (now - this.lastTiltTime > COOLDOWN_MS)) {
-            this.tiltState = 'right';
+          if (isFlick && (now - this.lastTiltTime > COOLDOWN_MS)) {
+            const currentDir = rawGamma > 0 ? 'right' : 'left';
+            this.tiltState = currentDir;
             this.lastTiltTime = now;
-            onPhysicalTilt('right', rawGamma);
-          } else if (rawGamma < -TILT_TRIGGER_THRESHOLD && (now - this.lastTiltTime > COOLDOWN_MS)) {
-            this.tiltState = 'left';
-            this.lastTiltTime = now;
-            onPhysicalTilt('left', rawGamma);
+            onPhysicalTilt(currentDir, rawGamma);
           }
         } else {
-          // Device must return to upright neutral deadband before a new flick can be registered
-          if (Math.abs(rawGamma) < NEUTRAL_RESET_THRESHOLD) {
+          // Enheten har återgått till upprätt läge (< 16 grader): nollställ så nästa snärt kan registreras
+          if (absGamma < NEUTRAL_RESET_THRESHOLD) {
             this.tiltState = 'neutral';
           }
         }
@@ -473,6 +509,27 @@ export class TaserXR {
       if (typeof onOrientationChange === 'function') {
         onOrientationChange(aimX, aimY);
       }
-    });
+    };
+
+    window.addEventListener('deviceorientation', handleOrientation);
+
+    // Sekundär snärt-avkänning via devicemotion för omedelbar respons vid snabb handledssnärt
+    if (typeof window !== 'undefined' && 'ondevicemotion' in window) {
+      window.addEventListener('devicemotion', (e) => {
+        if (!e.rotationRate || typeof onPhysicalTilt !== 'function') return;
+        const rot = e.rotationRate;
+        // Kraftig rotationssnärt runt telefonens längsgående axel
+        const rate = Math.abs(rot.gamma || 0) + Math.abs(rot.alpha || 0);
+        if (rate > 150 && this.tiltState === 'neutral') {
+          const now = Date.now();
+          if (now - this.lastTiltTime > COOLDOWN_MS) {
+            const dir = (rot.gamma || 0) >= 0 ? 'right' : 'left';
+            this.tiltState = dir;
+            this.lastTiltTime = now;
+            onPhysicalTilt(dir, lastGamma || 35);
+          }
+        }
+      }, { passive: true });
+    }
   }
 }

@@ -166,6 +166,9 @@ export class TaserScene {
     // High-Voltage Warning Arc (Three.js 3D Dynamic Arc)
     this.setupWarningArc();
 
+    // 3D Laser Raycast Sights (Dynamic dual green dots in WebXR AR space)
+    this.setup3DLaserSights();
+
     // Load Retopologized UE Mannequin if available
     this.loadGLBMannequin();
 
@@ -1282,27 +1285,26 @@ export class TaserScene {
       }
       this.taserGroup.rotation.x = nextAngle;
 
-      // Anti-clipping floor clearance offset:
-      // A human body has a depth/thickness of ~0.24m. As the body rotates -90 deg onto its back,
-      // elevate base so shoulders, back and head rest flat on y = 0 without cutting into floor!
-      const theta = Math.abs(nextAngle);
-      const cosT = Math.cos(theta);
-
+      // WebXR AR Pivot & Floor Offset compensation:
+      // When the figure rotates around its midpoint, half the body cuts through the virtual floor.
+      // We apply a dynamic Y-offset proportional to fallProgress (-fallProgress * 0.5) combined with
+      // floor clearance so the mannequin lies flat and flush OVANPÅ the virtual AR floor without clipping!
+      const fallProgress = Math.min(1.0, Math.abs(nextAngle) / (Math.PI / 2));
       const basePos = this.taserGroup.userData.preFallPos || this.taserGroup.userData.startPos || this._v1.set(0, 0, 0);
 
-      // Vertical elevation to avoid cutting through virtual floor:
-      const floorClearance = (1.0 - cosT) * 0.12;
-      this.taserGroup.position.y = basePos.y + floorClearance;
+      // Dynamisk Y-offset (sänker pivotpunkten i takt med fallet så figuren lägger sig platt på golvet):
+      const yOffset = -fallProgress * 0.50 + (1.0 - Math.cos(nextAngle)) * 0.14;
+      this.taserGroup.position.y = basePos.y + yOffset;
 
-      // Heel anchor shift so the feet stay grounded as the rotational fulcrum
-      const heelAnchorOffset = (1.0 - cosT) * 0.06;
-      this.taserGroup.position.z = basePos.z - heelAnchorOffset;
+      // Håll hälarna fixerade vid marken som rotationsaxel längs Z:
+      const zOffset = -fallProgress * 0.35;
+      this.taserGroup.position.z = basePos.z + zOffset;
     } else {
       // Fully settled flat on the floor
       this.taserGroup.rotation.x = targetAngle;
       const basePos = this.taserGroup.userData.preFallPos || this.taserGroup.userData.startPos || this._v1.set(0, 0, 0);
-      this.taserGroup.position.y = basePos.y + 0.12;
-      this.taserGroup.position.z = basePos.z - 0.06;
+      this.taserGroup.position.y = basePos.y - 0.36;
+      this.taserGroup.position.z = basePos.z - 0.35;
     }
   }
 
@@ -1343,6 +1345,8 @@ export class TaserScene {
       }
     }
     this.clearWiresAndDarts();
+    if (this.laserDotTop) this.laserDotTop.visible = false;
+    if (this.laserDotBottom) this.laserDotBottom.visible = false;
 
     // 5. Återställning: Dra ur pilar, nollställ fall och sätt igång AnimationMixer igen (timeScale = 1.0)
     if (this.mixer) {
@@ -1749,6 +1753,99 @@ export class TaserScene {
 
     // Modulate opacity slightly for authentic strobe feel
     this.warningArcTubeMat.opacity = Math.random() * 0.25 + 0.75;
+  }
+
+  setup3DLaserSights() {
+    // 3D Laser Mesh: Bright luminous green dots projected onto 3D mannequin surfaces in WebXR/3D space
+    const dotGeo = new THREE.SphereGeometry(0.016, 16, 16);
+
+    const topMat = new THREE.MeshBasicMaterial({
+      color: 0x00ff00, // Grön laser
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95
+    });
+    this.laserDotTop = new THREE.Mesh(dotGeo, topMat);
+    this.laserDotTop.name = '3D_Laser_Dot_Top';
+    this.laserDotTop.renderOrder = 9999;
+    this.laserDotTop.frustumCulled = false;
+    this.laserDotTop.visible = false;
+    this.scene.add(this.laserDotTop);
+
+    const bottomMat = new THREE.MeshBasicMaterial({
+      color: 0x00ff00, // Grön laser
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95
+    });
+    this.laserDotBottom = new THREE.Mesh(dotGeo, bottomMat);
+    this.laserDotBottom.name = '3D_Laser_Dot_Bottom';
+    this.laserDotBottom.renderOrder = 9999;
+    this.laserDotBottom.frustumCulled = false;
+    this.laserDotBottom.visible = false;
+    this.scene.add(this.laserDotBottom);
+  }
+
+  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeChamber = 1, calculateSpreadFn = null, shouldShow = true) {
+    if (!shouldShow || !this.taserGroup || !this.taserGroup.visible || !this.laserDotTop || !this.laserDotBottom) {
+      if (this.laserDotTop) this.laserDotTop.visible = false;
+      if (this.laserDotBottom) this.laserDotBottom.visible = false;
+      return null;
+    }
+
+    // Uppdatera Raycaster från kamerans aktuella position och vinkel i rummet
+    this.raycaster.setFromCamera(aimNDC, camera);
+
+    // Kasta stråle mot målfiguren (taserGroup)
+    const intersects = this.raycaster.intersectObject(this.taserGroup, true);
+    // Filtrera bort icke-synliga objekt och hjälpare
+    const validHit = intersects.find((hit) => {
+      const obj = hit.object;
+      return obj.visible &&
+             obj.name !== 'PlacementMarker' &&
+             !obj.name.includes('Helper') &&
+             !obj.name.includes('Laser') &&
+             !obj.name.includes('Arc');
+    });
+
+    if (validHit) {
+      const hitPoint = validHit.point;
+      const hitNormal = validHit.face
+        ? validHit.face.normal.clone().transformDirection(validHit.object.matrixWorld).normalize()
+        : this._v2.set(0, 0, 1);
+
+      const dist = camera.position.distanceTo(hitPoint);
+
+      // Kalkylera laserns spridning dynamiskt utifrån avståndet mellan camera.position och träffpunkten
+      let spreadMeters = 0.34;
+      if (typeof calculateSpreadFn === 'function') {
+        const spreadData = calculateSpreadFn(dist, activeChamber);
+        spreadMeters = spreadData.spreadCm / 100;
+      } else {
+        const angleRad = (activeChamber === 2 ? 3.5 : 12.0) * (Math.PI / 180);
+        spreadMeters = Math.max(0.04, dist * Math.tan(angleRad));
+      }
+
+      // Placera övre laserpricken vid träffpunkten (med mikroskopisk offset längs normalen så den inte klipper)
+      this.laserDotTop.position.copy(hitPoint).addScaledVector(hitNormal, 0.005);
+      this.laserDotTop.visible = true;
+
+      // Placera undre laserpricken: Går användaren närmare kryper prickarna ihop (mindre spreadMeters)
+      this.laserDotBottom.position.set(hitPoint.x, hitPoint.y - spreadMeters, hitPoint.z).addScaledVector(hitNormal, 0.005);
+      this.laserDotBottom.visible = true;
+
+      // Skala prickarna baserat på avstånd för skarp synlighet
+      const dotScale = Math.max(0.6, Math.min(2.0, dist * 0.4));
+      this.laserDotTop.scale.set(dotScale, dotScale, dotScale);
+      this.laserDotBottom.scale.set(dotScale, dotScale, dotScale);
+
+      return { hit: true, distance: dist, spreadMeters, point: hitPoint };
+    } else {
+      // Ingen träff på figuren
+      this.laserDotTop.visible = false;
+      this.laserDotBottom.visible = false;
+      return { hit: false };
+    }
   }
 
   onResize() {

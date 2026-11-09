@@ -197,7 +197,7 @@ export class TaserApp {
 
         if (sSwitch) sSwitch.classList.toggle('unsafe', !fsm.isSafe);
         if (sLabel) sLabel.textContent = fsm.isSafe ? 'SÄKRAD' : 'OSÄKRAD';
-        if (secControls) secControls.style.display = fsm.isSafe ? 'block' : 'none';
+        if (secControls) secControls.style.display = 'block';
 
         this.updateDisplay();
       } else if (event === 'CHAMBER_CHANGED') {
@@ -290,18 +290,22 @@ export class TaserApp {
   }
 
   initInputs() {
+    // Auto-engage gyro immediately on devices without explicit permission barrier
+    if (
+      typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission !== 'function' &&
+      !this.xr.gyroEnabled
+    ) {
+      this.initGyro(true);
+    }
+
     // Unlock AudioContext and silent MediaSession loop on first touch/click
     const unlockAudio = () => {
       this.audio.init();
       if (this.audio.silentAudioEl) {
         this.audio.silentAudioEl.play().catch(() => {});
       }
-      // On non-iOS devices where no explicit permission barrier exists, auto-engage gyro
-      if (
-        typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission !== 'function' &&
-        !this.xr.gyroEnabled
-      ) {
+      if (!this.xr.gyroEnabled) {
         this.initGyro(true);
       }
       window.removeEventListener('pointerdown', unlockAudio);
@@ -370,33 +374,52 @@ export class TaserApp {
     this.setupTactileButton('btn-clothing', () => this.fsm.toggleClothing());
     this.setupTactileButton('btn-voice', () => this.voice.toggle());
     this.setupTactileButton('btn-gyro', () => this.initGyro());
-    this.setupTactileButton('btn-webxr', () => this.openModal('scenario-modal'));
+
+    const toggleWebXRModalOrEnd = () => {
+      if (this.xr && this.xr.xrSession) {
+        this.xr.endXRSession();
+      } else {
+        this.openModal('scenario-modal');
+      }
+    };
+    // Primär WebXR-knapp: öppnar scenariomenyn omedelbart vid tryck (0ms) utan att behöva hållas in
+    this.setupTactileButton('btn-webxr', toggleWebXRModalOrEnd);
+    this.setupTactileButton('webxr-btn', toggleWebXRModalOrEnd);
     this.setupTactileButton('btn-place', () => this.togglePlaceMode());
     this.setupTactileButton('btn-info', () => this.openModal('info-modal'));
     this.setupTactileButton('warn-left', () => window.pressSingleWarning());
     this.setupTactileButton('warn-right', () => window.pressSingleWarning());
     this.setupTactileButton('safety-switch', () => window.toggleSafety());
     this.setupTactileButton('btn-confirm', () => this.confirmPlacement());
+    this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
+    this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
 
-    // Scenario modal buttons
+    // Scenario modal buttons - startar WebXR/Kamera omedelbart vid snabb klick/pointerup med bibehållen user activation
     this.setupTactileButton('btn-start-real-person-xr', () => {
       this.closeModal('scenario-modal');
       this.startRealPersonAI();
-    });
+    }, { useClick: true });
     this.setupTactileButton('btn-xr-static', () => {
       this.closeModal('scenario-modal');
       this.startWebXR('static');
-    });
+    }, { useClick: true });
     this.setupTactileButton('btn-xr-moving', () => {
       this.closeModal('scenario-modal');
       this.startWebXR('moving');
-    });
+    }, { useClick: true });
     this.setupTactileButton('btn-xr-charging', () => {
       this.closeModal('scenario-modal');
       this.startWebXR('charging');
+    }, { useClick: true });
+
+    // Stäng modal när man klickar på bakgrunden utanför modal-rutan
+    document.querySelectorAll('.modal-overlay').forEach((modal) => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          this.closeModal(modal.id);
+        }
+      });
     });
-    this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
-    this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
 
     // Reticle placement tap in WebXR
     this.scene.renderer.domElement.addEventListener('pointerdown', (e) => {
@@ -414,11 +437,61 @@ export class TaserApp {
     });
   }
 
-  setupTactileButton(elementOrId, callback) {
+  setupTactileButton(elementOrId, callback, options = {}) {
     const el = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
     if (!el) return;
 
+    const useClick = options.useClick || options.triggerOn === 'click';
     let lastActionTs = 0;
+
+    const clearPress = () => el.classList.remove('active-press');
+    el.addEventListener('pointerup', clearPress);
+    el.addEventListener('pointercancel', clearPress);
+    el.addEventListener('pointerleave', clearPress);
+
+    if (useClick) {
+      let firedInCurrentGesture = false;
+
+      const triggerAction = (e) => {
+        const now = Date.now();
+        if (now - lastActionTs < 280) return;
+        lastActionTs = now;
+        clearPress();
+
+        if (this.audio) this.audio.init();
+        if (navigator.vibrate) {
+          try { navigator.vibrate(14); } catch (err) {}
+        }
+
+        try {
+          callback(e);
+        } catch (err) {
+          console.error('Tactile button error on', el.id, err);
+        }
+      };
+
+      el.addEventListener('pointerdown', () => {
+        firedInCurrentGesture = false;
+        el.classList.add('active-press');
+      });
+
+      // pointerup ger omedelbar respons vid snabb fingertapp och bär W3C user activation för WebXR
+      el.addEventListener('pointerup', (e) => {
+        if (!firedInCurrentGesture) {
+          firedInCurrentGesture = true;
+          triggerAction(e);
+        }
+      });
+
+      // click-fallback för tangentbord och standardklick
+      el.addEventListener('click', (e) => {
+        if (!firedInCurrentGesture) {
+          firedInCurrentGesture = true;
+          triggerAction(e);
+        }
+      });
+      return;
+    }
 
     const fireAction = (e) => {
       const now = Date.now();
@@ -450,13 +523,8 @@ export class TaserApp {
       }
     };
 
-    // Primary responsive event: pointerdown gives 0ms immediate response for touch and mouse
+    // Primary responsive event: pointerdown gives 0ms immediate response for weapon controls
     el.addEventListener('pointerdown', fireAction);
-
-    const clearPress = () => el.classList.remove('active-press');
-    el.addEventListener('pointerup', clearPress);
-    el.addEventListener('pointercancel', clearPress);
-    el.addEventListener('pointerleave', clearPress);
 
     // Click handler fallback with 400ms guard to ensure no double-fire
     el.addEventListener('click', (e) => {
@@ -1297,11 +1365,15 @@ export class TaserApp {
   }
 
   onXRSessionStart(session, scenario) {
-    document.body.classList.add('ar-active', 'webxr-mode');
-    document.documentElement.classList.add('ar-active', 'webxr-mode');
+    document.body.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');
+    document.documentElement.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');
+    const mainContainer = document.getElementById('main-container');
+    if (mainContainer) mainContainer.classList.add('ar-combat-mode');
+    const simControls = document.querySelector('.sim-controls');
+    if (simControls) simControls.classList.add('ar-combat-mode');
     this.scene.enableARMode();
 
-    const btnWebXR = document.getElementById('btn-webxr');
+    const btnWebXR = document.getElementById('btn-webxr') || document.getElementById('webxr-btn');
     if (btnWebXR) {
       btnWebXR.textContent = '⛔ Avsluta WebXR';
       btnWebXR.style.backgroundColor = '#e74c3c';
@@ -1316,14 +1388,18 @@ export class TaserApp {
   }
 
   onXRSessionEnd() {
-    document.body.classList.remove('ar-active', 'webxr-mode');
-    document.documentElement.classList.remove('ar-active', 'webxr-mode');
+    document.body.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode');
+    document.documentElement.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode');
+    const mainContainer = document.getElementById('main-container');
+    if (mainContainer) mainContainer.classList.remove('ar-combat-mode');
+    const simControls = document.querySelector('.sim-controls');
+    if (simControls) simControls.classList.remove('ar-combat-mode');
     this.scene.disableARMode();
 
-    const btnWebXR = document.getElementById('btn-webxr');
+    const btnWebXR = document.getElementById('btn-webxr') || document.getElementById('webxr-btn');
     if (btnWebXR) {
-      btnWebXR.textContent = '🌐 WebXR';
-      btnWebXR.style.backgroundColor = '#34495e';
+      btnWebXR.textContent = '🌐 WebXR Scenarier';
+      btnWebXR.style.backgroundColor = '';
     }
 
     if (this.xr.placeMode) this.confirmPlacement();
@@ -1405,24 +1481,31 @@ export class TaserApp {
       },
       (direction, gamma) => {
         if (!this.fsm.hasBattery) {
-          this.log("<span style='color:#f39c12'>Sätt i batteri för att använda kammare.</span>");
-          return;
-        }
-        if (this.fsm.isSafe) {
-          this.log("<span style='color:#f39c12'>Vapnet är säkrat. Osäkra vapnet för att byta kammare med tilt.</span>");
-          return;
-        }
-        if (this.fsm.chamber1 === ChamberState.EMPTY) {
-          this.log("<span style='color:#f39c12'>Ladda kassetter för att byta kammare med tilt.</span>");
-          return;
+          this.log("<span style='color:#f1c40f'>📱 Tilt/Snärt registrerad! Sätter i batteri och osäkrar vapnet...</span>");
+          this.fsm.hasBattery = true;
+          this.fsm.isSafe = false;
+          this.fsm.chamber1 = ChamberState.LOADED;
+          this.fsm.chamber2 = ChamberState.LOADED;
+          this.fsm.displayState = 'ACTIVE';
+          this.updateDisplay();
+        } else if (this.fsm.isSafe) {
+          this.log("<span style='color:#f1c40f'>📱 Tilt/Snärt registrerad! Osäkrar vapnet för aktiv insats...</span>");
+          this.fsm.isSafe = false;
+          this.fsm.displayState = 'ACTIVE';
+          this.updateDisplay();
+        } else if (this.fsm.chamber1 === ChamberState.EMPTY) {
+          this.fsm.chamber1 = ChamberState.LOADED;
+          this.fsm.chamber2 = ChamberState.LOADED;
+          this.updateDisplay();
         }
 
         const switched = this.fsm.tiltWeapon();
         if (switched) {
           if (navigator.vibrate) {
-            try { navigator.vibrate(40); } catch (e) {}
+            try { navigator.vibrate([40, 30, 40]); } catch (e) {}
           }
-          this.log(`📱 <span style='color:#3498db; font-weight:bold;'>GYRO-TILT (${direction.toUpperCase()} ${Math.round(gamma)}°):</span> Växlar till kammare ${this.fsm.activeChamber} (${this.fsm.activeChamber === 1 ? '12°' : '3.5°'})!`);
+          this.updateDisplay();
+          this.log(`📱 <span style='color:#3498db; font-weight:bold;'>GYRO-SNÄRT (${direction.toUpperCase()} ${Math.round(gamma)}°):</span> Växlar till kammare ${this.fsm.activeChamber} (${this.fsm.activeChamber === 1 ? '12°' : '3.5°'})!`);
         }
       }
     ).then((res) => {
@@ -1607,6 +1690,27 @@ export class TaserApp {
 
       // Dynamic High-Voltage Warning Arc updates (3D jitter, AdditiveBlending, pointlight)
       this.scene.updateWarningArc(activeCamera);
+
+      // 4. Dynamisk Raycasting för Laserprickarna (uppdateras varje frame i realtid)
+      const shouldShowLasers = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
+      const aimNDC = renderer.xr.isPresenting
+        ? this.scene._v3.set(0, 0, 0)
+        : this.scene._v3.set((this.aimX / 100) * 2 - 1, -(this.aimY / 100) * 2 + 1, 0);
+
+      const laserHit = this.scene.updateDynamicLaserRaycast(
+        activeCamera,
+        aimNDC,
+        this.fsm.activeChamber,
+        (d, ch) => this.ballistics.calculateSpread(d, ch),
+        shouldShowLasers
+      );
+
+      if (laserHit && laserHit.hit) {
+        if (renderer.xr.isPresenting && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
+          this.currentDistance = Math.max(0.4, laserHit.distance);
+          this.updateAimVisuals();
+        }
+      }
 
       // Render the scene
       renderer.render(this.scene.scene, activeCamera);
