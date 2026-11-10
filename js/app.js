@@ -560,8 +560,16 @@ export class TaserApp {
         vHeight
       );
 
-      // Perform 3D raycast on mannequin
-      const hitResult = this.scene.fireDarts({ ndc1, ndc2, chamber: firedChamber });
+      // Perform 3D raycast on mannequin or Live Target
+      let hitResult = this.scene.fireDarts({ ndc1, ndc2, chamber: firedChamber });
+
+      // Live AI-Targeting (Personspårning): Kontrollera om skotten överlappar med måltavlans zoner
+      if (this.aiPose && this.aiPose.isActive && this.aiPose.isPersonDetected) {
+        const liveHits = this.aiPose.checkScreenHit(this.aimX, this.aimY, spreadInfo.visualDropPx);
+        if (liveHits) {
+          hitResult = liveHits;
+        }
+      }
 
       // Evaluate NMI success
       const evalResult = this.ballistics.evaluateHit({
@@ -1353,15 +1361,52 @@ export class TaserApp {
     return this.startRealPersonAI();
   }
 
-  async startWebXR(type) {
+  async startWebXR(type = 'static') {
     this.closeModal('scenario-modal');
     try {
-      await this.xr.startXR(type);
+      const res = await this.xr.startXR(type);
+      if (res && res.success === false) {
+        this.startVirtualScenario(type);
+      }
     } catch (err) {
-      console.error('[WEBXR STARTUP ERROR]', err);
-      this.showTacticalError('WebXR Fel', err.message || 'WebXR kunde inte startas.', 'WEBXR');
-      this.log(`<span style='color:#e74c3c; font-weight:bold;'>WebXR fel:</span> ${err.message}`);
+      console.warn('[WEBXR NOTICE] Växlar automatiskt till simulerat AR-scenario:', err.message);
+      this.startVirtualScenario(type);
     }
+  }
+
+  startVirtualScenario(type = 'static') {
+    this.selectedScenario = type;
+    const tLabel = document.getElementById('target-label');
+
+    // Säkerställ att 3D-figuren är synlig och återställd
+    this.scene.resetTarget();
+    this.scene.set3DVisibility(true);
+
+    if (type === 'charging') {
+      if (tLabel) tLabel.textContent = 'MÅL: FRAMSTORMANDE';
+      this.threatLevel = 4;
+      if (typeof window !== 'undefined') window.threatLevel = 4;
+      this.log("<span style='color:#f39c12; font-weight:bold;'>🚨 SCENARIO: FRAMSTORMANDE MÅL!</span> Målet avancerar snabbt mot dig. Fäll målet med godkänd NMI-spridning innan det når fram!");
+      this.startScenario();
+    } else if (type === 'moving') {
+      if (tLabel) tLabel.textContent = 'MÅL: RÖRLIGT';
+      this.threatLevel = 3;
+      if (typeof window !== 'undefined') window.threatLevel = 3;
+      this.log("<span style='color:#3498db; font-weight:bold;'>🎯 SCENARIO: RÖRLIGT MÅL!</span> Målet rör sig i vinkel. Anpassa sikte och avfyra.");
+      this.startScenario();
+    } else {
+      // 'static'
+      if (tLabel) tLabel.textContent = 'MÅL: STATISKT';
+      this.threatLevel = 1;
+      if (typeof window !== 'undefined') window.threatLevel = 1;
+      this.isScenarioActive = false;
+      this.fsm.isScenarioActive = false;
+      this.log("<span style='color:#2ecc71; font-weight:bold;'>🎯 SCENARIO: STATISKT MÅL!</span> Mål redo på 3.0 meters avstånd. Kontrollera laserspridning och osäkra för skott.");
+    }
+
+    this.currentDistance = 3.0;
+    this.updateAimVisuals();
+    this.updateDisplay();
   }
 
   onXRSessionStart(session, scenario) {

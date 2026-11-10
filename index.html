@@ -941,6 +941,117 @@
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.8) !important;
         }
 
+        /* ----- LIVE AI PERSON TARGET OVERLAY (DOM OVERLAY) ----- */
+        .live-target-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 80;
+            transition: opacity 0.2s ease;
+            box-sizing: border-box;
+            will-change: transform, width, height;
+        }
+
+        .target-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            filter: drop-shadow(0 0 6px rgba(46, 204, 113, 0.45));
+        }
+
+        .zone-box {
+            transition: all 0.15s ease;
+        }
+
+        .zone-approved {
+            fill: rgba(46, 204, 113, 0.22);
+            stroke: #2ecc71;
+            stroke-width: 2.5px;
+            stroke-dasharray: 6 3;
+        }
+
+        .zone-danger {
+            fill: rgba(231, 76, 60, 0.28);
+            stroke: #e74c3c;
+            stroke-width: 2px;
+            stroke-dasharray: 4 2;
+        }
+
+        .zone-bullseye {
+            fill: none;
+            stroke: #2ecc71;
+            stroke-width: 2px;
+            stroke-dasharray: 3 3;
+        }
+
+        .zone-cross {
+            stroke: #2ecc71;
+            stroke-width: 1.5px;
+            stroke-dasharray: 2 2;
+        }
+
+        .zone-label {
+            font-size: 8px;
+            font-weight: 800;
+            font-family: monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .zone-label.approved {
+            fill: #2ecc71;
+            text-shadow: 0 0 4px rgba(0,0,0,0.8);
+        }
+
+        .zone-label.danger {
+            fill: #e74c3c;
+            text-shadow: 0 0 4px rgba(0,0,0,0.8);
+        }
+
+        .target-bracket {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-color: #2ecc71;
+            border-style: solid;
+            pointer-events: none;
+        }
+
+        .corner-tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+        .corner-tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; }
+        .corner-bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; }
+        .corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+        .target-badge {
+            position: absolute;
+            top: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 20, 15, 0.92);
+            border: 1px solid #2ecc71;
+            color: #2ecc71;
+            font-size: 10px;
+            font-weight: bold;
+            font-family: monospace;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .target-pulse {
+            color: #2ecc71;
+            animation: pulse-dot 0.8s infinite alternate;
+        }
+
+        @keyframes pulse-dot {
+            from { opacity: 0.3; }
+            to { opacity: 1; }
+        }
+
         /* AR PLACERING */
         #placement-controls { display: none; text-align: center; padding-top: 4px; }
         .btn-confirm {
@@ -1119,7 +1230,7 @@
             display: none !important;
         }
 
-        /* AR COMBAT MODE (Clean UI under WebXR DOM-overlay för maximalt fokus på kamera & lasrar) */
+        /* CLEAN AR UI (WebXR Active: Behåll enbart OLED, Säkring, Avfyra, Kassett och Funk. Kontroll) */
         body.ar-combat-mode .btn-clothing,
         body.ar-combat-mode #btn-clothing,
         body.ar-combat-mode .btn-voice,
@@ -1138,6 +1249,11 @@
         body.ar-combat-mode #btn-battery,
         body.ar-combat-mode .btn-scenario,
         body.ar-combat-mode #btn-scenario,
+        body.ar-combat-mode .btn-kontaktstot,
+        body.ar-combat-mode #btn-kontaktstot,
+        body.ar-combat-mode .btn-reset,
+        body.ar-combat-mode #btn-reset,
+        body.ar-combat-mode #btn-scenario-menu,
         body.ar-combat-mode #placement-controls,
         body.ar-combat-mode .status-grid,
         body.ar-combat-mode .log-box,
@@ -1152,32 +1268,93 @@
         .main-container.ar-combat-mode .btn-stealth,
         .main-container.ar-combat-mode .btn-battery,
         .main-container.ar-combat-mode .btn-scenario,
+        .main-container.ar-combat-mode .btn-kontaktstot,
+        .main-container.ar-combat-mode .btn-reset,
+        .main-container.ar-combat-mode #btn-scenario-menu,
         .main-container.ar-combat-mode #placement-controls,
         .main-container.ar-combat-mode .status-grid,
         .main-container.ar-combat-mode .log-box {
             display: none !important;
         }
 
+        body.ar-combat-mode .btn-grid-compact:has(#btn-cassette),
+        body.ar-combat-mode .btn-grid-compact:has(#btn-warn) {
+            grid-template-columns: 1fr !important;
+            margin-bottom: 4px;
+        }
+
+        /* Behåll enbart OLED, Säkring, Avfyra, Kassett och Funk. Kontroll synliga och tydliga */
+        body.ar-combat-mode #taser-display,
+        body.ar-combat-mode .safety-container,
+        body.ar-combat-mode #btn-trigger,
+        body.ar-combat-mode #btn-cassette,
+        body.ar-combat-mode #btn-warn,
+        .main-container.ar-combat-mode #taser-display,
+        .main-container.ar-combat-mode .safety-container,
+        .main-container.ar-combat-mode #btn-trigger,
+        .main-container.ar-combat-mode #btn-cassette,
+        .main-container.ar-combat-mode #btn-warn {
+            display: flex !important;
+            visibility: visible !important;
+        }
+
+        /* FÄRGSTARKT MEN TRANSPARENT AR UI (.ar-combat-mode) */
+        body.ar-combat-mode .taser-device,
+        .main-container.ar-combat-mode .taser-device {
+            background-color: rgba(20, 20, 20, 0.7) !important;
+            background-image: linear-gradient(to bottom, rgba(20, 20, 20, 0.7) 0%, rgba(30, 30, 30, 0.7) 40%, rgba(255, 204, 0, 0.6) 40%, rgba(255, 204, 0, 0.6) 100%) !important;
+            border: 2px solid rgba(255, 204, 0, 0.7) !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5), inset 0 2px 8px rgba(255,255,255,0.15) !important;
+            backdrop-filter: blur(2px) !important;
+            -webkit-backdrop-filter: blur(2px) !important;
+        }
+
+        body.ar-combat-mode .display-bezel,
+        .main-container.ar-combat-mode .display-bezel {
+            background-color: rgba(20, 20, 20, 0.7) !important;
+            border-color: rgba(0, 0, 0, 0.8) !important;
+            backdrop-filter: blur(2px) !important;
+            -webkit-backdrop-filter: blur(2px) !important;
+        }
+
+        body.ar-combat-mode .display-screen,
+        .main-container.ar-combat-mode .display-screen {
+            background-color: rgba(20, 20, 20, 0.7) !important;
+        }
+
+        body.ar-combat-mode #taser-display.oled-inverted,
+        .main-container.ar-combat-mode #taser-display.oled-inverted {
+            background-color: rgba(255, 204, 0, 0.6) !important;
+            color: #000000 !important;
+        }
+
         body.ar-combat-mode .sim-controls,
         .main-container.ar-combat-mode .sim-controls {
-            background: rgba(14, 18, 24, 0.40) !important;
-            backdrop-filter: blur(10px) !important;
-            -webkit-backdrop-filter: blur(10px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+            background-color: rgba(20, 20, 20, 0.7) !important;
+            backdrop-filter: blur(2px) !important;
+            -webkit-backdrop-filter: blur(2px) !important;
+            border: 1px solid rgba(255, 204, 0, 0.4) !important;
             border-bottom: none !important;
             border-radius: 16px 16px 0 0 !important;
-            box-shadow: 0 -6px 25px rgba(0, 0, 0, 0.6) !important;
+            box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.5) !important;
             padding: 8px 10px 14px 10px !important;
         }
 
-        body.ar-combat-mode button.action-btn,
-        .main-container.ar-combat-mode button.action-btn {
-            background: rgba(26, 32, 44, 0.50) !important;
-            backdrop-filter: blur(6px) !important;
-            -webkit-backdrop-filter: blur(6px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        body.ar-combat-mode #btn-cassette,
+        body.ar-combat-mode #btn-warn,
+        .main-container.ar-combat-mode #btn-cassette,
+        .main-container.ar-combat-mode #btn-warn {
+            display: inline-flex !important;
+            justify-content: center;
+            align-items: center;
+            min-height: 40px;
+            font-size: 11px;
+            font-weight: 700;
+            background-color: rgba(20, 20, 20, 0.7) !important;
+            backdrop-filter: blur(2px) !important;
+            -webkit-backdrop-filter: blur(2px) !important;
+            border: 1px solid rgba(255, 204, 0, 0.6) !important;
             color: #ffffff !important;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
         }
 
         body.ar-combat-mode .btn-trigger,
@@ -1185,12 +1362,8 @@
             background: linear-gradient(180deg, rgba(231, 76, 60, 0.88) 0%, rgba(192, 57, 43, 0.88) 100%) !important;
             border-color: #ff5252 !important;
             box-shadow: 0 0 16px rgba(231, 76, 60, 0.6) !important;
-        }
-
-        body.ar-combat-mode .taser-device,
-        .main-container.ar-combat-mode .taser-device {
-            background: transparent !important;
-            box-shadow: none !important;
+            backdrop-filter: blur(2px) !important;
+            -webkit-backdrop-filter: blur(2px) !important;
         }
 
         /* MODALER */
@@ -1385,6 +1558,39 @@
             <div id="three-canvas"></div>
             <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
             
+            <!-- LIVE AI PERSON TARGET OVERLAY (DOM OVERLAY) -->
+            <div id="live-target-overlay" class="live-target-overlay" style="display: none;">
+                <svg id="target-svg" class="target-svg" viewBox="0 0 200 400" preserveAspectRatio="none">
+                    <!-- Danger Zone: Huvud & Hals (Gul/Röd) -->
+                    <rect class="zone-box zone-danger head" x="65" y="6" width="70" height="58" rx="29" />
+                    <text x="100" y="38" text-anchor="middle" class="zone-label danger">HUVUD/HALS (EJ NMI)</text>
+
+                    <!-- Approved Zone: Bål & Bröstkorg (Grön - Godkänd NMI) -->
+                    <rect class="zone-box zone-approved torso" x="30" y="70" width="140" height="150" rx="8" />
+                    <circle cx="100" cy="145" r="32" class="zone-bullseye" />
+                    <line x1="68" y1="145" x2="132" y2="145" class="zone-cross" />
+                    <line x1="100" y1="113" x2="100" y2="177" class="zone-cross" />
+                    <text x="100" y="149" text-anchor="middle" class="zone-label approved">GODKÄND NMI-ZON (BÅL)</text>
+
+                    <!-- Danger Zone: Skrev / Ljumskar (Gul/Röd) -->
+                    <rect class="zone-box zone-danger groin" x="50" y="226" width="100" height="38" rx="6" />
+                    <text x="100" y="250" text-anchor="middle" class="zone-label danger">SKREV (EJ NMI)</text>
+
+                    <!-- Approved Zone: Ben & Lår (Grön - Godkänd NMI) -->
+                    <rect class="zone-box zone-approved legs" x="36" y="270" width="128" height="124" rx="8" />
+                    <text x="100" y="332" text-anchor="middle" class="zone-label approved">BEN / LÅR (NMI)</text>
+                </svg>
+
+                <!-- Tactical Target Corner Brackets & Distance Tag -->
+                <div class="target-bracket corner-tl"></div>
+                <div class="target-bracket corner-tr"></div>
+                <div class="target-bracket corner-bl"></div>
+                <div class="target-bracket corner-br"></div>
+                <div class="target-badge" id="target-badge">
+                    <span class="target-pulse">●</span> LÅST PÅ MÅL: <span id="target-live-dist">3.0 M</span>
+                </div>
+            </div>
+
             <div class="fixed-aim-layer">
                 <div class="crosshair"></div>
                 <div id="flashlight" class="flashlight-beam"></div>
@@ -1465,8 +1671,8 @@
 
                     <!-- Primär WebXR AR-kontroll i huvudknappsatsen -->
                     <div class="btn-grid-compact" style="grid-template-columns: 1.4fr 1fr;">
-                        <button class="action-btn btn-webxr" id="btn-webxr" data-alias="webxr-btn">🌐 WebXR Scenarier</button>
-                        <button class="action-btn" id="btn-place">📍 Flytta figur</button>
+                        <button class="action-btn btn-webxr" id="btn-webxr" data-alias="webxr-btn">🌐 WebXR</button>
+                        <button class="action-btn" id="btn-place">📍 Flytta</button>
                     </div>
 
                     <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr 1fr;">

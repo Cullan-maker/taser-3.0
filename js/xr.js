@@ -61,16 +61,9 @@ export class TaserXR {
 
   async startXR(scenario = 'static') {
     this.scenario = scenario;
-    if (!this.isWebXRSupported()) {
-      const err = new Error('WebXR stöds inte i denna webbläsare (navigator.xr saknas).');
-      console.error('[WEBXR ERROR]', err);
-      throw err;
-    }
-
-    if (this.xrSupported === false) {
-      const err = new Error('WebXR Immersive-AR stöds inte på denna enhet eller i denna webbläsare.');
-      console.error('[WEBXR ERROR]', err);
-      throw err;
+    if (!this.isWebXRSupported() || this.xrSupported === false) {
+      console.info('[WEBXR INFO] WebXR Immersive-AR stöds inte på denna enhet eller i denna webbläsare. Växlar till simulerat AR-scenario.');
+      return { success: false, fallback: true, scenario, reason: 'not-supported' };
     }
 
     // Release camera stream synchronously if held by WebRTC to prevent camera HAL hardware conflict
@@ -125,10 +118,10 @@ export class TaserXR {
       }
 
       console.log('[WEBXR] Immersive-AR session startad framgångsrikt i scenario:', this.scenario);
-      return session;
+      return { success: true, session, scenario: this.scenario };
     } catch (err) {
-      console.error('[WEBXR ERROR] Misslyckades att initiera WebXR-session:', err);
-      throw err;
+      console.warn('[WEBXR NOTICE] Misslyckades att initiera WebXR-session, växlar till simulerat AR:', err.message);
+      return { success: false, fallback: true, scenario: this.scenario, error: err };
     }
   }
 
@@ -440,10 +433,10 @@ export class TaserXR {
     this.gyroEnabled = true;
 
     // Tactical Constants for Snärt / Wrist Tilt (TASER 7 Tilt Select)
-    // Snärt med handleden når normalt 30-45 graders lutning (gamma) under 100-250ms
-    const TILT_ANGLE_THRESHOLD = 32; // 32 graders vinkel för direkt tilt
-    const NEUTRAL_RESET_THRESHOLD = 16; // Återgå till < 16 grader för att nollställa tillståndet
-    const COOLDOWN_MS = 380; // 380ms cooldown för att förhindra studs
+    // Snärt med handleden: tröskelvärde höjt till > 75 grader och 1000ms debounce för att förhindra byte vid vanliga steg
+    const TILT_ANGLE_THRESHOLD = 75; // Höjt tröskelvärde (> 75 grader)
+    const NEUTRAL_RESET_THRESHOLD = 30; // Återgå till < 30 grader för att nollställa
+    const COOLDOWN_MS = 1000; // 1 sekunds debounce (1000 ms)
 
     let lastGamma = null;
     let lastGammaTime = 0;
@@ -458,15 +451,15 @@ export class TaserXR {
       if (rawGamma !== null && typeof onPhysicalTilt === 'function') {
         const now = Date.now();
         const absGamma = Math.abs(rawGamma);
+        const absBeta = rawBeta !== null ? Math.abs(rawBeta) : 0;
         const dt = lastGammaTime > 0 ? (now - lastGammaTime) / 1000 : 0.016;
         const angularVelocity = (lastGamma !== null && dt > 0.005) ? Math.abs(rawGamma - lastGamma) / dt : 0;
 
         lastGamma = rawGamma;
         lastGammaTime = now;
 
-        // Snärt-detektering:
-        // Antingen vinkling över 32 grader ELLER snabb snärt (vinkelhastighet > 80 deg/s och vinkel > 20 deg)
-        const isFlick = (absGamma >= TILT_ANGLE_THRESHOLD) || (angularVelocity > 80 && absGamma >= 20);
+        // Snärt-detektering: kräver avsevärd vinkel (> 75 grader på gamma eller beta) och snabb acceleration/hastighet
+        const isFlick = (absGamma >= TILT_ANGLE_THRESHOLD || absBeta >= TILT_ANGLE_THRESHOLD) && (angularVelocity > 100 || absGamma >= 80);
 
         if (this.tiltState === 'neutral') {
           if (isFlick && (now - this.lastTiltTime > COOLDOWN_MS)) {
@@ -476,8 +469,8 @@ export class TaserXR {
             onPhysicalTilt(currentDir, rawGamma);
           }
         } else {
-          // Enheten har återgått till upprätt läge (< 16 grader): nollställ så nästa snärt kan registreras
-          if (absGamma < NEUTRAL_RESET_THRESHOLD) {
+          // Enheten har återgått till upprätt läge (< 30 grader): nollställ så nästa snärt kan registreras
+          if (absGamma < NEUTRAL_RESET_THRESHOLD && absBeta < NEUTRAL_RESET_THRESHOLD) {
             this.tiltState = 'neutral';
           }
         }
@@ -513,20 +506,20 @@ export class TaserXR {
 
     window.addEventListener('deviceorientation', handleOrientation);
 
-    // Sekundär snärt-avkänning via devicemotion för omedelbar respons vid snabb handledssnärt
+    // Sekundär snärt-avkänning via devicemotion för distinkt handledssnärt
     if (typeof window !== 'undefined' && 'ondevicemotion' in window) {
       window.addEventListener('devicemotion', (e) => {
         if (!e.rotationRate || typeof onPhysicalTilt !== 'function') return;
         const rot = e.rotationRate;
-        // Kraftig rotationssnärt runt telefonens längsgående axel
+        // Kraftig rotationssnärt runt telefonens längsgående axel krävs för att inte trigga vid gång
         const rate = Math.abs(rot.gamma || 0) + Math.abs(rot.alpha || 0);
-        if (rate > 150 && this.tiltState === 'neutral') {
-          const now = Date.now();
-          if (now - this.lastTiltTime > COOLDOWN_MS) {
+        const now = Date.now();
+        if (rate > 220 && this.tiltState === 'neutral' && (now - this.lastTiltTime > COOLDOWN_MS)) {
+          if (lastGamma !== null && Math.abs(lastGamma) >= 60) {
             const dir = (rot.gamma || 0) >= 0 ? 'right' : 'left';
             this.tiltState = dir;
             this.lastTiltTime = now;
-            onPhysicalTilt(dir, lastGamma || 35);
+            onPhysicalTilt(dir, lastGamma);
           }
         }
       }, { passive: true });

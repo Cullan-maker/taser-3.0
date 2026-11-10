@@ -260,6 +260,9 @@ export class TaserAIPose {
     this.hitboxGroup.visible = false;
     this._smoothedLandmarks = null;
 
+    const el = document.getElementById('live-target-overlay');
+    if (el) el.style.display = 'none';
+
     // Restore static 3D target when exiting live camera AR
     this.scene.set3DVisibility(true);
 
@@ -531,6 +534,29 @@ export class TaserAIPose {
     this.targets.rightLegScale.set(1.0, rLegLen, 1.0);
     this._diff.copy(pRKnee).sub(pRHip).normalize();
     this.targets.rightLegQuat.setFromUnitVectors(new THREE.Vector3(0, -1, 0), this._diff);
+
+    // ============================================================
+    // 3. COMPUTE 2D SCREEN TARGET OVERLAY BOUNDING BOX (DOMOVERLAY)
+    // ============================================================
+    const vp = document.getElementById('viewport');
+    const vpW = vp ? vp.clientWidth : window.innerWidth;
+    const vpH = vp ? vp.clientHeight : window.innerHeight;
+
+    const minX = Math.min(nose.x, lShoulder.x, rShoulder.x, lHip.x, rHip.x, lAnkle.x, rAnkle.x);
+    const maxX = Math.max(nose.x, lShoulder.x, rShoulder.x, lHip.x, rHip.x, lAnkle.x, rAnkle.x);
+    const minY = Math.min(nose.y - 0.06, lShoulder.y, rShoulder.y);
+    const maxY = Math.max(lAnkle.y, rAnkle.y, lHip.y + 0.35);
+
+    const padX = (maxX - minX) * 0.18;
+    const padY = (maxY - minY) * 0.05;
+
+    this.targetBox = {
+      left: Math.max(0, (minX - padX) * vpW),
+      top: Math.max(0, (minY - padY) * vpH),
+      width: Math.max(60, Math.min(vpW, (maxX - minX + padX * 2) * vpW)),
+      height: Math.max(120, Math.min(vpH, (maxY - minY + padY * 2) * vpH)),
+      distance: currentZ
+    };
   }
 
   /**
@@ -545,6 +571,8 @@ export class TaserAIPose {
 
     if (!this.isPersonDetected) {
       this.hitboxGroup.visible = false;
+      const el = document.getElementById('live-target-overlay');
+      if (el) el.style.display = 'none';
       return;
     }
 
@@ -581,5 +609,115 @@ export class TaserAIPose {
     if (this.targets.rightLegQuat) {
       this.rightLegMesh.quaternion.slerp(this.targets.rightLegQuat, lerpAlpha);
     }
+
+    // 6. Smooth DOMOverlay Live Target Position
+    this.updateTargetOverlay();
+  }
+
+  /**
+   * Updates the 2D SVG Taser target overlay to dynamically follow the detected person on screen.
+   */
+  updateTargetOverlay() {
+    const el = document.getElementById('live-target-overlay');
+    if (!el) return;
+
+    if (!this.isActive || !this.isPersonDetected || !this.targetBox) {
+      el.style.display = 'none';
+      return;
+    }
+
+    el.style.display = 'block';
+
+    if (!this._currBox) {
+      this._currBox = { ...this.targetBox };
+    } else {
+      const alpha = 0.28;
+      this._currBox.left += (this.targetBox.left - this._currBox.left) * alpha;
+      this._currBox.top += (this.targetBox.top - this._currBox.top) * alpha;
+      this._currBox.width += (this.targetBox.width - this._currBox.width) * alpha;
+      this._currBox.height += (this.targetBox.height - this._currBox.height) * alpha;
+    }
+
+    el.style.transform = `translate3d(${this._currBox.left.toFixed(1)}px, ${this._currBox.top.toFixed(1)}px, 0)`;
+    el.style.width = `${this._currBox.width.toFixed(1)}px`;
+    el.style.height = `${this._currBox.height.toFixed(1)}px`;
+
+    const distEl = document.getElementById('target-live-dist');
+    if (distEl) distEl.textContent = `${this.estimatedDistance.toFixed(1)} M`;
+  }
+
+  /**
+   * Screen-space 2D raycasting against the Live Target bounding box and anatomical zones.
+   */
+  checkScreenHit(aimXPct, aimYPct, dropPx) {
+    if (!this.isActive || !this.isPersonDetected || !this.targetBox) return null;
+
+    const vp = document.getElementById('viewport');
+    const vpW = vp ? vp.clientWidth : window.innerWidth;
+    const vpH = vp ? vp.clientHeight : window.innerHeight;
+
+    // Pixel position of aim crosshair (Top Dart)
+    const d1X = (aimXPct / 100) * vpW;
+    const d1Y = (aimYPct / 100) * vpH;
+
+    // Pixel position of lower dart (Bottom Dart with ballistic spread drop)
+    const d2X = d1X + (Math.random() - 0.5) * 4;
+    const d2Y = d1Y + dropPx;
+
+    const b = this._currBox || this.targetBox;
+
+    const testDart = (px, py) => {
+      // Check bounding box intersection
+      if (px < b.left || px > b.left + b.width || py < b.top || py > b.top + b.height) {
+        return null; // Miss
+      }
+
+      // Calculate relative vertical coordinate [0 = top of head, 1 = feet]
+      const relY = (py - b.top) / b.height;
+
+      if (relY >= 0 && relY < 0.18) {
+        return {
+          point: new THREE.Vector3(0, 0.5, -this.estimatedDistance),
+          object: this.headMesh,
+          zoneType: 'Head',
+          name: 'Huvud / Hals',
+          isApproved: false
+        };
+      } else if (relY >= 0.18 && relY < 0.58) {
+        return {
+          point: new THREE.Vector3(0, 0, -this.estimatedDistance),
+          object: this.torsoMesh,
+          zoneType: 'Torso',
+          name: 'Godkand_Zon',
+          isApproved: true
+        };
+      } else if (relY >= 0.58 && relY < 0.68) {
+        return {
+          point: new THREE.Vector3(0, -0.3, -this.estimatedDistance),
+          object: this.pelvisMesh,
+          zoneType: 'Groin',
+          name: 'Ljumskar / Genitalier',
+          isApproved: false
+        };
+      } else {
+        return {
+          point: new THREE.Vector3(0, -0.6, -this.estimatedDistance),
+          object: this.leftLegMesh,
+          zoneType: 'Ben',
+          name: 'Godkand_Zon',
+          isApproved: true
+        };
+      }
+    };
+
+    const hit1 = testDart(d1X, d1Y);
+    const hit2 = testDart(d2X, d2Y);
+
+    return {
+      hit1,
+      hit2,
+      hitWall1: !hit1,
+      hitWall2: !hit2
+    };
   }
 }

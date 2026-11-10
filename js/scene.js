@@ -1221,7 +1221,11 @@ export class TaserScene {
       this.spawnElectricArc(hit1.point, hit2.point, !hitWall1 && !hitWall2);
 
       // Deploy insulated high-tensile copper-clad wire lines
-      const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
+      const wireMat = new THREE.LineBasicMaterial({
+        color: 0xB87333, // Realistisk kopparfärg
+        transparent: true,
+        opacity: 0.95
+      });
 
       const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
       const wire1 = new THREE.Line(geo1, wireMat);
@@ -1286,15 +1290,13 @@ export class TaserScene {
       this.taserGroup.rotation.x = nextAngle;
 
       // WebXR AR Pivot & Floor Offset compensation:
-      // When the figure rotates around its midpoint, half the body cuts through the virtual floor.
-      // We apply a dynamic Y-offset proportional to fallProgress (-fallProgress * 0.5) combined with
-      // floor clearance so the mannequin lies flat and flush OVANPÅ the virtual AR floor without clipping!
+      // När figuren faller runt sin mittpunkt roteras den så att kroppen annars skär genom golvet.
+      // Genom att applicera en dynamisk Y-offset (-fallProgress * 0.5) landar figuren plant OVANPÅ golvet.
       const fallProgress = Math.min(1.0, Math.abs(nextAngle) / (Math.PI / 2));
       const basePos = this.taserGroup.userData.preFallPos || this.taserGroup.userData.startPos || this._v1.set(0, 0, 0);
 
-      // Dynamisk Y-offset (sänker pivotpunkten i takt med fallet så figuren lägger sig platt på golvet):
-      const yOffset = -fallProgress * 0.50 + (1.0 - Math.cos(nextAngle)) * 0.14;
-      this.taserGroup.position.y = basePos.y + yOffset;
+      // Dynamisk Y-offset i lerp-loopen:
+      this.taserGroup.position.y = basePos.y - fallProgress * 0.5;
 
       // Håll hälarna fixerade vid marken som rotationsaxel längs Z:
       const zOffset = -fallProgress * 0.35;
@@ -1303,7 +1305,7 @@ export class TaserScene {
       // Fully settled flat on the floor
       this.taserGroup.rotation.x = targetAngle;
       const basePos = this.taserGroup.userData.preFallPos || this.taserGroup.userData.startPos || this._v1.set(0, 0, 0);
-      this.taserGroup.position.y = basePos.y - 0.36;
+      this.taserGroup.position.y = basePos.y - 0.5;
       this.taserGroup.position.z = basePos.z - 0.35;
     }
   }
