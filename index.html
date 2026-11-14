@@ -57,6 +57,8 @@
             margin: 0 auto;
             padding: env(safe-area-inset-top, 6px) 6px env(safe-area-inset-bottom, 8px) 6px;
             position: relative;
+            z-index: 2;
+            background: transparent;
         }
 
         /* HEADER */
@@ -66,8 +68,10 @@
             align-items: center;
             justify-content: space-between;
             width: 100%;
-            padding: 2px 6px 4px 6px;
-            height: 32px;
+            padding: 2px 6px 4px 86px;
+            height: 34px;
+            position: relative;
+            z-index: 50;
         }
 
         h1.main-title {
@@ -123,8 +127,9 @@
             border-radius: 10px;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.95), inset 0 0 40px rgba(0,0,0,0.85);
-            background-color: #0a0a0a;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.95), inset 0 0 40px rgba(0,0,0,0.25);
+            background-color: transparent;
+            background: transparent;
             cursor: crosshair;
             touch-action: none;
             margin-bottom: 4px;
@@ -137,24 +142,27 @@
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 5;
+            z-index: 2;
+            background: transparent;
         }
 
         .camera-feed,
         #camera-feed {
             position: fixed !important;
+            inset: 0 !important;
             top: 0 !important;
             left: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
             height: 100dvh !important;
             object-fit: cover !important;
-            z-index: 0 !important;
+            z-index: 1 !important;
             margin: 0 !important;
             padding: 0 !important;
             border: none !important;
             background: transparent !important;
-            display: none;
+            display: block;
+            pointer-events: none;
         }
 
         .camera-feed.flash, #three-canvas.flash { animation: strobe 0.1s infinite alternate; }
@@ -1136,7 +1144,7 @@
             background-color: transparent !important;
             margin: 0 !important;
             padding: 0 !important;
-            z-index: 0 !important;
+            z-index: 2 !important;
             outline: none !important;
         }
 
@@ -1147,7 +1155,8 @@
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 5;
+            z-index: 2;
+            background: transparent;
             overflow: hidden;
         }
 
@@ -1507,9 +1516,278 @@
         @media (orientation: landscape) and (max-height: 520px) {
             #landscape-guard { display: flex; }
         }
+
+        /* ----- HUVUDMENY / STARTMENY (#main-menu) ----- */
+        #main-menu {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background: radial-gradient(circle at center, rgba(22, 24, 29, 0.96) 0%, rgba(5, 5, 5, 0.99) 100%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .main-menu-card {
+            width: 100%;
+            max-width: 390px;
+            background: linear-gradient(180deg, #1a1d24 0%, #0d0f13 100%);
+            border: 2px solid #2c313a;
+            border-top: 4px solid #f1c40f;
+            border-radius: 14px;
+            padding: 26px 22px;
+            box-shadow: 0 20px 55px rgba(0, 0, 0, 0.95), 0 0 30px rgba(241, 196, 15, 0.12);
+            text-align: center;
+        }
+
+        .main-menu-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #050505;
+            background: #f1c40f;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(241, 196, 15, 0.35);
+        }
+
+        #main-menu h1 {
+            color: #f1c40f;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            margin: 0 0 8px 0;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+        }
+
+        .main-menu-desc {
+            color: #bdc3c7;
+            font-size: 11px;
+            line-height: 1.45;
+            margin: 0 0 22px 0;
+        }
+
+        .main-menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .main-menu-btn {
+            width: 100%;
+            padding: 15px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            touch-action: manipulation;
+        }
+
+        .main-menu-btn:active {
+            transform: translateY(2px);
+        }
+
+        .main-menu-btn-mobile {
+            background: linear-gradient(180deg, #f1c40f 0%, #d4ac0d 100%);
+            color: #050505;
+            border: 1px solid #f7dc6f;
+            box-shadow: 0 4px 0 #7d6608, 0 8px 18px rgba(241, 196, 15, 0.25);
+        }
+
+        .main-menu-btn-vr {
+            background: linear-gradient(180deg, #252a34 0%, #14171d 100%);
+            color: #f1c40f;
+            border: 1px solid rgba(241, 196, 15, 0.65);
+            box-shadow: 0 4px 0 #090a0d, 0 8px 18px rgba(0, 0, 0, 0.7);
+        }
+
+        .main-menu-btn span {
+            display: block;
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 4px;
+            opacity: 0.85;
+            letter-spacing: 0.3px;
+            text-transform: none;
+        }
+
+        /* FAST TILLBAKAKNAPP TILL HUVUDMENYN (#btn-back-menu) */
+        #btn-back-menu {
+            display: none;
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 9998;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: rgba(15, 18, 24, 0.88);
+            color: #f1c40f;
+            border: 1px solid rgba(241, 196, 15, 0.65);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            touch-action: manipulation;
+        }
+        #btn-back-menu:active {
+            transform: translateY(1px);
+            background: rgba(241, 196, 15, 0.2);
+        }
+
+        /* VR-HEADSET STEREOSKOPISKT HELSKÄRMSLÄGE (Döljer HTML-knappar i botten) */
+        body.vr-headset-mode .simulator-wrapper {
+            max-width: 100vw !important;
+            width: 100vw !important;
+            height: 100dvh !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        body.vr-headset-mode .header-bar,
+        body.vr-headset-mode .main-container,
+        body.vr-headset-mode #landscape-guard,
+        body.vr-headset-mode .fixed-aim-layer {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+        body.vr-headset-mode .viewport,
+        body.vr-headset-mode #viewport {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
+            min-height: 0 !important;
+            flex: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 2 !important;
+        }
+        body.vr-headset-mode #three-canvas,
+        body.vr-headset-mode #three-canvas canvas {
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+        }
+
+        /* DISKRET ANSLUTNINGSSTATUS FÖR BLUETOOTH VR-JOYSTICK */
+        #vr-joystick-status {
+            display: none;
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 9998;
+            align-items: center;
+            gap: 5px;
+            background: rgba(15, 22, 18, 0.9);
+            color: #2ecc71;
+            border: 1px solid rgba(46, 204, 113, 0.75);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            pointer-events: none;
+        }
+        /* HELSKÄRMS CAMERA PASS-THROUGH TRANSPARENS */
+        html.camera-active,
+        body.camera-active {
+            background: transparent !important;
+            background-color: transparent !important;
+        }
+
+        /* DUBBLA HÅRKORS FÖR STEREOSKOPISK SIDE-BY-SIDE VR */
+        #vr-dual-crosshair {
+            display: none;
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            pointer-events: none;
+            z-index: 25;
+        }
+        body.vr-headset-mode #vr-dual-crosshair {
+            display: flex;
+        }
+        #vr-dual-crosshair .vr-eye {
+            flex: 1;
+            position: relative;
+            height: 100%;
+        }
+        #vr-dual-crosshair .vr-eye:first-child {
+            border-right: 1px solid rgba(255, 255, 255, 0.22);
+        }
+        #vr-dual-crosshair .vr-reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 28px;
+            height: 28px;
+            border: 1.5px solid rgba(255, 255, 255, 0.55);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+        }
+        #vr-dual-crosshair .vr-reticle::before,
+        #vr-dual-crosshair .vr-reticle::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.75);
+        }
+        #vr-dual-crosshair .vr-reticle::before {
+            top: 50%;
+            left: -5px;
+            right: -5px;
+            height: 1.5px;
+            transform: translateY(-50%);
+        }
+        #vr-dual-crosshair .vr-reticle::after {
+            left: 50%;
+            top: -5px;
+            bottom: -5px;
+            width: 1.5px;
+            transform: translateX(-50%);
+        }
     </style>
 </head>
 <body>
+
+    <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
+    <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
+    <!-- DISKRET STATUSNOTIS NÄR VR-JOYSTICK ÄR ANSLUTEN -->
+    <div id="vr-joystick-status" role="status" aria-live="polite">🎮 VR-Joystick ansluten</div>
+    <!-- DUBBLA HÅRKORS I STEREOSKOPISKT SIDE-BY-SIDE VR-LÄGE -->
+    <div id="vr-dual-crosshair" aria-hidden="true">
+        <div class="vr-eye"><div class="vr-reticle"></div></div>
+        <div class="vr-eye"><div class="vr-reticle"></div></div>
+    </div>
 
     <!-- LANDSCAPE ORIENTATION GUARD -->
     <div id="landscape-guard">
@@ -1527,6 +1805,9 @@
             <div class="banner-body" id="banner-body-text">Ett fel inträffade.</div>
         </div>
     </div>
+
+    <!-- KAMERA PASS-THROUGH BAKOM THREE.JS-CANVAS -->
+    <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
 
     <div class="simulator-wrapper">
         <!-- HELSKÄRMS FAIL OVERLAY (NÄR ANGRIPAREN NÅR INOM 0.8 M) -->
@@ -1556,7 +1837,6 @@
         <!-- ÖVRE HALVAN: MÅLBILDEN (3D-VYN) -->
         <div class="viewport" id="viewport">
             <div id="three-canvas"></div>
-            <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
             
             <!-- LIVE AI PERSON TARGET OVERLAY (DOM OVERLAY) -->
             <div id="live-target-overlay" class="live-target-overlay" style="display: none;">
@@ -1759,15 +2039,1119 @@
 
     <!-- Google MediaPipe BlazePose för AI-personidentifiering och dynamiska träffzoner -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"></script>
+    <!-- Google MediaPipe Hands för realtids-handspårning i kamera pass-through -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
 
-    <!-- Global THREE definition för garanterad tillgänglighet i alla skop -->
+    <!-- Global THREE, StereoEffect & GLTFLoader definition för garanterad tillgänglighet i alla skop -->
     <script type="module">
       import * as THREE from 'three';
+      import { StereoEffect } from 'three/addons/effects/StereoEffect.js';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       window.THREE = THREE;
+      window.StereoEffect = StereoEffect;
+      window.GLTFLoader = GLTFLoader;
     </script>
 
     <!-- Huvudapplikation (Relativ sökväg för GitHub Pages subpath-kompatibilitet) -->
     <script type="module" src="./js/app.js?v=6"></script>
+
+    <!-- HUVUDMENY / STARTMENY (VISAS INNAN APPEN STARTAR) -->
+    <div id="main-menu" role="dialog" aria-modal="true" aria-labelledby="main-menu-title">
+        <div class="main-menu-card">
+            <div class="main-menu-badge">TAKTISK PROCEDURSIMULATOR</div>
+            <h1 id="main-menu-title">TASER 7 ELITE - VÄLJ LÄGE</h1>
+            <p class="main-menu-desc">Välj hur du vill träna. Mobil/handhållen bevarar standardvyn, medan VR-headset aktiverar delad stereoskopisk 3D-skärm och Bluetooth-joystick.</p>
+            <div class="main-menu-buttons">
+                <button type="button" id="menu-btn-mobile" class="main-menu-btn main-menu-btn-mobile">
+                    📱 MOBIL / HANDHÅLLEN
+                    <span>Standardläge med pekskärm, gyro och kamera-AR</span>
+                </button>
+                <button type="button" id="menu-btn-vr" class="main-menu-btn main-menu-btn-vr">
+                    🥽 VR-HEADSET (3D PASS-THROUGH)
+                    <span>Delad Side-by-Side 3D-vy i helskärm för VR-glasögon &amp; Bluetooth-joystick</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- STARTMENY-LOGIK, KAMERA PASS-THROUGH, TILLBAKAKNAPP, STEREOSKOPISK VR & BLUETOOTH VR-JOYSTICK -->
+    <script>
+      let currentMode = 'mobile';
+      window.currentMode = currentMode;
+      window.state = window.state || { tilt: 0, isSafe: true };
+
+      (function initMainMenuAndVR() {
+        const mainMenu = document.getElementById('main-menu');
+        const btnMobile = document.getElementById('menu-btn-mobile');
+        const btnVr = document.getElementById('menu-btn-vr');
+        const btnBackMenu = document.getElementById('btn-back-menu');
+        const joystickStatusEl = document.getElementById('vr-joystick-status');
+        const cameraFeedEl = document.getElementById('camera-feed');
+
+        let vrXRSupported = false;
+        let lastInputTime = 0;
+        const DEBOUNCE_MS = 300;
+        const prevGamepadButtons = new Array(16).fill(false);
+
+        if (navigator.xr && typeof navigator.xr.isSessionSupported === 'function') {
+          navigator.xr.isSessionSupported('immersive-vr')
+            .then((supported) => { vrXRSupported = supported; })
+            .catch(() => { vrXRSupported = false; });
+        }
+
+        async function startCameraPassThrough() {
+          if (!cameraFeedEl) return null;
+          cameraFeedEl.style.display = 'block';
+          document.documentElement.classList.add('camera-active');
+          document.body.classList.add('camera-active');
+
+          if (window.taserApp && window.taserApp.scene) {
+            window.taserApp.scene.scene.background = null;
+            if (window.taserApp.scene.renderer) {
+              window.taserApp.scene.renderer.setClearColor(0x000000, 0);
+            }
+          }
+
+          if (cameraFeedEl.srcObject) {
+            try { await cameraFeedEl.play(); } catch (_) {}
+            if (typeof window.startHandTracking === 'function') {
+              window.startHandTracking(cameraFeedEl);
+            }
+            return cameraFeedEl.srcObject;
+          }
+
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.warn('[CAMERA] navigator.mediaDevices.getUserMedia stöds ej.');
+            return null;
+          }
+
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: 'environment' } },
+              audio: false
+            });
+            cameraFeedEl.srcObject = stream;
+            await cameraFeedEl.play().catch(() => {});
+            if (typeof window.startHandTracking === 'function') {
+              window.startHandTracking(cameraFeedEl);
+            }
+            return stream;
+          } catch (err) {
+            console.warn('[CAMERA] Bakre kamera nekad/ej tillgänglig, försöker med generell kamera:', err);
+            try {
+              const fallbackStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+              });
+              cameraFeedEl.srcObject = fallbackStream;
+              await cameraFeedEl.play().catch(() => {});
+              if (typeof window.startHandTracking === 'function') {
+                window.startHandTracking(cameraFeedEl);
+              }
+              return fallbackStream;
+            } catch (err2) {
+              console.warn('[CAMERA] Kunde inte starta kamera pass-through:', err2);
+              return null;
+            }
+          }
+        }
+        window.startCameraPassThrough = startCameraPassThrough;
+
+        function ensureAppArmedForInput() {
+          const app = window.taserApp;
+          if (!app || !app.fsm) return;
+          if (!app.fsm.hasBattery) {
+            app.fsm.hasBattery = true;
+            app.fsm.chamber1 = 'loaded';
+            app.fsm.chamber2 = 'loaded';
+            app.fsm.activeChamber = 1;
+            if (typeof window.resetWeaponPhase4 === 'function') {
+              window.resetWeaponPhase4(app.fsm);
+            }
+            app.updateDisplay();
+          }
+          if (window.state) {
+            window.state.isSafe = !!app.fsm.isSafe;
+          }
+        }
+
+        function triggerFire() {
+          const app = window.taserApp;
+          if (!app) return;
+          ensureAppArmedForInput();
+          if (app.audio && typeof app.audio.init === 'function') {
+            app.audio.init();
+          }
+          app.handleTrigger();
+        }
+        window.triggerFire = triggerFire;
+
+        function triggerSafetyToggle() {
+          const app = window.taserApp;
+          if (!app || !app.fsm) return;
+          ensureAppArmedForInput();
+          if (typeof window.toggleSafety === 'function') {
+            window.toggleSafety();
+          } else {
+            app.fsm.toggleSafety();
+          }
+          if (window.state) {
+            window.state.isSafe = !!app.fsm.isSafe;
+          }
+        }
+        window.triggerSafetyToggle = triggerSafetyToggle;
+
+        function triggerArc() {
+          const app = window.taserApp;
+          ensureAppArmedForInput();
+          if (app && app.audio && typeof app.audio.init === 'function') {
+            app.audio.init();
+          }
+          if (typeof window.pressSingleWarning === 'function') {
+            const ok = window.pressSingleWarning();
+            if (!ok && typeof window.pressDualWarning === 'function') {
+              window.pressDualWarning();
+            }
+          }
+        }
+        window.triggerArc = triggerArc;
+
+        function logJoystickDebug(label) {
+          console.log('[JOYSTICK DEBUG]', label);
+          if (joystickStatusEl) {
+            joystickStatusEl.textContent = `🎮 ${label}`;
+            joystickStatusEl.style.display = 'inline-flex';
+          }
+          const logEl = document.getElementById('log');
+          if (logEl) {
+            const entry = document.createElement('div');
+            entry.innerHTML = `<span style="color:#00ffff; font-weight:bold;">🎮 ${label}</span>`;
+            logEl.prepend(entry);
+          }
+        }
+
+        function showJoystickConnectedNotice(gamepadId) {
+          if (joystickStatusEl) {
+            joystickStatusEl.textContent = '🎮 VR-Joystick ansluten';
+            joystickStatusEl.style.display = 'inline-flex';
+          }
+          const logEl = document.getElementById('log');
+          if (logEl) {
+            const entry = document.createElement('div');
+            entry.innerHTML = `<span style="color:#2ecc71; font-weight:bold;">🎮 VR-Joystick ansluten</span>${gamepadId ? ` (${gamepadId})` : ''}`;
+            logEl.prepend(entry);
+          }
+        }
+
+        // 4. Gamepad API Loop (Game Mode - M+B): läser av ALLA knappar buttons[0..15] + felsökningslogg
+        function pollGamepad() {
+          if (mainMenu && mainMenu.style.display !== 'none') return;
+          const app = window.taserApp;
+          if (!app) return;
+
+          const gamepads = navigator.getGamepads ? navigator.getGamepads() : null;
+          if (!gamepads) return;
+
+          const gp = gamepads[0] || Array.from(gamepads).find(Boolean);
+          if (!gp) return;
+
+          const now = performance.now();
+          const btnCount = Math.min(gp.buttons ? gp.buttons.length : 0, 16);
+
+          for (let i = 0; i < btnCount; i++) {
+            const btn = gp.buttons[i];
+            const isPressed = !!(btn && (btn.pressed || btn.value > 0.5));
+            const wasPressed = prevGamepadButtons[i];
+
+            if (isPressed && !wasPressed) {
+              logJoystickDebug(`Knapp[${i}] tryckt (${gp.id || 'Gamepad'})`);
+
+              if (now - lastInputTime >= DEBOUNCE_MS) {
+                lastInputTime = now;
+
+                // buttons[0] (Knapp A), buttons[6]/[7] (Trigger/OK) eller buttons[4]/[5] -> Avfyra
+                if (i === 0 || i === 4 || i === 5 || i === 6 || i === 7) {
+                  triggerFire();
+                }
+                // buttons[1] (Knapp B) eller buttons[8] (Back) -> Växla säkring
+                else if (i === 1 || i === 8) {
+                  triggerSafetyToggle();
+                }
+                // buttons[2] (Knapp C) eller buttons[3] (Knapp D) -> Varningsbåge
+                else if (i === 2 || i === 3) {
+                  triggerArc();
+                }
+              }
+            }
+
+            prevGamepadButtons[i] = isPressed;
+          }
+
+          // Analog styrspak (axes[0] för X-led, axes[1] för Y-led, deadzone 0.2)
+          if (gp.axes && gp.axes.length >= 2) {
+            const rawX = gp.axes[0] || 0;
+            const rawY = gp.axes[1] || 0;
+            const axX = Math.abs(rawX) > 0.2 ? rawX : 0;
+            const axY = Math.abs(rawY) > 0.2 ? rawY : 0;
+
+            if (axX !== 0 || axY !== 0) {
+              app.tilt = Math.max(-25, Math.min(25, (app.tilt || 0) + axX * 1.1));
+              app.aimX = Math.max(10, Math.min(90, (app.aimX || 50) + axX * 1.3));
+              app.aimY = Math.max(15, Math.min(85, (app.aimY || 50) + axY * 1.2));
+              app.currentDistance = Math.max(1.0, Math.min(7.5, (app.currentDistance || 3.0) + axY * 0.04));
+              app.updateAimVisuals();
+            }
+          }
+        }
+        window.pollGamepad = pollGamepad;
+
+        // Anslutningsstatus för Bluetooth VR-joystick
+        window.addEventListener('gamepadconnected', (e) => {
+          console.log('[VR JOYSTICK] Ansluten:', e.gamepad.id);
+          showJoystickConnectedNotice(e.gamepad.id);
+        });
+
+        window.addEventListener('gamepaddisconnected', () => {
+          const stillConnected = navigator.getGamepads && Array.from(navigator.getGamepads()).some(Boolean);
+          if (!stillConnected && joystickStatusEl) {
+            joystickStatusEl.style.display = 'none';
+          }
+        });
+
+        if (navigator.getGamepads) {
+          const existingGp = navigator.getGamepads()[0] || Array.from(navigator.getGamepads()).find(Boolean);
+          if (existingGp) {
+            showJoystickConnectedNotice(existingGp.id);
+          }
+        }
+
+        // Universal Tangentbords- & Mediamappning + Game Mode-fallback (a, b, c, d, Enter, Space, Escape)
+        window.addEventListener('keydown', (e) => {
+          if (mainMenu && mainMenu.style.display !== 'none') return;
+          const app = window.taserApp;
+          if (!app) return;
+
+          const key = e.key || '';
+          const code = e.code || '';
+          const keyLower = key.toLowerCase();
+          const codeLower = code.toLowerCase();
+          const now = performance.now();
+
+          // Knapp A / OK-trigger: a, Enter, Space eller AudioVolumeUp -> triggerFire
+          if (
+            keyLower === 'a' ||
+            key === 'Enter' ||
+            key === ' ' ||
+            key === 'Spacebar' ||
+            code === 'Space' ||
+            key === 'AudioVolumeUp' ||
+            key === 'VolumeUp' ||
+            code === 'AudioVolumeUp' ||
+            code === 'VolumeUp' ||
+            keyLower === 'audiovolumeup' ||
+            keyLower === 'volumeup'
+          ) {
+            e.preventDefault();
+            logJoystickDebug(`Tangent[${code || key}] -> Avfyra`);
+            if (now - lastInputTime >= DEBOUNCE_MS) {
+              lastInputTime = now;
+              triggerFire();
+            }
+            return;
+          }
+
+          // Knapp B / Return: b, Escape, Backspace eller BrowserBack -> Växla säkring
+          if (
+            keyLower === 'b' ||
+            key === 'Escape' ||
+            key === 'Backspace' ||
+            key === 'BrowserBack' ||
+            key === 'GoBack' ||
+            code === 'BrowserBack' ||
+            keyLower === 'browserback'
+          ) {
+            e.preventDefault();
+            logJoystickDebug(`Tangent[${code || key}] -> Säkring`);
+            if (now - lastInputTime >= DEBOUNCE_MS) {
+              lastInputTime = now;
+              triggerSafetyToggle();
+            }
+            return;
+          }
+
+          // Knapp C / D: c, d, AudioVolumeDown eller MediaPlayPause -> triggerArc
+          if (
+            keyLower === 'c' ||
+            keyLower === 'd' ||
+            key === 'AudioVolumeDown' ||
+            key === 'VolumeDown' ||
+            key === 'MediaPlayPause' ||
+            code === 'AudioVolumeDown' ||
+            code === 'VolumeDown' ||
+            code === 'MediaPlayPause' ||
+            keyLower === 'audiovolumedown' ||
+            keyLower === 'volumedown' ||
+            codeLower === 'mediaplaypause'
+          ) {
+            e.preventDefault();
+            logJoystickDebug(`Tangent[${code || key}] -> Varningsbåge`);
+            if (now - lastInputTime >= DEBOUNCE_MS) {
+              lastInputTime = now;
+              triggerArc();
+            }
+            return;
+          }
+
+          // Styrspak vänster/höger: ArrowLeft / ArrowRight -> Justera vapnets lutning (tilt) stegvis
+          if (key === 'ArrowLeft') {
+            e.preventDefault();
+            app.tilt = Math.max(-25, (app.tilt || 0) - 2.5);
+            app.aimX = Math.max(10, (app.aimX || 50) - 2.5);
+            app.updateAimVisuals();
+            return;
+          }
+          if (key === 'ArrowRight') {
+            e.preventDefault();
+            app.tilt = Math.min(25, (app.tilt || 0) + 2.5);
+            app.aimX = Math.min(90, (app.aimX || 50) + 2.5);
+            app.updateAimVisuals();
+            return;
+          }
+
+          // Styrspak upp/ner: ArrowUp / ArrowDown -> Justera avståndet till målet stegvis
+          if (key === 'ArrowUp') {
+            e.preventDefault();
+            app.currentDistance = Math.max(1.0, Number(((app.currentDistance || 3.0) - 0.2).toFixed(2)));
+            app.updateAimVisuals();
+            return;
+          }
+          if (key === 'ArrowDown') {
+            e.preventDefault();
+            app.currentDistance = Math.min(7.5, Number(((app.currentDistance || 3.0) + 0.2).toFixed(2)));
+            app.updateAimVisuals();
+            return;
+          }
+        }, { passive: false });
+
+        // MOBIL / HANDHÅLLEN
+        if (btnMobile) {
+          btnMobile.addEventListener('click', () => {
+            currentMode = 'mobile';
+            window.currentMode = currentMode;
+            document.body.classList.remove('vr-headset-mode');
+            if (window.taserApp) window.taserApp.disableStereoVR();
+            if (mainMenu) mainMenu.style.display = 'none';
+            if (btnBackMenu) btnBackMenu.style.display = 'inline-flex';
+            startCameraPassThrough();
+            window.dispatchEvent(new Event('resize'));
+          });
+        }
+
+        // VR-HEADSET (3D PASS-THROUGH - SIDE-BY-SIDE + LANDSCAPE LOCK + WEBXR FALLBACK)
+        if (btnVr) {
+          btnVr.addEventListener('click', async () => {
+            currentMode = 'vr';
+            window.currentMode = currentMode;
+            document.body.classList.add('vr-headset-mode');
+            window.vrJoystickReady = true;
+            ensureAppArmedForInput();
+
+            if (mainMenu) mainMenu.style.display = 'none';
+            if (btnBackMenu) btnBackMenu.style.display = 'inline-flex';
+
+            startCameraPassThrough();
+
+            // Aktivera helskärm och lås skärmen i liggande läge (landscape)
+            try {
+              if (document.documentElement.requestFullscreen) {
+                await document.documentElement.requestFullscreen();
+              }
+            } catch (_) {}
+
+            try {
+              if (screen.orientation && screen.orientation.lock) {
+                await screen.orientation.lock('landscape');
+              }
+            } catch (_) {}
+
+            // Aktivera äkta Side-by-Side stereoskopisk 3D via StereoEffect som primär lösning/fallback
+            if (window.taserApp) {
+              window.taserApp.enableStereoVR();
+            }
+
+            // Om enheten har inbyggt WebXR VR-headsetstöd (t.ex. Quest), starta WebXR immersive-vr direkt
+            if (vrXRSupported && navigator.xr && window.taserApp && window.taserApp.scene) {
+              const renderer = window.taserApp.scene.renderer;
+              renderer.xr.enabled = true;
+              navigator.xr.requestSession('immersive-vr', {
+                optionalFeatures: ['local-floor', 'bounded-floor']
+              }).then((session) => {
+                window.taserApp.xr.xrSession = session;
+                renderer.xr.setReferenceSpaceType('local-floor');
+                return renderer.xr.setSession(session);
+              }).catch(() => {
+                if (window.taserApp) window.taserApp.enableStereoVR();
+              });
+            }
+
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+          });
+        }
+
+        // TILLBAKAKNAPP (⬅ MENY)
+        if (btnBackMenu) {
+          btnBackMenu.addEventListener('click', async () => {
+            // 1. Avsluta eventuell pågående VR/XR-session
+            if (window.taserApp && window.taserApp.xr && window.taserApp.xr.xrSession) {
+              try {
+                await window.taserApp.xr.endXRSession();
+              } catch (e) {}
+            }
+
+            // 2. Återställ skärmorientering och avsluta helskärmsläge om aktivt
+            try {
+              if (screen.orientation && screen.orientation.unlock) {
+                screen.orientation.unlock();
+              }
+            } catch (_) {}
+
+            if (document.fullscreenElement && document.exitFullscreen) {
+              document.exitFullscreen().catch(() => {});
+            }
+
+            // 3. Återställ normal kamera, rendering och gränssnitt
+            currentMode = 'mobile';
+            window.currentMode = currentMode;
+            document.body.classList.remove('vr-headset-mode');
+            if (window.taserApp) {
+              window.taserApp.tilt = 0;
+              window.taserApp.disableStereoVR();
+            }
+
+            // 4. Dölj tillbakaknappen och visa huvudmenyn igen
+            btnBackMenu.style.display = 'none';
+            if (mainMenu) mainMenu.style.display = 'flex';
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+          });
+        }
+      })();
+    </script>
+
+    <!-- FAS 3 & 4: 3D-MODELL (GLTFLoader), MEDIAPIPE HANDS, CID-OVERLAY, MUZZLE POINT & KASSETT-STATE MACHINE -->
+    <script>
+      let weaponMesh = null;
+      let muzzlePoint = null;
+      let activeCartridge = 1; // 1 = övre/första kassetten, 2 = undre/andra kassetten, 0 = båda förbrukade
+      window.weaponMesh = null;
+      window.muzzlePoint = null;
+      window.activeCartridge = activeCartridge;
+      window.handDetected = false;
+      window.state = window.state || { tilt: 0, isSafe: true };
+
+      (function initPhase3And4Weapon() {
+        let weaponMount = null;
+        let weaponInitialized = false;
+        let cidCanvas = null;
+        let cidCtx = null;
+        let cidTexture = null;
+        let cidMesh = null;
+        let chamber1Overlay = null;
+        let chamber2Overlay = null;
+
+        // MediaPipe Hands state (döljer vapnet tills handen syns i kamerabilden)
+        let handDetected = false;
+        let handsInstance = null;
+        let handLoopActive = false;
+        let handSending = false;
+        let lastHandSendTime = 0;
+        const handTargetPos = { x: 0.08, y: -0.10, z: -0.35 };
+        const handCurrentPos = { x: 0.08, y: -0.10, z: -0.35 };
+        const handTargetRot = { pitch: 0, yaw: 0, roll: 0 };
+        const handCurrentRot = { pitch: 0, yaw: 0, roll: 0 };
+
+        function onHandResults(results) {
+          if (results && results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const lm = results.multiHandLandmarks[0];
+            const wrist = lm[0];
+            const indexMcp = lm[5];
+            const middleMcp = lm[9];
+            const pinkyMcp = lm[17];
+
+            const anchorX = middleMcp.x * 0.65 + wrist.x * 0.35;
+            const anchorY = middleMcp.y * 0.65 + wrist.y * 0.35;
+            const handSpan = Math.hypot(middleMcp.x - wrist.x, middleMcp.y - wrist.y);
+            const estZ = Math.max(-0.46, Math.min(-0.24, -0.48 + handSpan * 0.65));
+
+            handTargetPos.x = Math.max(-0.24, Math.min(0.24, (anchorX - 0.5) * 0.48));
+            handTargetPos.y = Math.max(-0.18, Math.min(0.18, -(anchorY - 0.5) * 0.36));
+            handTargetPos.z = estZ;
+
+            const dirY = wrist.y - middleMcp.y;
+            const dirX = middleMcp.x - wrist.x;
+            handTargetRot.yaw = Math.max(-0.6, Math.min(0.6, (0.5 - anchorX) * 0.45 - dirX * 0.35));
+            handTargetRot.pitch = Math.max(-0.5, Math.min(0.5, (dirY - 0.16) * 0.85));
+            handTargetRot.roll = Math.atan2(pinkyMcp.y - indexMcp.y, pinkyMcp.x - indexMcp.x);
+
+            handDetected = true;
+            window.handDetected = true;
+            if (weaponMesh) {
+              weaponMesh.visible = true;
+            }
+          } else {
+            handDetected = false;
+            window.handDetected = false;
+          }
+        }
+
+        function ensureHandsInstance() {
+          if (handsInstance) return handsInstance;
+          if (typeof window.Hands !== 'function') return null;
+
+          try {
+            handsInstance = new window.Hands({
+              locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+            });
+            handsInstance.setOptions({
+              maxNumHands: 1,
+              modelComplexity: 1,
+              minDetectionConfidence: 0.6,
+              minTrackingConfidence: 0.5
+            });
+            handsInstance.onResults(onHandResults);
+            console.log('[HAND TRACKING] MediaPipe Hands initierad.');
+            return handsInstance;
+          } catch (err) {
+            console.warn('[HAND TRACKING] Kunde inte initiera MediaPipe Hands:', err);
+            handsInstance = null;
+            return null;
+          }
+        }
+
+        function startHandTracking(videoEl) {
+          if (handLoopActive) return;
+          handLoopActive = true;
+
+          const pump = async (now) => {
+            if (!handLoopActive) return;
+            requestAnimationFrame(pump);
+
+            const v = videoEl || document.getElementById('camera-feed');
+            if (!v || v.readyState < 2 || v.videoWidth <= 0 || v.paused) return;
+
+            const inst = ensureHandsInstance();
+            if (!inst || handSending || now - lastHandSendTime < 40) return;
+
+            handSending = true;
+            lastHandSendTime = now;
+            try {
+              await inst.send({ image: v });
+            } catch (err) {
+              // Ignorera enstaka frame-avbrott
+            } finally {
+              handSending = false;
+            }
+          };
+
+          requestAnimationFrame(pump);
+        }
+        window.startHandTracking = startHandTracking;
+
+        // 2. Dynamisk CID-skärm (512x256 off-screen canvas -> THREE.CanvasTexture)
+        function ensureCIDCanvas() {
+          if (cidCanvas && cidCtx && cidTexture) return;
+          cidCanvas = document.createElement('canvas');
+          cidCanvas.width = 512;
+          cidCanvas.height = 256;
+          cidCtx = cidCanvas.getContext('2d');
+          cidTexture = new THREE.CanvasTexture(cidCanvas);
+          cidTexture.colorSpace = THREE.SRGBColorSpace;
+          cidTexture.minFilter = THREE.LinearFilter;
+          cidTexture.magFilter = THREE.LinearFilter;
+        }
+
+        function drawCrossedBox(ctx, x, y, w, h, loaded, label) {
+          ctx.save();
+          if (loaded) {
+            ctx.fillStyle = '#1b5e20';
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
+            ctx.strokeStyle = '#a3f7bf';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, w, h);
+
+            ctx.fillStyle = '#041b0c';
+            ctx.font = 'bold 34px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, x + w / 2, y + h / 2);
+          } else {
+            ctx.fillStyle = '#2c3138';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#7f8c8d';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, w, h);
+
+            // Grå kryssad markering för förbrukad/tom kassett
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(x + 12, y + 12);
+            ctx.lineTo(x + w - 12, y + h - 12);
+            ctx.moveTo(x + w - 12, y + 12);
+            ctx.lineTo(x + 12, y + h - 12);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.65)';
+            ctx.font = 'bold 20px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(label, x + w / 2, y + h - 6);
+          }
+          ctx.restore();
+        }
+
+        function updateCIDTexture(c1Loaded, c2Loaded, batteryPct = 99, isSafe = true) {
+          ensureCIDCanvas();
+          const ctx = cidCtx;
+          const W = cidCanvas.width;
+          const H = cidCanvas.height;
+
+          // Taser-gul ytterram
+          ctx.fillStyle = '#f1c40f';
+          ctx.fillRect(0, 0, W, H);
+          ctx.strokeStyle = '#111111';
+          ctx.lineWidth = 10;
+          ctx.strokeRect(5, 5, W - 10, H - 10);
+
+          // Mörk OLED-bakgrund i mitten
+          ctx.fillStyle = '#06080b';
+          ctx.fillRect(18, 18, W - 36, H - 36);
+
+          const hasPower = batteryPct > 0;
+          if (!hasPower) {
+            ctx.fillStyle = '#475569';
+            ctx.font = 'bold 28px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('NO BATTERY', W / 2, H / 2);
+            if (cidTexture) cidTexture.needsUpdate = true;
+            return;
+          }
+
+          // Toppstatus (SÄKRAD / OSÄKRAD)
+          ctx.fillStyle = isSafe ? '#2ecc71' : '#ff4757';
+          ctx.font = 'bold 24px monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(isSafe ? 'SAFE' : 'ARMED', 36, 30);
+
+          // Batteri-ikon + procent (t.ex. "99%")
+          const pct = Math.max(0, Math.min(100, Math.round(batteryPct)));
+          const battX = 350;
+          const battY = 30;
+          const battW = 68;
+          const battH = 32;
+          ctx.strokeStyle = '#f1c40f';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(battX, battY, battW, battH);
+          ctx.fillStyle = '#f1c40f';
+          ctx.fillRect(battX + battW, battY + 8, 7, 16);
+          const fillW = Math.max(4, Math.round((battW - 10) * (pct / 100)));
+          ctx.fillStyle = pct > 20 ? '#2ecc71' : '#e74c3c';
+          ctx.fillRect(battX + 5, battY + 5, fillW, battH - 10);
+
+          ctx.fillStyle = '#f1c40f';
+          ctx.font = 'bold 26px monospace';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'top';
+          ctx.fillText(`${pct}%`, W - 32, 32);
+
+          // Kassett 1 & Kassett 2 rektangulära boxar
+          drawCrossedBox(ctx, 56, 92, 175, 118, !!c1Loaded, 'C1');
+          drawCrossedBox(ctx, 281, 92, 175, 118, !!c2Loaded, 'C2');
+
+          if (cidTexture) {
+            cidTexture.needsUpdate = true;
+          }
+        }
+        window.updateCIDTexture = updateCIDTexture;
+
+        // 3. Fäst CID-skärm (1 mm offset bak) och två mattsvarta kammare-overlays framför mynningen
+        function attachOverlaysToWeapon(targetWeapon, metrics) {
+          ensureCIDCanvas();
+          updateCIDTexture(true, true, 99, true);
+
+          const invScale = metrics.invScale || 1;
+
+          // CID-skärm som child på weaponMesh (ca 1 mm offset ovanpå vapnets skärm på baksidan)
+          const cidGeo = new THREE.PlaneGeometry(0.034 * invScale, 0.017 * invScale);
+          const cidMat = new THREE.MeshBasicMaterial({
+            map: cidTexture,
+            side: THREE.DoubleSide,
+            toneMapped: false
+          });
+          cidMesh = new THREE.Mesh(cidGeo, cidMat);
+          cidMesh.name = 'Taser7_CID_Screen';
+          cidMesh.position.copy(metrics.cidPos);
+          cidMesh.rotation.copy(metrics.cidRot);
+          cidMesh.renderOrder = 20;
+          targetWeapon.add(cidMesh);
+
+          // Två små mattsvarta THREE.Mesh-overlays framför mynningen för Kassett 1 (övre) & Kassett 2 (undre)
+          const overlayGeo = new THREE.CircleGeometry(0.0085 * invScale, 16);
+          const overlayMat1 = new THREE.MeshBasicMaterial({
+            color: 0x050505,
+            side: THREE.DoubleSide
+          });
+          const overlayMat2 = new THREE.MeshBasicMaterial({
+            color: 0x050505,
+            side: THREE.DoubleSide
+          });
+
+          chamber1Overlay = new THREE.Mesh(overlayGeo, overlayMat1);
+          chamber1Overlay.name = 'Chamber1_EmptyOverlay';
+          chamber1Overlay.position.copy(metrics.c1Pos);
+          chamber1Overlay.rotation.copy(metrics.muzzleRot);
+          chamber1Overlay.visible = false;
+          targetWeapon.add(chamber1Overlay);
+
+          chamber2Overlay = new THREE.Mesh(overlayGeo.clone(), overlayMat2);
+          chamber2Overlay.name = 'Chamber2_EmptyOverlay';
+          chamber2Overlay.position.copy(metrics.c2Pos);
+          chamber2Overlay.rotation.copy(metrics.muzzleRot);
+          chamber2Overlay.visible = false;
+          targetWeapon.add(chamber2Overlay);
+
+          // Fas 4: Osynlig muzzlePoint längst fram på pipan (child på weaponMesh)
+          muzzlePoint = new THREE.Object3D();
+          muzzlePoint.name = 'muzzlePoint';
+          muzzlePoint.position.copy(metrics.muzzlePos);
+          targetWeapon.add(muzzlePoint);
+          window.muzzlePoint = muzzlePoint;
+          if (window.taserApp && window.taserApp.scene) {
+            window.taserApp.scene.muzzlePoint = muzzlePoint;
+          }
+        }
+
+        // Fallback-vapen (multi-part Taser 7) om taser_7_w_safariland_holster.glb saknas lokalt
+        function createFallbackTaser7Weapon() {
+          const group = new THREE.Group();
+          group.name = 'Taser7_ProceduralFallback';
+
+          const blackPolymer = new THREE.MeshStandardMaterial({ color: 0x1a1d24, roughness: 0.55, metalness: 0.25 });
+          const gripRubber = new THREE.MeshStandardMaterial({ color: 0x101216, roughness: 0.88, metalness: 0.05 });
+          const taserYellow = new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.42, metalness: 0.12 });
+          const steelMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.2, metalness: 0.9 });
+
+          // Övre polymerkropp (slide)
+          const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.044, 0.15), blackPolymer);
+          bodyMesh.position.set(0, 0.025, -0.01);
+          group.add(bodyMesh);
+
+          // Gul toppmarkering & bakre kåpa
+          const yellowTop = new THREE.Mesh(new THREE.BoxGeometry(0.037, 0.012, 0.10), taserYellow);
+          yellowTop.position.set(0, 0.045, 0.005);
+          group.add(yellowTop);
+
+          // Ergonomiskt gult grepp
+          const gripMesh = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.095, 0.042), taserYellow);
+          gripMesh.position.set(0, -0.042, 0.042);
+          gripMesh.rotation.x = 0.24;
+          group.add(gripMesh);
+
+          // Texturerade svarta greppanel-inlägg
+          const gripPad = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.072, 0.028), gripRubber);
+          gripPad.position.set(0, -0.042, 0.042);
+          gripPad.rotation.x = 0.24;
+          group.add(gripPad);
+
+          // Främre dubbla kassetthus (Kammare 1 övre, Kammare 2 undre)
+          const bayHousing = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.046, 0.045), taserYellow);
+          bayHousing.position.set(0, 0.022, -0.095);
+          group.add(bayHousing);
+
+          // Elektrodpinnar fram
+          const pinGeo = new THREE.CylinderGeometry(0.002, 0.002, 0.012, 8);
+          const pinL = new THREE.Mesh(pinGeo, steelMat);
+          pinL.rotation.x = Math.PI / 2;
+          pinL.position.set(-0.012, 0.036, -0.118);
+          group.add(pinL);
+          const pinR = new THREE.Mesh(pinGeo, steelMat);
+          pinR.rotation.x = Math.PI / 2;
+          pinR.position.set(0.012, 0.036, -0.118);
+          group.add(pinR);
+
+          // Bakre CID-ram på ovansidan/baksidan
+          const cidHousing = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.022, 0.012), blackPolymer);
+          cidHousing.position.set(0, 0.042, 0.066);
+          cidHousing.rotation.x = -0.25;
+          group.add(cidHousing);
+
+          // Riktmedel (sikten)
+          const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.006, 0.006), new THREE.MeshBasicMaterial({ color: 0x00ff66 }));
+          frontSight.position.set(0, 0.053, -0.078);
+          group.add(frontSight);
+
+          return group;
+        }
+
+        function bakeMeshTransformAndNormalize(obj) {
+          obj.updateMatrixWorld(true);
+          obj.traverse((child) => {
+            if (child.isMesh && child.geometry) {
+              child.geometry = child.geometry.clone();
+              child.geometry.applyMatrix4(child.matrixWorld);
+            }
+          });
+          obj.traverse((child) => {
+            child.position.set(0, 0, 0);
+            child.rotation.set(0, 0, 0);
+            child.scale.set(1, 1, 1);
+          });
+          obj.updateMatrixWorld(true);
+
+          const box = new THREE.Box3().setFromObject(obj);
+          const size = new THREE.Vector3();
+          const center = new THREE.Vector3();
+          box.getSize(size);
+          box.getCenter(center);
+
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const normScale = 0.21 / maxDim;
+          const normMat = new THREE.Matrix4()
+            .makeScale(normScale, normScale, normScale)
+            .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
+
+          obj.traverse((child) => {
+            if (child.isMesh && child.geometry) {
+              child.geometry.applyMatrix4(normMat);
+              child.geometry.computeBoundingBox();
+              child.geometry.computeBoundingSphere();
+            }
+          });
+          obj.updateMatrixWorld(true);
+
+          const finalBox = new THREE.Box3().setFromObject(obj);
+          return {
+            invScale: 1,
+            cidPos: new THREE.Vector3(0, finalBox.max.y * 0.62, finalBox.max.z + 0.001),
+            cidRot: new THREE.Euler(-0.22, 0, 0),
+            c1Pos: new THREE.Vector3(0, finalBox.max.y * 0.45, finalBox.min.z - 0.0015),
+            c2Pos: new THREE.Vector3(0, finalBox.max.y * 0.12, finalBox.min.z - 0.0015),
+            muzzlePos: new THREE.Vector3(0, finalBox.max.y * 0.285, finalBox.min.z - 0.002),
+            muzzleRot: new THREE.Euler(0, 0, 0)
+          };
+        }
+
+        function initTaser3DWeapon() {
+          if (weaponInitialized) return;
+          const app = window.taserApp;
+          if (!app || !app.scene || !app.scene.taserModel || !window.THREE) return;
+          weaponInitialized = true;
+
+          weaponMount = new THREE.Group();
+          weaponMount.name = 'Taser7_WeaponMount';
+          weaponMount.rotation.order = 'YXZ';
+          app.scene.taserModel.add(weaponMount);
+
+          const attachReadyWeapon = (meshObj, metrics) => {
+            weaponMesh = meshObj;
+            weaponMesh.visible = true; // Alltid redo i förstapersonsvy (följer handen vid detektering)
+            window.weaponMesh = weaponMesh;
+            weaponMount.add(weaponMesh);
+            attachOverlaysToWeapon(weaponMesh, metrics);
+            syncWeaponOverlays(app.fsm);
+          };
+
+          if (typeof window.GLTFLoader === 'function') {
+            const loader = new window.GLTFLoader();
+            loader.load(
+              'taser_7_w_safariland_holster.glb',
+              (gltf) => {
+                const root = gltf.scene;
+                let obj5 = null;
+                root.traverse((node) => {
+                  if (node.name === 'Object_2' || node.name === 'Object_3' || node.name === 'Object_4') {
+                    node.visible = false;
+                  }
+                  if (node.name === 'Object_5') {
+                    obj5 = node;
+                  }
+                });
+
+                const isolated = obj5 || root;
+                root.updateMatrixWorld(true);
+                const metrics = bakeMeshTransformAndNormalize(isolated);
+                attachReadyWeapon(isolated, metrics);
+              },
+              undefined,
+              () => {
+                // Fallback om GLB inte hittas lokalt
+                const fallbackMesh = createFallbackTaser7Weapon();
+                attachReadyWeapon(fallbackMesh, {
+                  invScale: 1,
+                  cidPos: new THREE.Vector3(0, 0.044, 0.073),
+                  cidRot: new THREE.Euler(-0.25, 0, 0),
+                  c1Pos: new THREE.Vector3(0, 0.032, -0.119),
+                  c2Pos: new THREE.Vector3(0, 0.011, -0.119),
+                  muzzlePos: new THREE.Vector3(0, 0.022, -0.120),
+                  muzzleRot: new THREE.Euler(0, 0, 0)
+                });
+              }
+            );
+          } else {
+            const fallbackMesh = createFallbackTaser7Weapon();
+            attachReadyWeapon(fallbackMesh, {
+              invScale: 1,
+              cidPos: new THREE.Vector3(0, 0.044, 0.073),
+              cidRot: new THREE.Euler(-0.25, 0, 0),
+              c1Pos: new THREE.Vector3(0, 0.032, -0.119),
+              c2Pos: new THREE.Vector3(0, 0.011, -0.119),
+              muzzlePos: new THREE.Vector3(0, 0.022, -0.120),
+              muzzleRot: new THREE.Euler(0, 0, 0)
+            });
+          }
+        }
+
+        function updateWeaponPose(app) {
+          if (!weaponInitialized) {
+            initTaser3DWeapon();
+          }
+          if (!weaponMount || !weaponMesh) return;
+
+          weaponMesh.visible = true;
+
+          // Spegla state.tilt och state.isSafe
+          const activeTilt = (app && typeof app.tilt === 'number')
+            ? app.tilt
+            : (window.state?.tilt || 0);
+          if (window.state) {
+            window.state.tilt = activeTilt;
+            if (app && app.fsm) window.state.isSafe = !!app.fsm.isSafe;
+          }
+
+          const isVR = window.currentMode === 'vr' || document.body.classList.contains('vr-headset-mode');
+          const defaultPosX = isVR ? 0.0 : 0.095;
+          const defaultPosY = isVR ? -0.095 : -0.105;
+          const defaultPosZ = isVR ? -0.36 : -0.34;
+
+          const lerpAlpha = 0.25;
+          if (handDetected) {
+            handCurrentPos.x += (handTargetPos.x - handCurrentPos.x) * lerpAlpha;
+            handCurrentPos.y += (handTargetPos.y - handCurrentPos.y) * lerpAlpha;
+            handCurrentPos.z += (handTargetPos.z - handCurrentPos.z) * lerpAlpha;
+
+            handCurrentRot.pitch += (handTargetRot.pitch - handCurrentRot.pitch) * lerpAlpha;
+            handCurrentRot.yaw += (handTargetRot.yaw - handCurrentRot.yaw) * lerpAlpha;
+            handCurrentRot.roll += (handTargetRot.roll - handCurrentRot.roll) * lerpAlpha;
+          } else {
+            handCurrentPos.x += (defaultPosX - handCurrentPos.x) * lerpAlpha;
+            handCurrentPos.y += (defaultPosY - handCurrentPos.y) * lerpAlpha;
+            handCurrentPos.z += (defaultPosZ - handCurrentPos.z) * lerpAlpha;
+
+            handCurrentRot.pitch += (0 - handCurrentRot.pitch) * lerpAlpha;
+            handCurrentRot.yaw += (0 - handCurrentRot.yaw) * lerpAlpha;
+            handCurrentRot.roll += (0 - handCurrentRot.roll) * lerpAlpha;
+          }
+
+          weaponMount.position.set(handCurrentPos.x, handCurrentPos.y, handCurrentPos.z);
+
+          const targetDist = Math.max(1.2, (app && typeof app.currentDistance === 'number') ? app.currentDistance : 3.0);
+          const dz = Math.max(0.5, targetDist - (Math.abs(weaponMount.position.z) + 0.11));
+          const convYaw = Math.atan2(weaponMount.position.x, dz);
+          const convPitch = Math.atan2(-weaponMount.position.y, dz);
+
+          weaponMount.rotation.order = 'YXZ';
+          weaponMount.rotation.set(
+            convPitch + handCurrentRot.pitch * 0.45,
+            convYaw + handCurrentRot.yaw * 0.45,
+            0.0
+          );
+
+          // Koppla vapnets lutning (rotation.z) till handens vinkel + state.tilt (vrider även muzzlePoint)
+          weaponMesh.rotation.z = handCurrentRot.roll * 0.35 + THREE.MathUtils.degToRad(-activeTilt);
+          weaponMount.updateMatrixWorld(true);
+        }
+        window.updateWeaponPose = updateWeaponPose;
+
+        function syncActiveCartridgeFromFSM(fsm) {
+          if (!fsm) return activeCartridge;
+          const c1 = String(fsm.chamber1 || '').toLowerCase();
+          const c2 = String(fsm.chamber2 || '').toLowerCase();
+
+          if (c1 === 'fired' && c2 === 'fired') {
+            activeCartridge = 0;
+          } else if (c1 === 'fired' && c2 === 'loaded') {
+            activeCartridge = 2;
+          } else if (c2 === 'fired' && c1 === 'loaded') {
+            activeCartridge = 1;
+          } else if (c1 === 'loaded' && c2 === 'loaded') {
+            activeCartridge = fsm.activeChamber === 2 ? 2 : 1;
+          } else if (c1 === 'empty' && c2 === 'empty') {
+            activeCartridge = fsm.shotsFired >= 2 ? 0 : 1;
+          }
+
+          window.activeCartridge = activeCartridge;
+          return activeCartridge;
+        }
+        window.syncActiveCartridgeFromFSM = syncActiveCartridgeFromFSM;
+
+        function syncWeaponOverlays(fsm) {
+          if (!fsm) return;
+          const c1State = String(fsm.chamber1 || '').toLowerCase();
+          const c2State = String(fsm.chamber2 || '').toLowerCase();
+          const c1Loaded = c1State === 'loaded';
+          const c2Loaded = c2State === 'loaded';
+          const c1Fired = c1State === 'fired';
+          const c2Fired = c2State === 'fired';
+          const batteryPct = fsm.hasBattery ? 99 : 0;
+
+          if (chamber1Overlay) chamber1Overlay.visible = c1Fired;
+          if (chamber2Overlay) chamber2Overlay.visible = c2Fired;
+          updateCIDTexture(c1Loaded, c2Loaded, batteryPct, !!fsm.isSafe);
+          syncActiveCartridgeFromFSM(fsm);
+        }
+        window.syncWeaponOverlays = syncWeaponOverlays;
+
+        function onChamberFired(firedChamber, fsm) {
+          if (firedChamber === 1 && chamber1Overlay) {
+            chamber1Overlay.visible = true;
+          } else if (firedChamber === 2 && chamber2Overlay) {
+            chamber2Overlay.visible = true;
+          }
+          // Växla activeCartridge omedelbart: 1 -> 2 (eller 2 -> 0)
+          if (firedChamber === 1) {
+            const c2Loaded = fsm && String(fsm.chamber2 || '').toLowerCase() === 'loaded';
+            activeCartridge = c2Loaded ? 2 : 0;
+          } else if (firedChamber === 2) {
+            const c1Loaded = fsm && String(fsm.chamber1 || '').toLowerCase() === 'loaded';
+            activeCartridge = c1Loaded ? 1 : 0;
+          }
+          window.activeCartridge = activeCartridge;
+          syncWeaponOverlays(fsm);
+        }
+        window.onChamberFired = onChamberFired;
+
+        function resetWeaponPhase4(fsm) {
+          activeCartridge = 1;
+          window.activeCartridge = 1;
+          if (chamber1Overlay) chamber1Overlay.visible = false;
+          if (chamber2Overlay) chamber2Overlay.visible = false;
+          const batteryPct = fsm ? (fsm.hasBattery ? 99 : 0) : 99;
+          const isSafe = fsm ? !!fsm.isSafe : true;
+          updateCIDTexture(true, true, batteryPct, isSafe);
+        }
+        window.resetWeaponPhase4 = resetWeaponPhase4;
+
+        window.addEventListener('DOMContentLoaded', () => {
+          setTimeout(initTaser3DWeapon, 60);
+        });
+        if (document.readyState !== 'loading') {
+          setTimeout(initTaser3DWeapon, 60);
+        }
+      })();
+    </script>
 
 </body>
 </html>

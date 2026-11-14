@@ -26,6 +26,7 @@ export class TaserScene {
 
     this.activeWires = [];
     this.activeDarts = [];
+    this.muzzlePoint = null;
     this.figureFallen = false;
     this.isTased = false;
     this.fallVelocity = 0.0;
@@ -90,13 +91,13 @@ export class TaserScene {
     this.isSoftwareGl = this.detectSoftwareGl();
 
     this.scene = new THREE.Scene();
-    this.defaultBackground = new THREE.Color(0x0a0a0a);
-    this.scene.background = this.defaultBackground;
+    this.defaultBackground = null;
+    this.scene.background = null;
 
     const width = this.container.clientWidth || 320;
     const height = this.container.clientHeight || 320;
 
-    this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+    this.camera = new THREE.PerspectiveCamera(45, width / height, 0.03, 100);
     this.camera.position.set(0, 1.35, 3.0);
     this.camera.lookAt(0, 1.35, 0);
 
@@ -1170,77 +1171,117 @@ export class TaserScene {
       ? this.aiPose.hitboxGroup
       : this.taserGroup;
 
+    const muzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const muzzlePos = new THREE.Vector3();
+    const muzzleQuat = new THREE.Quaternion();
+    const dir1 = new THREE.Vector3();
+    const dir2 = new THREE.Vector3();
+
+    if (muzzle) {
+      muzzle.updateWorldMatrix(true, false);
+      muzzle.getWorldPosition(muzzlePos);
+      muzzle.getWorldQuaternion(muzzleQuat);
+
+      const targetRefPos = activeTargetGroup ? activeTargetGroup.position : this._v1.set(0, 0, 0);
+      const estDist = Math.max(0.5, muzzlePos.distanceTo(targetRefPos));
+      const spreadDeg = chamber === 2 ? 3.5 : 12.0;
+      const gravDropDeg = estDist > 3.0 ? Math.pow(estDist - 3.0, 2) * 0.12 : 0;
+      const dropRad = THREE.MathUtils.degToRad(spreadDeg + gravDropDeg);
+
+      dir1.set(0, 0, -1).applyQuaternion(muzzleQuat).normalize();
+      dir1.x += (Math.random() - 0.5) * 0.004;
+      dir1.y += (Math.random() - 0.5) * 0.004;
+      dir1.normalize();
+
+      dir2.set(0, -Math.sin(dropRad), -Math.cos(dropRad)).applyQuaternion(muzzleQuat).normalize();
+      dir2.x += (Math.random() - 0.5) * 0.004;
+      dir2.y += (Math.random() - 0.5) * 0.004;
+      dir2.normalize();
+
+      this.raycaster.set(muzzlePos, dir1);
+    } else {
+      muzzlePos.copy(activeCamera.position);
+      this.raycaster.setFromCamera(new THREE.Vector2(ndc1.x, ndc1.y), activeCamera);
+      this.raycaster.ray.direction.x += (Math.random() - 0.5) * 0.005;
+      this.raycaster.ray.direction.y += (Math.random() - 0.5) * 0.005;
+      dir1.copy(this.raycaster.ray.direction).normalize();
+    }
+
     // Raycast top dart
-    this.raycaster.setFromCamera(new THREE.Vector2(ndc1.x, ndc1.y), activeCamera);
-    this.raycaster.ray.direction.x += (Math.random() - 0.5) * 0.005;
-    this.raycaster.ray.direction.y += (Math.random() - 0.5) * 0.005;
-    let hits1 = this.raycaster.intersectObject(activeTargetGroup, true);
+    let hits1 = activeTargetGroup ? this.raycaster.intersectObject(activeTargetGroup, true) : [];
     let hitWall1 = false;
-    if (hits1.length === 0) {
+    if (hits1.length === 0 && this.placementGround) {
       hits1 = this.raycaster.intersectObject(this.placementGround, true);
       hitWall1 = true;
     }
 
     // Raycast bottom dart
-    this.raycaster.setFromCamera(new THREE.Vector2(ndc2.x, ndc2.y), activeCamera);
-    this.raycaster.ray.direction.x += (Math.random() - 0.5) * 0.005;
-    this.raycaster.ray.direction.y += (Math.random() - 0.5) * 0.005;
-    let hits2 = this.raycaster.intersectObject(activeTargetGroup, true);
+    if (muzzle) {
+      this.raycaster.set(muzzlePos, dir2);
+    } else {
+      this.raycaster.setFromCamera(new THREE.Vector2(ndc2.x, ndc2.y), activeCamera);
+      this.raycaster.ray.direction.x += (Math.random() - 0.5) * 0.005;
+      this.raycaster.ray.direction.y += (Math.random() - 0.5) * 0.005;
+      dir2.copy(this.raycaster.ray.direction).normalize();
+    }
+    let hits2 = activeTargetGroup ? this.raycaster.intersectObject(activeTargetGroup, true) : [];
     let hitWall2 = false;
-    if (hits2.length === 0) {
+    if (hits2.length === 0 && this.placementGround) {
       hits2 = this.raycaster.intersectObject(this.placementGround, true);
       hitWall2 = true;
     }
 
-    if (hits1.length > 0 && hits2.length > 0) {
-      const hit1 = hits1[0];
-      const hit2 = hits2[0];
+    const hit1 = hits1.length > 0 ? hits1[0] : null;
+    const hit2 = hits2.length > 0 ? hits2[0] : null;
+    const endPoint1 = hit1 ? hit1.point.clone() : muzzlePos.clone().addScaledVector(dir1, 7.5);
+    const endPoint2 = hit2 ? hit2.point.clone() : muzzlePos.clone().addScaledVector(dir2, 7.5);
 
-      // Physical dart meshes
-      const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6);
-      const dartMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+    if (!hit1) hitWall1 = true;
+    if (!hit2) hitWall2 = true;
 
-      // Attach dart firmly to the exact hit anatomical mesh (e.g. torso, leg) so it moves with the person in 3D
-      const attachGroup1 = (!hitWall1 && hit1.object) ? hit1.object : (hitWall1 ? this.scene : activeTargetGroup);
-      const d1 = new THREE.Mesh(dartGeo, dartMat);
-      d1.position.copy(attachGroup1.worldToLocal(hit1.point.clone()));
-      d1.lookAt(attachGroup1.worldToLocal(activeCamera.position.clone()));
-      attachGroup1.add(d1);
-      this.activeDarts.push(d1);
+    // Physical dart meshes
+    const dartGeo = new THREE.CylinderGeometry(0.005, 0.001, 0.08, 6);
+    const dartMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
 
-      const attachGroup2 = (!hitWall2 && hit2.object) ? hit2.object : (hitWall2 ? this.scene : activeTargetGroup);
-      const d2 = new THREE.Mesh(dartGeo, dartMat);
-      d2.position.copy(attachGroup2.worldToLocal(hit2.point.clone()));
-      d2.lookAt(attachGroup2.worldToLocal(activeCamera.position.clone()));
-      attachGroup2.add(d2);
-      this.activeDarts.push(d2);
+    const attachGroup1 = (hit1 && !hitWall1 && hit1.object) ? hit1.object : this.scene;
+    const d1 = new THREE.Mesh(dartGeo, dartMat);
+    d1.position.copy(attachGroup1.worldToLocal(endPoint1.clone()));
+    d1.lookAt(attachGroup1.worldToLocal(muzzlePos.clone()));
+    attachGroup1.add(d1);
+    this.activeDarts.push(d1);
 
-      // Instant visual feedback: subtle spark burst + micro-flash + electric arc confirmation
-      this.spawnSparks(hit1.point, !hitWall1);
-      this.spawnSparks(hit2.point, !hitWall2);
-      this.spawnElectricArc(hit1.point, hit2.point, !hitWall1 && !hitWall2);
+    const attachGroup2 = (hit2 && !hitWall2 && hit2.object) ? hit2.object : this.scene;
+    const d2 = new THREE.Mesh(dartGeo, dartMat);
+    d2.position.copy(attachGroup2.worldToLocal(endPoint2.clone()));
+    d2.lookAt(attachGroup2.worldToLocal(muzzlePos.clone()));
+    attachGroup2.add(d2);
+    this.activeDarts.push(d2);
 
-      // Deploy insulated high-tensile copper-clad wire lines
-      const wireMat = new THREE.LineBasicMaterial({
-        color: 0xB87333, // Realistisk kopparfärg
-        transparent: true,
-        opacity: 0.95
-      });
+    // Instant visual feedback: subtle spark burst + micro-flash + electric arc confirmation
+    this.spawnSparks(endPoint1, !hitWall1);
+    this.spawnSparks(endPoint2, !hitWall2);
+    this.spawnElectricArc(endPoint1, endPoint2, !hitWall1 && !hitWall2);
 
-      const geo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit1.point.clone()]);
-      const wire1 = new THREE.Line(geo1, wireMat);
-      this.scene.add(wire1);
-      this.activeWires.push({ line: wire1, chamber, dart: d1 });
+    // Deploy insulated high-tensile copper-clad wire lines (0xB87333) from muzzlePoint
+    const wireMat = new THREE.LineBasicMaterial({
+      color: 0xB87333, // Realistisk kopparfärg
+      transparent: true,
+      opacity: 0.95
+    });
 
-      const geo2 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), hit2.point.clone()]);
-      const wire2 = new THREE.Line(geo2, wireMat);
-      this.scene.add(wire2);
-      this.activeWires.push({ line: wire2, chamber, dart: d2 });
+    const geo1 = new THREE.BufferGeometry().setFromPoints([muzzlePos.clone(), endPoint1]);
+    const wire1 = new THREE.Line(geo1, wireMat);
+    wire1.frustumCulled = false;
+    this.scene.add(wire1);
+    this.activeWires.push({ line: wire1, chamber, dart: d1, slot: 'top' });
 
-      return { hit1, hit2, hitWall1, hitWall2 };
-    }
+    const geo2 = new THREE.BufferGeometry().setFromPoints([muzzlePos.clone(), endPoint2]);
+    const wire2 = new THREE.Line(geo2, wireMat.clone());
+    wire2.frustumCulled = false;
+    this.scene.add(wire2);
+    this.activeWires.push({ line: wire2, chamber, dart: d2, slot: 'bottom' });
 
-    return { hit1: null, hit2: null, hitWall1: true, hitWall2: true };
+    return { hit1, hit2, hitWall1, hitWall2 };
   }
 
   triggerNMI(onImpact) {
@@ -1349,6 +1390,8 @@ export class TaserScene {
     this.clearWiresAndDarts();
     if (this.laserDotTop) this.laserDotTop.visible = false;
     if (this.laserDotBottom) this.laserDotBottom.visible = false;
+    if (this.laserBeamTop) this.laserBeamTop.visible = false;
+    if (this.laserBeamBottom) this.laserBeamBottom.visible = false;
 
     // 5. Återställning: Dra ur pilar, nollställ fall och sätt igång AnimationMixer igen (timeScale = 1.0)
     if (this.mixer) {
@@ -1398,11 +1441,25 @@ export class TaserScene {
   updateWireDynamics(activeCamera) {
     if (this.activeWires.length === 0) return;
 
+    const muzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    if (muzzle) {
+      muzzle.updateWorldMatrix(true, false);
+      muzzle.getWorldPosition(this._v2);
+      muzzle.getWorldQuaternion(this._qTarget);
+    }
+
     for (let i = 0; i < this.activeWires.length; i++) {
       const wire = this.activeWires[i];
-      const offset = this._v1.set(wire.chamber === 1 ? -0.05 : 0.05, -0.15, -0.3);
-      offset.applyQuaternion(activeCamera.quaternion);
-      const origin = this._v2.copy(activeCamera.position).add(offset);
+      let origin;
+      if (muzzle) {
+        const yOff = wire.slot === 'top' ? 0.004 : -0.004;
+        const localOff = this._v1.set(0, yOff, 0).applyQuaternion(this._qTarget);
+        origin = this._v1.copy(this._v2).add(localOff);
+      } else {
+        const offset = this._v1.set(wire.chamber === 1 ? -0.05 : 0.05, -0.15, -0.3);
+        offset.applyQuaternion(activeCamera.quaternion);
+        origin = this._v2.copy(activeCamera.position).add(offset);
+      }
 
       wire.dart.getWorldPosition(this._v3);
 
@@ -1426,9 +1483,9 @@ export class TaserScene {
   }
 
   disableARMode() {
-    this.scene.background = this.defaultBackground;
+    this.scene.background = null;
     if (this.renderer) {
-      this.renderer.setClearColor(0x0a0a0a, 1.0);
+      this.renderer.setClearColor(0x000000, 0);
     }
     setTimeout(() => this.onResize(), 50);
   }
@@ -1758,14 +1815,15 @@ export class TaserScene {
   }
 
   setup3DLaserSights() {
-    // 3D Laser Mesh: Bright luminous green dots projected onto 3D mannequin surfaces in WebXR/3D space
-    const dotGeo = new THREE.SphereGeometry(0.016, 16, 16);
+    // 3D Laser Dots (SphereGeometry) + 3D Laser Beams (CylinderGeometry) från muzzlePoint
+    const dotGeo = new THREE.SphereGeometry(0.018, 16, 16);
 
     const topMat = new THREE.MeshBasicMaterial({
-      color: 0x00ff00, // Grön laser
+      color: 0x00ff00, // Grön laser (Kassett 1)
       depthTest: false,
       transparent: true,
-      opacity: 0.95
+      opacity: 0.98,
+      toneMapped: false
     });
     this.laserDotTop = new THREE.Mesh(dotGeo, topMat);
     this.laserDotTop.name = '3D_Laser_Dot_Top';
@@ -1775,33 +1833,95 @@ export class TaserScene {
     this.scene.add(this.laserDotTop);
 
     const bottomMat = new THREE.MeshBasicMaterial({
-      color: 0x00ff00, // Grön laser
+      color: 0xff0000, // Röd laser (Kassett 1)
       depthTest: false,
       transparent: true,
-      opacity: 0.95
+      opacity: 0.98,
+      toneMapped: false
     });
-    this.laserDotBottom = new THREE.Mesh(dotGeo, bottomMat);
+    this.laserDotBottom = new THREE.Mesh(dotGeo.clone(), bottomMat);
     this.laserDotBottom.name = '3D_Laser_Dot_Bottom';
     this.laserDotBottom.renderOrder = 9999;
     this.laserDotBottom.frustumCulled = false;
     this.laserDotBottom.visible = false;
     this.scene.add(this.laserDotBottom);
+
+    // Synliga 3D-laserstrålar (CylinderGeometry) istället för 1px linjer
+    const beamGeoTop = new THREE.CylinderGeometry(0.0024, 0.0024, 1.0, 10, 1, false);
+    const beamMatTop = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      toneMapped: false
+    });
+    this.laserBeamTop = new THREE.Mesh(beamGeoTop, beamMatTop);
+    this.laserBeamTop.name = '3D_Laser_Beam_Top';
+    this.laserBeamTop.renderOrder = 9998;
+    this.laserBeamTop.frustumCulled = false;
+    this.laserBeamTop.visible = false;
+    this.scene.add(this.laserBeamTop);
+
+    const beamGeoBottom = new THREE.CylinderGeometry(0.0024, 0.0024, 1.0, 10, 1, false);
+    const beamMatBottom = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      toneMapped: false
+    });
+    this.laserBeamBottom = new THREE.Mesh(beamGeoBottom, beamMatBottom);
+    this.laserBeamBottom.name = '3D_Laser_Beam_Bottom';
+    this.laserBeamBottom.renderOrder = 9998;
+    this.laserBeamBottom.frustumCulled = false;
+    this.laserBeamBottom.visible = false;
+    this.scene.add(this.laserBeamBottom);
+
+    this._laserUpAxis = new THREE.Vector3(0, 1, 0);
   }
 
-  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeChamber = 1, calculateSpreadFn = null, shouldShow = true) {
-    if (!shouldShow || !this.taserGroup || !this.taserGroup.visible || !this.laserDotTop || !this.laserDotBottom) {
+  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeCartridge = 1, calculateSpreadFn = null, shouldShow = true) {
+    const weaponVisible = (typeof window !== 'undefined' && window.weaponMesh)
+      ? !!window.weaponMesh.visible
+      : false;
+
+    if (!shouldShow || !weaponVisible || activeCartridge === 0 || !this.laserDotTop || !this.laserDotBottom) {
       if (this.laserDotTop) this.laserDotTop.visible = false;
       if (this.laserDotBottom) this.laserDotBottom.visible = false;
+      if (this.laserBeamTop) this.laserBeamTop.visible = false;
+      if (this.laserBeamBottom) this.laserBeamBottom.visible = false;
       return null;
     }
 
-    // Uppdatera Raycaster från kamerans aktuella position och vinkel i rummet
-    this.raycaster.setFromCamera(aimNDC, camera);
+    const activeTargetGroup = (this.aiPose && this.aiPose.isActive && this.aiPose.isPersonDetected)
+      ? this.aiPose.hitboxGroup
+      : (this.taserGroup && this.taserGroup.visible ? this.taserGroup : null);
 
-    // Kasta stråle mot målfiguren (taserGroup)
-    const intersects = this.raycaster.intersectObject(this.taserGroup, true);
-    // Filtrera bort icke-synliga objekt och hjälpare
-    const validHit = intersects.find((hit) => {
+    const muzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const origin = this._v1;
+    const dirTop = this._v2;
+    const dirBottom = this._v3;
+
+    const spreadDeg = activeCartridge === 2 ? 3.5 : 12.0;
+    const spreadRad = THREE.MathUtils.degToRad(spreadDeg);
+
+    if (muzzle) {
+      muzzle.updateWorldMatrix(true, false);
+      muzzle.getWorldPosition(origin);
+      muzzle.getWorldQuaternion(this._qTarget);
+
+      // Övre laserstråle längs vapnets exakta riktning (-Z i muzzlePoint)
+      dirTop.set(0, 0, -1).applyQuaternion(this._qTarget).normalize();
+      // Undre laserstråle vinklad nedåt i vapnets lutade lokalplan (följer weaponMesh.rotation.z)
+      dirBottom.set(0, -Math.sin(spreadRad), -Math.cos(spreadRad)).applyQuaternion(this._qTarget).normalize();
+    } else {
+      this.raycaster.setFromCamera(aimNDC, camera);
+      origin.copy(this.raycaster.ray.origin);
+      dirTop.copy(this.raycaster.ray.direction).normalize();
+      dirBottom.copy(dirTop).applyAxisAngle(new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), -spreadRad).normalize();
+    }
+
+    const filterValidHit = (intersects) => intersects.find((hit) => {
       const obj = hit.object;
       return obj.visible &&
              obj.name !== 'PlacementMarker' &&
@@ -1810,44 +1930,110 @@ export class TaserScene {
              !obj.name.includes('Arc');
     });
 
-    if (validHit) {
-      const hitPoint = validHit.point;
-      const hitNormal = validHit.face
-        ? validHit.face.normal.clone().transformDirection(validHit.object.matrixWorld).normalize()
-        : this._v2.set(0, 0, 1);
-
-      const dist = camera.position.distanceTo(hitPoint);
-
-      // Kalkylera laserns spridning dynamiskt utifrån avståndet mellan camera.position och träffpunkten
-      let spreadMeters = 0.34;
-      if (typeof calculateSpreadFn === 'function') {
-        const spreadData = calculateSpreadFn(dist, activeChamber);
-        spreadMeters = spreadData.spreadCm / 100;
-      } else {
-        const angleRad = (activeChamber === 2 ? 3.5 : 12.0) * (Math.PI / 180);
-        spreadMeters = Math.max(0.04, dist * Math.tan(angleRad));
-      }
-
-      // Placera övre laserpricken vid träffpunkten (med mikroskopisk offset längs normalen så den inte klipper)
-      this.laserDotTop.position.copy(hitPoint).addScaledVector(hitNormal, 0.005);
-      this.laserDotTop.visible = true;
-
-      // Placera undre laserpricken: Går användaren närmare kryper prickarna ihop (mindre spreadMeters)
-      this.laserDotBottom.position.set(hitPoint.x, hitPoint.y - spreadMeters, hitPoint.z).addScaledVector(hitNormal, 0.005);
-      this.laserDotBottom.visible = true;
-
-      // Skala prickarna baserat på avstånd för skarp synlighet
-      const dotScale = Math.max(0.6, Math.min(2.0, dist * 0.4));
-      this.laserDotTop.scale.set(dotScale, dotScale, dotScale);
-      this.laserDotBottom.scale.set(dotScale, dotScale, dotScale);
-
-      return { hit: true, distance: dist, spreadMeters, point: hitPoint };
-    } else {
-      // Ingen träff på figuren
-      this.laserDotTop.visible = false;
-      this.laserDotBottom.visible = false;
-      return { hit: false };
+    // Raycast 1: Övre laserpunkt
+    let topHit = null;
+    if (activeTargetGroup) {
+      this.raycaster.set(origin, dirTop);
+      topHit = filterValidHit(this.raycaster.intersectObject(activeTargetGroup, true));
     }
+    if (!topHit && this.placementGround) {
+      this.raycaster.set(origin, dirTop);
+      topHit = filterValidHit(this.raycaster.intersectObject(this.placementGround, true));
+    }
+
+    // Raycast 2: Undre laserpunkt (med spridningsvinkel kopplad till aktiv kassett)
+    let bottomHit = null;
+    if (activeTargetGroup) {
+      this.raycaster.set(origin, dirBottom);
+      bottomHit = filterValidHit(this.raycaster.intersectObject(activeTargetGroup, true));
+    }
+    if (!bottomHit && this.placementGround) {
+      this.raycaster.set(origin, dirBottom);
+      bottomHit = filterValidHit(this.raycaster.intersectObject(this.placementGround, true));
+    }
+
+    // Färgkodning & spridning baserat på Kassett-State Machine (activeCartridge)
+    let topColor = 0x00ff00;    // Kassett 1: Övre Grön (0x00ff00)
+    let bottomColor = 0xff0000; // Kassett 1: Undre Röd (0xff0000)
+    const dotOpacity = 0.98;
+    const beamOpacity = 0.88;
+
+    if (activeCartridge === 2) {
+      // Reservkassett 2: Byt övre laser till orange/gul (0xffaa00) och 3.5° spridningsvinkel
+      topColor = 0xffaa00;
+      bottomColor = 0xff0000;
+    }
+
+    this.laserDotTop.material.color.setHex(topColor);
+    this.laserDotTop.material.opacity = dotOpacity;
+    this.laserDotBottom.material.color.setHex(bottomColor);
+    this.laserDotBottom.material.opacity = dotOpacity;
+
+    if (this.laserBeamTop) {
+      this.laserBeamTop.material.color.setHex(topColor);
+      this.laserBeamTop.material.opacity = beamOpacity;
+    }
+    if (this.laserBeamBottom) {
+      this.laserBeamBottom.material.color.setHex(bottomColor);
+      this.laserBeamBottom.material.opacity = beamOpacity;
+    }
+
+    const upAxis = this._laserUpAxis || (this._laserUpAxis = new THREE.Vector3(0, 1, 0));
+
+    // Uppdatera övre laserpunkt (SphereGeometry) & 3D-laserstråle (CylinderGeometry)
+    const fallbackRange = 4.5;
+    let dist = fallbackRange;
+    const topEnd = topHit ? topHit.point.clone() : origin.clone().addScaledVector(dirTop, fallbackRange);
+    if (topHit) {
+      dist = origin.distanceTo(topHit.point);
+      const hitNormal = topHit.face
+        ? topHit.face.normal.clone().transformDirection(topHit.object.matrixWorld).normalize()
+        : new THREE.Vector3(0, 0, 1);
+      this.laserDotTop.position.copy(topHit.point).addScaledVector(hitNormal, 0.005);
+    } else {
+      this.laserDotTop.position.copy(topEnd);
+    }
+    const dotScaleTop = Math.max(0.6, Math.min(2.2, dist * 0.35));
+    this.laserDotTop.scale.set(dotScaleTop, dotScaleTop, dotScaleTop);
+    this.laserDotTop.visible = true;
+
+    if (this.laserBeamTop) {
+      const lenTop = Math.max(0.05, origin.distanceTo(topEnd));
+      this.laserBeamTop.position.copy(origin).add(topEnd).multiplyScalar(0.5);
+      this.laserBeamTop.scale.set(1, lenTop, 1);
+      this.laserBeamTop.quaternion.setFromUnitVectors(upAxis, dirTop);
+      this.laserBeamTop.visible = true;
+    }
+
+    // Uppdatera undre laserpunkt (SphereGeometry) & 3D-laserstråle (CylinderGeometry)
+    const bottomEnd = bottomHit ? bottomHit.point.clone() : origin.clone().addScaledVector(dirBottom, fallbackRange);
+    let distBottom = fallbackRange;
+    if (bottomHit) {
+      distBottom = origin.distanceTo(bottomHit.point);
+      const hitNormalB = bottomHit.face
+        ? bottomHit.face.normal.clone().transformDirection(bottomHit.object.matrixWorld).normalize()
+        : new THREE.Vector3(0, 0, 1);
+      this.laserDotBottom.position.copy(bottomHit.point).addScaledVector(hitNormalB, 0.005);
+    } else {
+      this.laserDotBottom.position.copy(bottomEnd);
+    }
+    const dotScaleBot = Math.max(0.6, Math.min(2.2, distBottom * 0.35));
+    this.laserDotBottom.scale.set(dotScaleBot, dotScaleBot, dotScaleBot);
+    this.laserDotBottom.visible = true;
+
+    if (this.laserBeamBottom) {
+      const lenBot = Math.max(0.05, origin.distanceTo(bottomEnd));
+      this.laserBeamBottom.position.copy(origin).add(bottomEnd).multiplyScalar(0.5);
+      this.laserBeamBottom.scale.set(1, lenBot, 1);
+      this.laserBeamBottom.quaternion.setFromUnitVectors(upAxis, dirBottom);
+      this.laserBeamBottom.visible = true;
+    }
+
+    if (topHit) {
+      const spreadMeters = topHit && bottomHit ? topHit.point.distanceTo(bottomHit.point) : dist * Math.tan(spreadRad);
+      return { hit: true, distance: dist, spreadMeters, point: topHit.point };
+    }
+    return { hit: false };
   }
 
   onResize() {
@@ -1859,5 +2045,9 @@ export class TaserScene {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, true);
+
+    if (typeof window !== 'undefined' && window.taserApp && window.taserApp.isStereoVR && window.taserApp.stereoEffect) {
+      window.taserApp.stereoEffect.setSize(width, height);
+    }
   }
 }

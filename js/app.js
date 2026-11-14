@@ -4,7 +4,11 @@
  */
 
 import * as THREE from 'three';
-if (typeof window !== 'undefined') window.THREE = THREE;
+import { StereoEffect } from 'three/addons/effects/StereoEffect.js';
+if (typeof window !== 'undefined') {
+  window.THREE = THREE;
+  window.StereoEffect = StereoEffect;
+}
 import { TaserFSM, ChamberState } from './fsm.js';
 import { TaserAudio } from './audio.js';
 import { TaserBallistics } from './ballistics.js';
@@ -16,6 +20,10 @@ import { TaserAIPose } from './pose.js';
 
 export class TaserApp {
   constructor() {
+    if (typeof window !== 'undefined') window.taserApp = this;
+    this.isStereoVR = false;
+    this.stereoEffect = null;
+
     this.fsm = new TaserFSM();
     this.audio = new TaserAudio(this.fsm);
     this.ballistics = new TaserBallistics();
@@ -66,6 +74,7 @@ export class TaserApp {
     this.currentDistance = 3.0; // meters
     this.aimX = 50; // percentage
     this.aimY = 50; // percentage
+    this.tilt = 0; // degrees (-25 to +25)
 
     // Threat escalation & Verbal warnings
     this.threatLevel = 0;
@@ -280,11 +289,15 @@ export class TaserApp {
         this.currentDistance = 3.0;
         this.aimX = 50;
         this.aimY = 50;
+        this.tilt = 0;
         this.warningGiven = false;
         this.updateWarningUI();
         this.scene.resetTarget();
         this.updateDisplay();
         this.stopScenario();
+        if (typeof window !== 'undefined' && typeof window.syncWeaponOverlays === 'function') {
+          window.syncWeaponOverlays(this.fsm);
+        }
       }
     });
   }
@@ -314,21 +327,7 @@ export class TaserApp {
     window.addEventListener('pointerdown', unlockAudio, { once: true });
     window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
 
-    // Physical Hardware Volume Keys (Mapped to Warning Arc on mobile devices)
-    window.addEventListener('keydown', (e) => {
-      const k = e.key ? e.key.toLowerCase() : '';
-      if (
-        k === 'audiovolumeup' || 
-        k === 'audiovolumedown' || 
-        k === 'volumeup' || 
-        k === 'volumedown' ||
-        e.code === 'AudioVolumeUp' ||
-        e.code === 'AudioVolumeDown'
-      ) {
-        e.preventDefault();
-        window.pressSingleWarning();
-      }
-    });
+    // Hardware/Bluetooth VR-joystick keydown-lyssnare hanteras globalt i index.html
 
     // Mobile Viewport Aiming via Touch
     const viewport = document.getElementById('viewport');
@@ -550,6 +549,9 @@ export class TaserApp {
     this.audio.init();
     const result = this.fsm.pressTrigger((firedChamber) => {
       this.audio.playPopSound();
+      if (typeof window !== 'undefined' && typeof window.onChamberFired === 'function') {
+        window.onChamberFired(firedChamber, this.fsm);
+      }
 
       // Calculate ballistic coordinates
       const viewport = document.getElementById('viewport');
@@ -635,12 +637,9 @@ export class TaserApp {
 
     const shouldShow = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
     if (flashlight) flashlight.style.display = shouldShow ? 'block' : 'none';
-    if (laserGreen) laserGreen.style.display = shouldShow ? 'block' : 'none';
-
-    if (laserRed) {
-      const currentChamberState = this.fsm.activeChamber === 1 ? this.fsm.chamber1 : this.fsm.chamber2;
-      laserRed.style.display = shouldShow && currentChamberState === ChamberState.LOADED ? 'block' : 'none';
-    }
+    // Fas 4: 3D-lasrarna projiceras direkt från muzzlePoint i Three.js-scenen
+    if (laserGreen) laserGreen.style.display = 'none';
+    if (laserRed) laserRed.style.display = 'none';
   }
 
   renderIconsHTML() {
@@ -741,6 +740,10 @@ export class TaserApp {
     if (driveStunBtn) {
       const bothFired = this.fsm.chamber1 === ChamberState.FIRED && this.fsm.chamber2 === ChamberState.FIRED;
       driveStunBtn.style.display = bothFired && !this.fsm.isSafe ? 'block' : 'none';
+    }
+
+    if (typeof window !== 'undefined' && typeof window.syncWeaponOverlays === 'function') {
+      window.syncWeaponOverlays(this.fsm);
     }
   }
 
@@ -1590,6 +1593,9 @@ export class TaserApp {
     }
     this.scene.clearWiresAndDarts();
     this.scene.resetTarget();
+    if (typeof window !== 'undefined' && typeof window.resetWeaponPhase4 === 'function') {
+      window.resetWeaponPhase4(this.fsm);
+    }
     this.updateDisplay();
     this.updateWarningUI();
     this.stopScenario();
@@ -1611,6 +1617,9 @@ export class TaserApp {
     const camera = this.scene.camera;
 
     renderer.setAnimationLoop((timestamp, frame) => {
+      if (typeof window !== 'undefined' && typeof window.pollGamepad === 'function') {
+        window.pollGamepad();
+      }
       const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
 
       // Skeletal Animation update & Threat Escalation movement
@@ -1691,19 +1700,10 @@ export class TaserApp {
         }
       }
 
-      const isARActive = renderer.xr.isPresenting || this.xr.useCamera || document.body.classList.contains('ar-active') || document.body.classList.contains('webxr-mode') || document.body.classList.contains('live-ai-active');
-
-      if (isARActive) {
-        if (this.scene.scene.background !== null) {
-          this.scene.scene.background = null;
-        }
-        renderer.setClearColor(0x000000, 0);
-      } else {
-        if (this.scene.scene.background !== this.scene.defaultBackground) {
-          this.scene.scene.background = this.scene.defaultBackground;
-        }
-        renderer.setClearColor(0x0a0a0a, 1.0);
+      if (this.scene.scene.background !== null) {
+        this.scene.scene.background = null;
       }
+      renderer.setClearColor(0x000000, 0);
 
       if (!renderer.xr.isPresenting) {
         // Desktop / Mobile Non-XR Perspective Viewport Orbit
@@ -1730,14 +1730,31 @@ export class TaserApp {
         camera.lookAt(lookTarget);
       }
 
-      // Dynamic Wire updates
-      this.scene.updateWireDynamics(activeCamera);
-
-      // Dynamic High-Voltage Warning Arc updates (3D jitter, AdditiveBlending, pointlight)
+      // Dynamic High-Voltage Warning Arc updates (syncs taserModel to activeCamera)
       this.scene.updateWarningArc(activeCamera);
 
-      // 4. Dynamisk Raycasting för Laserprickarna (uppdateras varje frame i realtid)
-      const shouldShowLasers = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
+      // Dynamic First-Person TASER 7 3D Weapon Pose, Convergence & Tilt update (uppdaterar muzzlePoint matrixWorld)
+      if (typeof window !== 'undefined' && typeof window.updateWeaponPose === 'function') {
+        window.updateWeaponPose(this);
+      }
+
+      // Dynamic Copper Wire updates anchored to muzzlePoint
+      this.scene.updateWireDynamics(activeCamera);
+
+      // 4. Dynamisk Raycasting för 3D-Lasercylindrar & Laserpunkter från muzzlePoint
+      const currentCartridge = (typeof window !== 'undefined' && typeof window.activeCartridge === 'number')
+        ? window.activeCartridge
+        : (this.fsm.activeChamber === 2 ? 2 : 1);
+      const weaponVisible = (typeof window !== 'undefined' && window.weaponMesh)
+        ? !!window.weaponMesh.visible
+        : false;
+      if (typeof window !== 'undefined' && window.state) {
+        window.state.isSafe = !!this.fsm.isSafe;
+      }
+      const isSafeState = (typeof window !== 'undefined' && window.state && typeof window.state.isSafe === 'boolean')
+        ? window.state.isSafe
+        : !!this.fsm.isSafe;
+      const shouldShowLasers = weaponVisible && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0;
       const aimNDC = renderer.xr.isPresenting
         ? this.scene._v3.set(0, 0, 0)
         : this.scene._v3.set((this.aimX / 100) * 2 - 1, -(this.aimY / 100) * 2 + 1, 0);
@@ -1745,7 +1762,7 @@ export class TaserApp {
       const laserHit = this.scene.updateDynamicLaserRaycast(
         activeCamera,
         aimNDC,
-        this.fsm.activeChamber,
+        currentCartridge,
         (d, ch) => this.ballistics.calculateSpread(d, ch),
         shouldShowLasers
       );
@@ -1757,9 +1774,36 @@ export class TaserApp {
         }
       }
 
-      // Render the scene
-      renderer.render(this.scene.scene, activeCamera);
+      // Render the scene (Stereoscopic Side-by-Side 3D or Standard / WebXR)
+      if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
+        this.stereoEffect.render(this.scene.scene, activeCamera);
+      } else {
+        renderer.render(this.scene.scene, activeCamera);
+      }
     });
+  }
+
+  enableStereoVR() {
+    if (!this.scene || !this.scene.renderer) return;
+    if (!this.stereoEffect) {
+      this.stereoEffect = new StereoEffect(this.scene.renderer);
+      this.stereoEffect.setEyeSeparation(0.064);
+    }
+    this.isStereoVR = true;
+    this.scene.onResize();
+    const w = this.scene.container?.clientWidth || window.innerWidth;
+    const h = this.scene.container?.clientHeight || window.innerHeight;
+    if (w > 0 && h > 0) {
+      this.stereoEffect.setSize(w, h);
+    }
+  }
+
+  disableStereoVR() {
+    this.isStereoVR = false;
+    if (this.scene && this.scene.renderer) {
+      this.scene.renderer.setScissorTest(false);
+      this.scene.onResize();
+    }
   }
 
   startWarningArcHaptics() {

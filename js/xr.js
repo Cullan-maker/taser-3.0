@@ -223,38 +223,40 @@ export class TaserXR {
     }
 
     if (!this.useCamera) {
-      let stream = null;
+      let stream = (videoElement && videoElement.srcObject && videoElement.srcObject.active)
+        ? videoElement.srcObject
+        : null;
       this.isSimulatedCamera = false;
 
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
-          console.log('[CAMERA] Begär åtkomst till bakre miljö-kamera...');
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: false
-          });
-        } catch (errEnv) {
-          console.warn('[CAMERA WARNING] Bakre kamera nekades, försöker med generell videokamera:', errEnv);
+      if (!stream) {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          } catch (errAny) {
-            console.warn('[CAMERA INFO] Fysisk kamerabehörighet nekades eller blockeras av webbläsarens säkerhetspolicy (t.ex. iframe). Startar simulerad AI-kameraström.');
-            this.isSimulatedCamera = true;
-            stream = this.createSyntheticCameraStream();
+            console.log('[CAMERA] Begär åtkomst till bakre miljö-kamera...');
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: 'environment'
+              },
+              audio: false
+            });
+          } catch (errEnv) {
+            console.warn('[CAMERA WARNING] Bakre kamera nekades, försöker med generell videokamera:', errEnv);
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            } catch (errAny) {
+              console.warn('[CAMERA INFO] Fysisk kamerabehörighet nekades eller blockeras av webbläsarens säkerhetspolicy (t.ex. iframe). Startar simulerad AI-kameraström.');
+              this.isSimulatedCamera = true;
+              stream = this.createSyntheticCameraStream();
+            }
           }
+        } else {
+          console.warn('[CAMERA INFO] navigator.mediaDevices saknas i denna miljö. Startar simulerad AI-kameraström.');
+          this.isSimulatedCamera = true;
+          stream = this.createSyntheticCameraStream();
         }
-      } else {
-        console.warn('[CAMERA INFO] navigator.mediaDevices saknas i denna miljö. Startar simulerad AI-kameraström.');
-        this.isSimulatedCamera = true;
-        stream = this.createSyntheticCameraStream();
       }
 
       this.videoStream = stream;
-      if (stream) {
+      if (stream && videoElement.srcObject !== stream) {
         videoElement.srcObject = stream;
       }
       videoElement.style.display = 'block';
@@ -279,7 +281,6 @@ export class TaserXR {
           console.warn('[CAMERA WARNING] video.play() väntar på användarinteraktion:', playErr);
         });
 
-        // Safety fallback after 1.5s to not block execution indefinitely
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
@@ -299,17 +300,13 @@ export class TaserXR {
         if (typeof this.videoStream._cleanup === 'function') {
           this.videoStream._cleanup();
         }
-        if (this.videoStream.getTracks) {
-          this.videoStream.getTracks().forEach((track) => track.stop());
-        }
         this.videoStream = null;
       }
-      videoElement.style.display = 'none';
-      viewportElement.style.backgroundColor = '#0a0a0a';
+      viewportElement.style.backgroundColor = 'transparent';
       this.useCamera = false;
       this.isSimulatedCamera = false;
       this.taserScene.set3DVisibility(true);
-      console.log('[CAMERA] Kamera avstängd. Återställt 3D-scen.');
+      console.log('[CAMERA] Live AI avstängd. Återställt 3D-scen.');
       return false;
     }
   }
