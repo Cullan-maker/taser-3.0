@@ -12,7 +12,7 @@ export class TaserAIPose {
     this.camera = camera; // THREE.PerspectiveCamera
     this.options = options;
 
-    this.videoElement = options.videoElement || document.getElementById('camera-feed');
+    this.videoElement = options.videoElement || document.getElementById('camera-feed-left') || document.getElementById('camera-feed');
     this.isActive = false;
     this.isSimulated = false;
     this.pose = null;

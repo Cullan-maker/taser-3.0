@@ -1815,11 +1815,11 @@ export class TaserScene {
   }
 
   setup3DLaserSights() {
-    // 3D Laser Dots (SphereGeometry) + 3D Laser Beams (CylinderGeometry) från muzzlePoint
-    const dotGeo = new THREE.SphereGeometry(0.018, 16, 16);
+    // Endast 3D-laserpunkter (SphereGeometry) – inga synliga laserstrålar/cylindrar genom luften
+    const dotGeo = new THREE.SphereGeometry(0.022, 16, 16);
 
     const topMat = new THREE.MeshBasicMaterial({
-      color: 0x00ff00, // Grön laser (Kassett 1)
+      color: 0x00ff00, // Övre punkt: alltid grön (#00ff00)
       depthTest: false,
       transparent: true,
       opacity: 0.98,
@@ -1833,7 +1833,7 @@ export class TaserScene {
     this.scene.add(this.laserDotTop);
 
     const bottomMat = new THREE.MeshBasicMaterial({
-      color: 0xff0000, // Röd laser (Kassett 1)
+      color: 0xff0000, // Undre punkt: alltid röd (#ff0000)
       depthTest: false,
       transparent: true,
       opacity: 0.98,
@@ -1845,51 +1845,17 @@ export class TaserScene {
     this.laserDotBottom.frustumCulled = false;
     this.laserDotBottom.visible = false;
     this.scene.add(this.laserDotBottom);
-
-    // Synliga 3D-laserstrålar (CylinderGeometry) istället för 1px linjer
-    const beamGeoTop = new THREE.CylinderGeometry(0.0024, 0.0024, 1.0, 10, 1, false);
-    const beamMatTop = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-      toneMapped: false
-    });
-    this.laserBeamTop = new THREE.Mesh(beamGeoTop, beamMatTop);
-    this.laserBeamTop.name = '3D_Laser_Beam_Top';
-    this.laserBeamTop.renderOrder = 9998;
-    this.laserBeamTop.frustumCulled = false;
-    this.laserBeamTop.visible = false;
-    this.scene.add(this.laserBeamTop);
-
-    const beamGeoBottom = new THREE.CylinderGeometry(0.0024, 0.0024, 1.0, 10, 1, false);
-    const beamMatBottom = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-      toneMapped: false
-    });
-    this.laserBeamBottom = new THREE.Mesh(beamGeoBottom, beamMatBottom);
-    this.laserBeamBottom.name = '3D_Laser_Beam_Bottom';
-    this.laserBeamBottom.renderOrder = 9998;
-    this.laserBeamBottom.frustumCulled = false;
-    this.laserBeamBottom.visible = false;
-    this.scene.add(this.laserBeamBottom);
-
-    this._laserUpAxis = new THREE.Vector3(0, 1, 0);
   }
 
-  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeCartridge = 1, calculateSpreadFn = null, shouldShow = true) {
-    const weaponVisible = (typeof window !== 'undefined' && window.weaponMesh)
-      ? !!window.weaponMesh.visible
-      : false;
+  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeCartridge = 1, calculateSpreadFn = null, shouldShow = true, fallbackDistance = 3.0) {
+    const handDetected = (typeof window !== 'undefined') ? !!window.handDetected : false;
+    const weaponGroupVisible = (typeof window !== 'undefined' && window.weaponGroup)
+      ? !!window.weaponGroup.visible
+      : ((typeof window !== 'undefined' && window.weaponMesh) ? !!window.weaponMesh.visible : false);
 
-    if (!shouldShow || !weaponVisible || activeCartridge === 0 || !this.laserDotTop || !this.laserDotBottom) {
+    if (!shouldShow || !handDetected || !weaponGroupVisible || !(activeCartridge > 0) || !this.laserDotTop || !this.laserDotBottom) {
       if (this.laserDotTop) this.laserDotTop.visible = false;
       if (this.laserDotBottom) this.laserDotBottom.visible = false;
-      if (this.laserBeamTop) this.laserBeamTop.visible = false;
-      if (this.laserBeamBottom) this.laserBeamBottom.visible = false;
       return null;
     }
 
@@ -1902,7 +1868,8 @@ export class TaserScene {
     const dirTop = this._v2;
     const dirBottom = this._v3;
 
-    const spreadDeg = activeCartridge === 2 ? 3.5 : 12.0;
+    // Kassett 2 ökar det vertikala avståndet mellan punkterna något för bredare spridningsvinkel
+    const spreadDeg = activeCartridge === 2 ? 8.5 : 4.5;
     const spreadRad = THREE.MathUtils.degToRad(spreadDeg);
 
     if (muzzle) {
@@ -1910,9 +1877,9 @@ export class TaserScene {
       muzzle.getWorldPosition(origin);
       muzzle.getWorldQuaternion(this._qTarget);
 
-      // Övre laserstråle längs vapnets exakta riktning (-Z i muzzlePoint)
+      // Övre punkt längs vapnets exakta riktning (-Z i muzzlePoint)
       dirTop.set(0, 0, -1).applyQuaternion(this._qTarget).normalize();
-      // Undre laserstråle vinklad nedåt i vapnets lutade lokalplan (följer weaponMesh.rotation.z)
+      // Undre punkt vinklad nedåt i vapnets lutade lokalplan (följer vapnets vinkel och tilt)
       dirBottom.set(0, -Math.sin(spreadRad), -Math.cos(spreadRad)).applyQuaternion(this._qTarget).normalize();
     } else {
       this.raycaster.setFromCamera(aimNDC, camera);
@@ -1941,7 +1908,7 @@ export class TaserScene {
       topHit = filterValidHit(this.raycaster.intersectObject(this.placementGround, true));
     }
 
-    // Raycast 2: Undre laserpunkt (med spridningsvinkel kopplad till aktiv kassett)
+    // Raycast 2: Undre laserpunkt (bredare vertikal spridning på kassett 2)
     let bottomHit = null;
     if (activeTargetGroup) {
       this.raycaster.set(origin, dirBottom);
@@ -1952,36 +1919,19 @@ export class TaserScene {
       bottomHit = filterValidHit(this.raycaster.intersectObject(this.placementGround, true));
     }
 
-    // Färgkodning & spridning baserat på Kassett-State Machine (activeCartridge)
-    let topColor = 0x00ff00;    // Kassett 1: Övre Grön (0x00ff00)
-    let bottomColor = 0xff0000; // Kassett 1: Undre Röd (0xff0000)
+    // Både kassett 1 och kassett 2 använder grön (#00ff00) övre punkt och röd (#ff0000) undre punkt
+    const topColor = 0x00ff00;
+    const bottomColor = 0xff0000;
     const dotOpacity = 0.98;
-    const beamOpacity = 0.88;
-
-    if (activeCartridge === 2) {
-      // Reservkassett 2: Byt övre laser till orange/gul (0xffaa00) och 3.5° spridningsvinkel
-      topColor = 0xffaa00;
-      bottomColor = 0xff0000;
-    }
 
     this.laserDotTop.material.color.setHex(topColor);
     this.laserDotTop.material.opacity = dotOpacity;
     this.laserDotBottom.material.color.setHex(bottomColor);
     this.laserDotBottom.material.opacity = dotOpacity;
 
-    if (this.laserBeamTop) {
-      this.laserBeamTop.material.color.setHex(topColor);
-      this.laserBeamTop.material.opacity = beamOpacity;
-    }
-    if (this.laserBeamBottom) {
-      this.laserBeamBottom.material.color.setHex(bottomColor);
-      this.laserBeamBottom.material.opacity = beamOpacity;
-    }
+    const fallbackRange = Math.max(1.2, Math.min(7.5, Number(fallbackDistance) || 3.0));
 
-    const upAxis = this._laserUpAxis || (this._laserUpAxis = new THREE.Vector3(0, 1, 0));
-
-    // Uppdatera övre laserpunkt (SphereGeometry) & 3D-laserstråle (CylinderGeometry)
-    const fallbackRange = 4.5;
+    // Uppdatera endast övre laserpunkt (SphereGeometry)
     let dist = fallbackRange;
     const topEnd = topHit ? topHit.point.clone() : origin.clone().addScaledVector(dirTop, fallbackRange);
     if (topHit) {
@@ -1993,19 +1943,11 @@ export class TaserScene {
     } else {
       this.laserDotTop.position.copy(topEnd);
     }
-    const dotScaleTop = Math.max(0.6, Math.min(2.2, dist * 0.35));
+    const dotScaleTop = Math.max(0.65, Math.min(2.2, dist * 0.35));
     this.laserDotTop.scale.set(dotScaleTop, dotScaleTop, dotScaleTop);
     this.laserDotTop.visible = true;
 
-    if (this.laserBeamTop) {
-      const lenTop = Math.max(0.05, origin.distanceTo(topEnd));
-      this.laserBeamTop.position.copy(origin).add(topEnd).multiplyScalar(0.5);
-      this.laserBeamTop.scale.set(1, lenTop, 1);
-      this.laserBeamTop.quaternion.setFromUnitVectors(upAxis, dirTop);
-      this.laserBeamTop.visible = true;
-    }
-
-    // Uppdatera undre laserpunkt (SphereGeometry) & 3D-laserstråle (CylinderGeometry)
+    // Uppdatera endast undre laserpunkt (SphereGeometry)
     const bottomEnd = bottomHit ? bottomHit.point.clone() : origin.clone().addScaledVector(dirBottom, fallbackRange);
     let distBottom = fallbackRange;
     if (bottomHit) {
@@ -2017,17 +1959,9 @@ export class TaserScene {
     } else {
       this.laserDotBottom.position.copy(bottomEnd);
     }
-    const dotScaleBot = Math.max(0.6, Math.min(2.2, distBottom * 0.35));
+    const dotScaleBot = Math.max(0.65, Math.min(2.2, distBottom * 0.35));
     this.laserDotBottom.scale.set(dotScaleBot, dotScaleBot, dotScaleBot);
     this.laserDotBottom.visible = true;
-
-    if (this.laserBeamBottom) {
-      const lenBot = Math.max(0.05, origin.distanceTo(bottomEnd));
-      this.laserBeamBottom.position.copy(origin).add(bottomEnd).multiplyScalar(0.5);
-      this.laserBeamBottom.scale.set(1, lenBot, 1);
-      this.laserBeamBottom.quaternion.setFromUnitVectors(upAxis, dirBottom);
-      this.laserBeamBottom.visible = true;
-    }
 
     if (topHit) {
       const spreadMeters = topHit && bottomHit ? topHit.point.distanceTo(bottomHit.point) : dist * Math.tan(spreadRad);

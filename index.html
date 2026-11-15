@@ -146,23 +146,62 @@
             background: transparent;
         }
 
-        .camera-feed,
-        #camera-feed {
+        /* DUBBEL AR-KAMERABAKGRUND (SIDE-BY-SIDE PASS-THROUGH) */
+        #camera-container {
             position: fixed !important;
             inset: 0 !important;
-            top: 0 !important;
-            left: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
             height: 100dvh !important;
-            object-fit: cover !important;
             z-index: 1 !important;
+            display: flex;
+            flex-direction: row;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: #000 !important;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .camera-feed {
+            height: 100%;
             margin: 0 !important;
             padding: 0 !important;
             border: none !important;
             background: transparent !important;
-            display: block;
             pointer-events: none;
+            flex-shrink: 0;
+        }
+
+        #camera-feed-left {
+            width: 100vw;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        #camera-feed-right {
+            display: none;
+            width: 50vw;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        body.vr-active #camera-feed-left,
+        body.vr-headset-mode #camera-feed-left {
+            width: 50vw !important;
+            height: 100% !important;
+            object-fit: contain !important;
+            display: block !important;
+        }
+
+        body.vr-active #camera-feed-right,
+        body.vr-headset-mode #camera-feed-right {
+            width: 50vw !important;
+            height: 100% !important;
+            object-fit: contain !important;
+            display: block !important;
         }
 
         .camera-feed.flash, #three-canvas.flash { animation: strobe 0.1s infinite alternate; }
@@ -1654,6 +1693,7 @@
         }
 
         /* VR-HEADSET STEREOSKOPISKT HELSKÄRMSLÄGE (Döljer HTML-knappar i botten) */
+        body.vr-active .simulator-wrapper,
         body.vr-headset-mode .simulator-wrapper {
             max-width: 100vw !important;
             width: 100vw !important;
@@ -1661,6 +1701,10 @@
             padding: 0 !important;
             margin: 0 !important;
         }
+        body.vr-active .header-bar,
+        body.vr-active .main-container,
+        body.vr-active #landscape-guard,
+        body.vr-active .fixed-aim-layer,
         body.vr-headset-mode .header-bar,
         body.vr-headset-mode .main-container,
         body.vr-headset-mode #landscape-guard,
@@ -1669,6 +1713,8 @@
             visibility: hidden !important;
             pointer-events: none !important;
         }
+        body.vr-active .viewport,
+        body.vr-active #viewport,
         body.vr-headset-mode .viewport,
         body.vr-headset-mode #viewport {
             position: fixed !important;
@@ -1685,6 +1731,8 @@
             padding: 0 !important;
             z-index: 2 !important;
         }
+        body.vr-active #three-canvas,
+        body.vr-active #three-canvas canvas,
         body.vr-headset-mode #three-canvas,
         body.vr-headset-mode #three-canvas canvas {
             width: 100vw !important;
@@ -1733,6 +1781,7 @@
             pointer-events: none;
             z-index: 25;
         }
+        body.vr-active #vr-dual-crosshair,
         body.vr-headset-mode #vr-dual-crosshair {
             display: flex;
         }
@@ -1806,8 +1855,11 @@
         </div>
     </div>
 
-    <!-- KAMERA PASS-THROUGH BAKOM THREE.JS-CANVAS -->
-    <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
+    <!-- DUBBEL AR-KAMERABAKGRUND (SIDE-BY-SIDE PASS-THROUGH) -->
+    <div id="camera-container">
+        <video id="camera-feed-left" class="camera-feed" autoplay playsinline muted></video>
+        <video id="camera-feed-right" class="camera-feed" autoplay playsinline muted></video>
+    </div>
 
     <div class="simulator-wrapper">
         <!-- HELSKÄRMS FAIL OVERLAY (NÄR ANGRIPAREN NÅR INOM 0.8 M) -->
@@ -2040,7 +2092,7 @@
     <!-- Google MediaPipe BlazePose för AI-personidentifiering och dynamiska träffzoner -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"></script>
     <!-- Google MediaPipe Hands för realtids-handspårning i kamera pass-through -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <!-- Global THREE, StereoEffect & GLTFLoader definition för garanterad tillgänglighet i alla skop -->
     <script type="module">
@@ -2076,7 +2128,9 @@
 
     <!-- STARTMENY-LOGIK, KAMERA PASS-THROUGH, TILLBAKAKNAPP, STEREOSKOPISK VR & BLUETOOTH VR-JOYSTICK -->
     <script>
+      let appMode = 'mobile';
       let currentMode = 'mobile';
+      window.appMode = appMode;
       window.currentMode = currentMode;
       window.state = window.state || { tilt: 0, isSafe: true };
 
@@ -2086,7 +2140,8 @@
         const btnVr = document.getElementById('menu-btn-vr');
         const btnBackMenu = document.getElementById('btn-back-menu');
         const joystickStatusEl = document.getElementById('vr-joystick-status');
-        const cameraFeedEl = document.getElementById('camera-feed');
+        const cameraFeedLeftEl = document.getElementById('camera-feed-left');
+        const cameraFeedRightEl = document.getElementById('camera-feed-right');
 
         let vrXRSupported = false;
         let lastInputTime = 0;
@@ -2099,9 +2154,22 @@
             .catch(() => { vrXRSupported = false; });
         }
 
+        function attachStreamToCameraFeeds(stream) {
+          if (cameraFeedLeftEl) {
+            if (cameraFeedLeftEl.srcObject !== stream) cameraFeedLeftEl.srcObject = stream;
+            cameraFeedLeftEl.play().catch(() => {});
+          }
+          if (cameraFeedRightEl) {
+            if (cameraFeedRightEl.srcObject !== stream) cameraFeedRightEl.srcObject = stream;
+            cameraFeedRightEl.play().catch(() => {});
+          }
+          if (typeof window.startHandTracking === 'function' && cameraFeedLeftEl) {
+            window.startHandTracking(cameraFeedLeftEl);
+          }
+        }
+
         async function startCameraPassThrough() {
-          if (!cameraFeedEl) return null;
-          cameraFeedEl.style.display = 'block';
+          if (!cameraFeedLeftEl) return null;
           document.documentElement.classList.add('camera-active');
           document.body.classList.add('camera-active');
 
@@ -2112,12 +2180,9 @@
             }
           }
 
-          if (cameraFeedEl.srcObject) {
-            try { await cameraFeedEl.play(); } catch (_) {}
-            if (typeof window.startHandTracking === 'function') {
-              window.startHandTracking(cameraFeedEl);
-            }
-            return cameraFeedEl.srcObject;
+          if (cameraFeedLeftEl.srcObject) {
+            attachStreamToCameraFeeds(cameraFeedLeftEl.srcObject);
+            return cameraFeedLeftEl.srcObject;
           }
 
           if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2130,11 +2195,7 @@
               video: { facingMode: { ideal: 'environment' } },
               audio: false
             });
-            cameraFeedEl.srcObject = stream;
-            await cameraFeedEl.play().catch(() => {});
-            if (typeof window.startHandTracking === 'function') {
-              window.startHandTracking(cameraFeedEl);
-            }
+            attachStreamToCameraFeeds(stream);
             return stream;
           } catch (err) {
             console.warn('[CAMERA] Bakre kamera nekad/ej tillgänglig, försöker med generell kamera:', err);
@@ -2143,11 +2204,7 @@
                 video: true,
                 audio: false
               });
-              cameraFeedEl.srcObject = fallbackStream;
-              await cameraFeedEl.play().catch(() => {});
-              if (typeof window.startHandTracking === 'function') {
-                window.startHandTracking(cameraFeedEl);
-              }
+              attachStreamToCameraFeeds(fallbackStream);
               return fallbackStream;
             } catch (err2) {
               console.warn('[CAMERA] Kunde inte starta kamera pass-through:', err2);
@@ -2436,9 +2493,11 @@
         // MOBIL / HANDHÅLLEN
         if (btnMobile) {
           btnMobile.addEventListener('click', () => {
+            appMode = 'mobile';
             currentMode = 'mobile';
+            window.appMode = appMode;
             window.currentMode = currentMode;
-            document.body.classList.remove('vr-headset-mode');
+            document.body.classList.remove('vr-headset-mode', 'vr-active');
             if (window.taserApp) window.taserApp.disableStereoVR();
             if (mainMenu) mainMenu.style.display = 'none';
             if (btnBackMenu) btnBackMenu.style.display = 'inline-flex';
@@ -2450,9 +2509,11 @@
         // VR-HEADSET (3D PASS-THROUGH - SIDE-BY-SIDE + LANDSCAPE LOCK + WEBXR FALLBACK)
         if (btnVr) {
           btnVr.addEventListener('click', async () => {
+            appMode = 'vr';
             currentMode = 'vr';
+            window.appMode = appMode;
             window.currentMode = currentMode;
-            document.body.classList.add('vr-headset-mode');
+            document.body.classList.add('vr-headset-mode', 'vr-active');
             window.vrJoystickReady = true;
             ensureAppArmedForInput();
 
@@ -2474,7 +2535,7 @@
               }
             } catch (_) {}
 
-            // Aktivera äkta Side-by-Side stereoskopisk 3D via StereoEffect som primär lösning/fallback
+            // Aktivera äkta Side-by-Side stereoskopisk 3D via StereoEffect (FOV 80°)
             if (window.taserApp) {
               window.taserApp.enableStereoVR();
             }
@@ -2520,9 +2581,11 @@
             }
 
             // 3. Återställ normal kamera, rendering och gränssnitt
+            appMode = 'mobile';
             currentMode = 'mobile';
+            window.appMode = appMode;
             window.currentMode = currentMode;
-            document.body.classList.remove('vr-headset-mode');
+            document.body.classList.remove('vr-headset-mode', 'vr-active');
             if (window.taserApp) {
               window.taserApp.tilt = 0;
               window.taserApp.disableStereoVR();
@@ -2550,6 +2613,7 @@
 
       (function initPhase3And4Weapon() {
         let weaponMount = null;
+        let weaponGroup = null;
         let weaponInitialized = false;
         let cidCanvas = null;
         let cidCtx = null;
@@ -2558,14 +2622,14 @@
         let chamber1Overlay = null;
         let chamber2Overlay = null;
 
-        // MediaPipe Hands state (döljer vapnet tills handen syns i kamerabilden)
+        // MediaPipe Hands state
         let handDetected = false;
         let handsInstance = null;
         let handLoopActive = false;
         let handSending = false;
         let lastHandSendTime = 0;
-        const handTargetPos = { x: 0.08, y: -0.10, z: -0.35 };
-        const handCurrentPos = { x: 0.08, y: -0.10, z: -0.35 };
+        const handTargetPos = { x: 0.22, y: -0.22, z: -0.60 };
+        const handCurrentPos = { x: 0.22, y: -0.22, z: -0.60 };
         const handTargetRot = { pitch: 0, yaw: 0, roll: 0 };
         const handCurrentRot = { pitch: 0, yaw: 0, roll: 0 };
 
@@ -2574,32 +2638,41 @@
             const lm = results.multiHandLandmarks[0];
             const wrist = lm[0];
             const indexMcp = lm[5];
-            const middleMcp = lm[9];
+            const knuckle = lm[9]; // Handens knoge (landmark 9)
             const pinkyMcp = lm[17];
 
-            const anchorX = middleMcp.x * 0.65 + wrist.x * 0.35;
-            const anchorY = middleMcp.y * 0.65 + wrist.y * 0.35;
-            const handSpan = Math.hypot(middleMcp.x - wrist.x, middleMcp.y - wrist.y);
-            const estZ = Math.max(-0.46, Math.min(-0.24, -0.48 + handSpan * 0.65));
+            const isVRMode = (typeof appMode !== 'undefined' && appMode === 'vr') || document.body.classList.contains('vr-active');
+            const baseZ = isVRMode ? -0.88 : -0.60;
+            const rangeX = isVRMode ? 0.86 : 0.44;
+            const rangeY = isVRMode ? 0.72 : 0.36;
+            const handSpan = Math.hypot(knuckle.x - wrist.x, knuckle.y - wrist.y);
+            const estZ = Math.max(baseZ - 0.14, Math.min(baseZ + 0.14, baseZ + (handSpan - 0.2) * 0.5));
 
-            handTargetPos.x = Math.max(-0.24, Math.min(0.24, (anchorX - 0.5) * 0.48));
-            handTargetPos.y = Math.max(-0.18, Math.min(0.18, -(anchorY - 0.5) * 0.36));
+            // Följ handens knoge (landmark 9) i X- och Y-led i realtid
+            handTargetPos.x = Math.max(-rangeX * 0.65, Math.min(rangeX * 0.65, (knuckle.x - 0.5) * rangeX));
+            handTargetPos.y = Math.max(-0.34, Math.min(0.22, -(knuckle.y - 0.5) * rangeY - 0.08));
             handTargetPos.z = estZ;
 
-            const dirY = wrist.y - middleMcp.y;
-            const dirX = middleMcp.x - wrist.x;
-            handTargetRot.yaw = Math.max(-0.6, Math.min(0.6, (0.5 - anchorX) * 0.45 - dirX * 0.35));
+            const dirY = wrist.y - knuckle.y;
+            const dirX = knuckle.x - wrist.x;
+            handTargetRot.yaw = Math.max(-0.6, Math.min(0.6, (0.5 - knuckle.x) * 0.45 - dirX * 0.35));
             handTargetRot.pitch = Math.max(-0.5, Math.min(0.5, (dirY - 0.16) * 0.85));
             handTargetRot.roll = Math.atan2(pinkyMcp.y - indexMcp.y, pinkyMcp.x - indexMcp.x);
 
             handDetected = true;
             window.handDetected = true;
+            if (weaponGroup) {
+              weaponGroup.visible = true;
+            }
             if (weaponMesh) {
               weaponMesh.visible = true;
             }
           } else {
             handDetected = false;
             window.handDetected = false;
+            if (weaponGroup) {
+              weaponGroup.visible = false;
+            }
           }
         }
 
@@ -2609,7 +2682,7 @@
 
           try {
             handsInstance = new window.Hands({
-              locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+              locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
             });
             handsInstance.setOptions({
               maxNumHands: 1,
@@ -2635,11 +2708,18 @@
             if (!handLoopActive) return;
             requestAnimationFrame(pump);
 
-            const v = videoEl || document.getElementById('camera-feed');
-            if (!v || v.readyState < 2 || v.videoWidth <= 0 || v.paused) return;
+            const v = videoEl || document.getElementById('camera-feed-left');
+            if (!v || v.readyState < 2 || v.videoWidth <= 0 || v.paused) {
+              if (handDetected) {
+                handDetected = false;
+                window.handDetected = false;
+                if (weaponGroup) weaponGroup.visible = false;
+              }
+              return;
+            }
 
             const inst = ensureHandsInstance();
-            if (!inst || handSending || now - lastHandSendTime < 40) return;
+            if (!inst || handSending || now - lastHandSendTime < 33) return;
 
             handSending = true;
             lastHandSendTime = now;
@@ -2953,11 +3033,15 @@
           weaponMount = new THREE.Group();
           weaponMount.name = 'Taser7_WeaponMount';
           weaponMount.rotation.order = 'YXZ';
-          app.scene.taserModel.add(weaponMount);
+          weaponGroup = weaponMount;
+          weaponGroup.visible = false; // Dold som standard tills handen syns i kameran
+          window.weaponGroup = weaponGroup;
+          app.scene.taserModel.add(weaponGroup);
 
           const attachReadyWeapon = (meshObj, metrics) => {
             weaponMesh = meshObj;
-            weaponMesh.visible = true; // Alltid redo i förstapersonsvy (följer handen vid detektering)
+            weaponMesh.visible = true;
+            weaponGroup.visible = !!handDetected;
             window.weaponMesh = weaponMesh;
             weaponMount.add(weaponMesh);
             attachOverlaysToWeapon(weaponMesh, metrics);
@@ -3018,9 +3102,11 @@
           if (!weaponInitialized) {
             initTaser3DWeapon();
           }
-          if (!weaponMount || !weaponMesh) return;
+          if (!weaponGroup || !weaponMesh) return;
 
-          weaponMesh.visible = true;
+          // Visa endast 3D-vapnet när handen är detekterad i kamerabilden
+          weaponGroup.visible = !!handDetected;
+          if (!handDetected) return;
 
           // Spegla state.tilt och state.isSafe
           const activeTilt = (app && typeof app.tilt === 'number')
@@ -3031,39 +3117,33 @@
             if (app && app.fsm) window.state.isSafe = !!app.fsm.isSafe;
           }
 
-          const isVR = window.currentMode === 'vr' || document.body.classList.contains('vr-headset-mode');
-          const defaultPosX = isVR ? 0.0 : 0.095;
-          const defaultPosY = isVR ? -0.095 : -0.105;
-          const defaultPosZ = isVR ? -0.36 : -0.34;
+          // Anpassad skala & placering av 3D-vapnet beroende på appMode === 'vr'
+          const isVR = (typeof appMode !== 'undefined' && appMode === 'vr') ||
+            window.appMode === 'vr' ||
+            document.body.classList.contains('vr-active') ||
+            document.body.classList.contains('vr-headset-mode');
+
+          const targetScale = isVR ? 0.72 : 1.0;
+          weaponGroup.scale.setScalar(targetScale);
 
           const lerpAlpha = 0.25;
-          if (handDetected) {
-            handCurrentPos.x += (handTargetPos.x - handCurrentPos.x) * lerpAlpha;
-            handCurrentPos.y += (handTargetPos.y - handCurrentPos.y) * lerpAlpha;
-            handCurrentPos.z += (handTargetPos.z - handCurrentPos.z) * lerpAlpha;
+          handCurrentPos.x += (handTargetPos.x - handCurrentPos.x) * lerpAlpha;
+          handCurrentPos.y += (handTargetPos.y - handCurrentPos.y) * lerpAlpha;
+          handCurrentPos.z += (handTargetPos.z - handCurrentPos.z) * lerpAlpha;
 
-            handCurrentRot.pitch += (handTargetRot.pitch - handCurrentRot.pitch) * lerpAlpha;
-            handCurrentRot.yaw += (handTargetRot.yaw - handCurrentRot.yaw) * lerpAlpha;
-            handCurrentRot.roll += (handTargetRot.roll - handCurrentRot.roll) * lerpAlpha;
-          } else {
-            handCurrentPos.x += (defaultPosX - handCurrentPos.x) * lerpAlpha;
-            handCurrentPos.y += (defaultPosY - handCurrentPos.y) * lerpAlpha;
-            handCurrentPos.z += (defaultPosZ - handCurrentPos.z) * lerpAlpha;
+          handCurrentRot.pitch += (handTargetRot.pitch - handCurrentRot.pitch) * lerpAlpha;
+          handCurrentRot.yaw += (handTargetRot.yaw - handCurrentRot.yaw) * lerpAlpha;
+          handCurrentRot.roll += (handTargetRot.roll - handCurrentRot.roll) * lerpAlpha;
 
-            handCurrentRot.pitch += (0 - handCurrentRot.pitch) * lerpAlpha;
-            handCurrentRot.yaw += (0 - handCurrentRot.yaw) * lerpAlpha;
-            handCurrentRot.roll += (0 - handCurrentRot.roll) * lerpAlpha;
-          }
-
-          weaponMount.position.set(handCurrentPos.x, handCurrentPos.y, handCurrentPos.z);
+          weaponGroup.position.set(handCurrentPos.x, handCurrentPos.y, handCurrentPos.z);
 
           const targetDist = Math.max(1.2, (app && typeof app.currentDistance === 'number') ? app.currentDistance : 3.0);
-          const dz = Math.max(0.5, targetDist - (Math.abs(weaponMount.position.z) + 0.11));
-          const convYaw = Math.atan2(weaponMount.position.x, dz);
-          const convPitch = Math.atan2(-weaponMount.position.y, dz);
+          const dz = Math.max(0.5, targetDist - (Math.abs(weaponGroup.position.z) + 0.11));
+          const convYaw = Math.atan2(weaponGroup.position.x, dz);
+          const convPitch = Math.atan2(-weaponGroup.position.y, dz);
 
-          weaponMount.rotation.order = 'YXZ';
-          weaponMount.rotation.set(
+          weaponGroup.rotation.order = 'YXZ';
+          weaponGroup.rotation.set(
             convPitch + handCurrentRot.pitch * 0.45,
             convYaw + handCurrentRot.yaw * 0.45,
             0.0
@@ -3071,7 +3151,7 @@
 
           // Koppla vapnets lutning (rotation.z) till handens vinkel + state.tilt (vrider även muzzlePoint)
           weaponMesh.rotation.z = handCurrentRot.roll * 0.35 + THREE.MathUtils.degToRad(-activeTilt);
-          weaponMount.updateMatrixWorld(true);
+          weaponGroup.updateMatrixWorld(true);
         }
         window.updateWeaponPose = updateWeaponPose;
 
@@ -3089,7 +3169,9 @@
           } else if (c1 === 'loaded' && c2 === 'loaded') {
             activeCartridge = fsm.activeChamber === 2 ? 2 : 1;
           } else if (c1 === 'empty' && c2 === 'empty') {
-            activeCartridge = fsm.shotsFired >= 2 ? 0 : 1;
+            activeCartridge = 0;
+          } else {
+            activeCartridge = 0;
           }
 
           window.activeCartridge = activeCartridge;
@@ -3146,9 +3228,11 @@
 
         window.addEventListener('DOMContentLoaded', () => {
           setTimeout(initTaser3DWeapon, 60);
+          startHandTracking(document.getElementById('camera-feed-left'));
         });
         if (document.readyState !== 'loading') {
           setTimeout(initTaser3DWeapon, 60);
+          startHandTracking(document.getElementById('camera-feed-left'));
         }
       })();
     </script>

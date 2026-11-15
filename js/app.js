@@ -40,7 +40,7 @@ export class TaserApp {
 
     // AI-Based Person Pose & Dynamic Hitbox Engine
     this.aiPose = new TaserAIPose(this.scene, this.scene.camera, {
-      videoElement: document.getElementById('camera-feed'),
+      videoElement: document.getElementById('camera-feed-left') || document.getElementById('camera-feed'),
       onStatusChange: (detected, label) => {
         const tLabel = document.getElementById('target-label');
         const dLabel = document.getElementById('dist-label');
@@ -1277,7 +1277,8 @@ export class TaserApp {
 
   async startRealPersonAI() {
     this.closeModal('scenario-modal');
-    const cameraFeed = document.getElementById('camera-feed');
+    const cameraFeed = document.getElementById('camera-feed-left') || document.getElementById('camera-feed');
+    const cameraFeedRight = document.getElementById('camera-feed-right');
     const btnCamera = document.getElementById('btn-camera');
     const viewport = document.getElementById('viewport');
     const tLabel = document.getElementById('target-label');
@@ -1290,6 +1291,10 @@ export class TaserApp {
     try {
       // STEG 1: Kamerabehörighet (MÅSTE anropas direkt vid användarklick för att behålla aktiv User Gesture)
       const isActive = await this.xr.toggleCameraAR(cameraFeed, viewport);
+      if (isActive && cameraFeedRight && cameraFeed && cameraFeed.srcObject) {
+        cameraFeedRight.srcObject = cameraFeed.srcObject;
+        cameraFeedRight.play().catch(() => {});
+      }
 
       if (!isActive) {
         // Om användaren klickade för att stänga av kameran
@@ -1741,20 +1746,21 @@ export class TaserApp {
       // Dynamic Copper Wire updates anchored to muzzlePoint
       this.scene.updateWireDynamics(activeCamera);
 
-      // 4. Dynamisk Raycasting för 3D-Lasercylindrar & Laserpunkter från muzzlePoint
+      // 4. Dynamisk Raycasting för två laserpunkter (grön + röd) utan strålar genom luften
+      const isHandDetected = (typeof window !== 'undefined') ? !!window.handDetected : false;
       const currentCartridge = (typeof window !== 'undefined' && typeof window.activeCartridge === 'number')
         ? window.activeCartridge
-        : (this.fsm.activeChamber === 2 ? 2 : 1);
-      const weaponVisible = (typeof window !== 'undefined' && window.weaponMesh)
-        ? !!window.weaponMesh.visible
-        : false;
+        : ((this.fsm.chamber1 === 'loaded' || this.fsm.chamber2 === 'loaded') ? (this.fsm.activeChamber === 2 ? 2 : 1) : 0);
+      const weaponVisible = (typeof window !== 'undefined' && window.weaponGroup)
+        ? !!window.weaponGroup.visible
+        : ((typeof window !== 'undefined' && window.weaponMesh) ? !!window.weaponMesh.visible : false);
       if (typeof window !== 'undefined' && window.state) {
         window.state.isSafe = !!this.fsm.isSafe;
       }
       const isSafeState = (typeof window !== 'undefined' && window.state && typeof window.state.isSafe === 'boolean')
         ? window.state.isSafe
         : !!this.fsm.isSafe;
-      const shouldShowLasers = weaponVisible && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0;
+      const shouldShowLasers = isHandDetected && weaponVisible && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0;
       const aimNDC = renderer.xr.isPresenting
         ? this.scene._v3.set(0, 0, 0)
         : this.scene._v3.set((this.aimX / 100) * 2 - 1, -(this.aimY / 100) * 2 + 1, 0);
@@ -1764,7 +1770,8 @@ export class TaserApp {
         aimNDC,
         currentCartridge,
         (d, ch) => this.ballistics.calculateSpread(d, ch),
-        shouldShowLasers
+        shouldShowLasers,
+        this.currentDistance || 3.0
       );
 
       if (laserHit && laserHit.hit) {
@@ -1776,11 +1783,28 @@ export class TaserApp {
 
       // Render the scene (Stereoscopic Side-by-Side 3D or Standard / WebXR)
       if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
-        this.stereoEffect.render(this.scene.scene, activeCamera);
+        this.renderStereo(this.scene.scene, activeCamera);
       } else {
         renderer.render(this.scene.scene, activeCamera);
       }
     });
+  }
+
+  renderStereo(scene, camera) {
+    if (!this.stereoEffect || !this.scene || !this.scene.renderer || !camera) return;
+    const width = this.scene.container?.clientWidth || window.innerWidth || 1;
+    const height = this.scene.container?.clientHeight || window.innerHeight || 1;
+    const prevAspect = camera.aspect;
+
+    camera.fov = 80;
+    camera.aspect = (width / 2) / height;
+    camera.updateProjectionMatrix();
+
+    this.stereoEffect.render(scene, camera);
+
+    camera.fov = 45;
+    camera.aspect = prevAspect || (width / height);
+    camera.updateProjectionMatrix();
   }
 
   enableStereoVR() {
@@ -1800,6 +1824,10 @@ export class TaserApp {
 
   disableStereoVR() {
     this.isStereoVR = false;
+    if (this.scene && this.scene.camera) {
+      this.scene.camera.fov = 45;
+      this.scene.camera.updateProjectionMatrix();
+    }
     if (this.scene && this.scene.renderer) {
       this.scene.renderer.setScissorTest(false);
       this.scene.onResize();
