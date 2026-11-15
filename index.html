@@ -1081,14 +1081,14 @@
             margin-bottom: 4px;
         }
 
-        /* ----- LIVE AI PERSON TARGET OVERLAY (DOM OVERLAY) ----- */
+        /* ----- LIVE AI PERSON TARGET OVERLAY (REN TAKTISK HUD) ----- */
         .live-target-overlay {
             position: absolute;
             top: 0;
             left: 0;
             pointer-events: none;
             z-index: 80;
-            transition: opacity 0.2s ease;
+            transition: opacity 0.18s ease;
             box-sizing: border-box;
             will-change: transform, width, height;
         }
@@ -1103,77 +1103,93 @@
             pointer-events: none !important;
         }
 
-        .target-svg {
-            width: 100%;
-            height: 100%;
-            overflow: visible;
-            filter: drop-shadow(0 0 6px rgba(46, 204, 113, 0.45));
-        }
-
-        .zone-box {
-            transition: all 0.15s ease;
-        }
-
-        .zone-approved {
-            fill: rgba(46, 204, 113, 0.22);
-            stroke: #2ecc71;
-            stroke-width: 2.5px;
-            stroke-dasharray: 6 3;
-        }
-
-        .zone-danger {
-            fill: rgba(231, 76, 60, 0.28);
-            stroke: #e74c3c;
-            stroke-width: 2px;
-            stroke-dasharray: 4 2;
-        }
-
-        .zone-label {
-            font-size: 8px;
-            font-weight: 800;
-            font-family: monospace;
-            letter-spacing: 0.5px;
-        }
-
-        .zone-label.approved {
-            fill: #2ecc71;
-            text-shadow: 0 0 4px rgba(0,0,0,0.8);
-        }
-
-        .zone-label.danger {
-            fill: #e74c3c;
-            text-shadow: 0 0 4px rgba(0,0,0,0.8);
-        }
-
-        .target-bracket {
+        /* Huvud: Diskreta röda hörn-markeringar (brackets) & subtilt kryss, ingen text */
+        .hud-zone-head {
             position: absolute;
-            width: 16px;
-            height: 16px;
-            border-color: #2ecc71;
-            border-style: solid;
+            top: 1.5%;
+            left: 33%;
+            width: 34%;
+            height: 15.5%;
+            background: rgba(231, 76, 60, 0.08);
+            border-radius: 3px;
             pointer-events: none;
         }
+        .hud-zone-head .hud-brk {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-color: rgba(231, 76, 60, 0.88);
+            border-style: solid;
+        }
+        .hud-zone-head .hud-brk.tl { top: 0; left: 0; border-width: 1.5px 0 0 1.5px; }
+        .hud-zone-head .hud-brk.tr { top: 0; right: 0; border-width: 1.5px 1.5px 0 0; }
+        .hud-zone-head .hud-brk.bl { bottom: 0; left: 0; border-width: 0 0 1.5px 1.5px; }
+        .hud-zone-head .hud-brk.br { bottom: 0; right: 0; border-width: 0 1.5px 1.5px 0; }
 
-        .corner-tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
-        .corner-tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; }
-        .corner-bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; }
-        .corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+        .hud-head-cross {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            transform: translate(-50%, -50%);
+            opacity: 0.6;
+        }
+        .hud-head-cross::before,
+        .hud-head-cross::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 1.5px;
+            background: #e74c3c;
+            border-radius: 1px;
+        }
+        .hud-head-cross::before { transform: translateY(-50%) rotate(45deg); }
+        .hud-head-cross::after { transform: translateY(-50%) rotate(-45deg); }
+
+        /* Kropp (Målzon): Tunna gröna hörn-markeringar & svagt transparent grön fyllning */
+        .hud-zone-torso {
+            position: absolute;
+            top: 19%;
+            left: 16%;
+            width: 68%;
+            height: 40%;
+            background: rgba(46, 204, 113, 0.065);
+            box-shadow: inset 0 0 18px rgba(46, 204, 113, 0.08);
+            border-radius: 3px;
+            pointer-events: none;
+        }
+        .hud-zone-torso .hud-brk {
+            position: absolute;
+            width: 13px;
+            height: 13px;
+            border-color: rgba(46, 204, 113, 0.9);
+            border-style: solid;
+        }
+        .hud-zone-torso .hud-brk.tl { top: 0; left: 0; border-width: 1.8px 0 0 1.8px; }
+        .hud-zone-torso .hud-brk.tr { top: 0; right: 0; border-width: 1.8px 1.8px 0 0; }
+        .hud-zone-torso .hud-brk.bl { bottom: 0; left: 0; border-width: 0 0 1.8px 1.8px; }
+        .hud-zone-torso .hud-brk.br { bottom: 0; right: 0; border-width: 0 1.8px 1.8px 0; }
 
         .target-badge {
             position: absolute;
-            top: -24px;
+            top: -22px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(10, 20, 15, 0.92);
-            border: 1px solid #2ecc71;
-            color: #2ecc71;
-            font-size: 10px;
-            font-weight: bold;
+            background: rgba(8, 14, 12, 0.78);
+            border: 1px solid rgba(46, 204, 113, 0.55);
+            color: #7ee8a6;
+            font-size: 9px;
+            font-weight: 700;
             font-family: monospace;
-            padding: 2px 8px;
-            border-radius: 4px;
+            letter-spacing: 0.8px;
+            padding: 2px 7px;
+            border-radius: 3px;
             white-space: nowrap;
-            box-shadow: 0 0 8px rgba(46, 204, 113, 0.4);
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
             display: flex;
             align-items: center;
             gap: 4px;
@@ -1181,11 +1197,11 @@
 
         .target-pulse {
             color: #2ecc71;
-            animation: pulse-dot 0.8s infinite alternate;
+            animation: pulse-dot 0.9s infinite alternate;
         }
 
         @keyframes pulse-dot {
-            from { opacity: 0.3; }
+            from { opacity: 0.35; }
             to { opacity: 1; }
         }
 
@@ -1265,7 +1281,7 @@
             background-color: transparent !important;
             margin: 0 !important;
             padding: 0 !important;
-            z-index: 2 !important;
+            z-index: 20 !important;
             outline: none !important;
         }
 
@@ -1335,6 +1351,7 @@
         body.live-ar-active #hud-canvas {
             pointer-events: none !important;
             z-index: 9999 !important;
+            transform: translateZ(0);
         }
 
         body.ar-active .hud-overlay,
@@ -1565,26 +1582,31 @@
             box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55), inset 0 1px 0 rgba(255,255,255,0.32) !important;
         }
 
-        /* COMPACT LIVE-AR UI (.live-ar-active): Behåll endast Taser-chassi (säkring), Avfyra, Kassett, Batteri, Vinkla, Återställ och Avsluta */
+        /* COMPACT LIVE-AR UI (.live-ar-active / .live-ai-active): Behåll endast Taser-chassi (säkring), Avfyra, Kassett, Batteri, Vinkla, Återställ och Avsluta */
         body.live-ar-active .main-container,
+        body.live-ai-active .main-container,
         .main-container.live-ar-active {
             position: fixed !important;
             bottom: 0 !important;
             left: 50% !important;
-            transform: translateX(-50%) scale(0.86) !important;
+            transform: translateX(-50%) scale(0.84) !important;
             transform-origin: bottom center !important;
+            flex: none !important;
+            height: auto !important;
+            max-height: none !important;
             width: 100% !important;
             max-width: 340px !important;
-            padding: 0 0 env(safe-area-inset-bottom, 6px) 0 !important;
+            padding: 0 0 env(safe-area-inset-bottom, 4px) 0 !important;
             overflow: visible !important;
             z-index: 100 !important;
             pointer-events: auto !important;
         }
 
         body.live-ar-active .taser-device,
+        body.live-ai-active .taser-device,
         .main-container.live-ar-active .taser-device {
-            width: min(280px, 88vw) !important;
-            padding-bottom: 6px !important;
+            width: min(276px, 86vw) !important;
+            padding-bottom: 5px !important;
             background-color: rgba(252, 190, 0, 0.78) !important;
             background-image:
                 linear-gradient(to bottom, rgba(28, 30, 36, 0.88) 0%, rgba(18, 20, 24, 0.88) 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
@@ -1600,30 +1622,34 @@
         }
 
         body.live-ar-active .display-bezel,
+        body.live-ai-active .display-bezel,
         .main-container.live-ar-active .display-bezel {
-            margin: 5px auto 6px auto !important;
-            width: 158px !important;
-            height: 54px !important;
+            margin: 4px auto 5px auto !important;
+            width: 152px !important;
+            height: 48px !important;
             background-color: rgba(16, 18, 22, 0.84) !important;
             border-color: rgba(0, 0, 0, 0.85) !important;
         }
 
         body.live-ar-active .display-screen,
+        body.live-ai-active .display-screen,
         .main-container.live-ar-active .display-screen {
-            width: 142px !important;
-            height: 40px !important;
+            width: 138px !important;
+            height: 36px !important;
             background-color: rgba(12, 14, 18, 0.88) !important;
         }
 
         body.live-ar-active .safety-container,
+        body.live-ai-active .safety-container,
         .main-container.live-ar-active .safety-container {
-            margin-top: 4px !important;
+            margin-top: 3px !important;
         }
 
         body.live-ar-active .sim-controls,
+        body.live-ai-active .sim-controls,
         .main-container.live-ar-active .sim-controls,
         .sim-controls.live-ar-active {
-            width: min(295px, 92vw) !important;
+            width: min(290px, 90vw) !important;
             background: linear-gradient(180deg, rgba(24, 27, 33, 0.86) 0%, rgba(13, 15, 19, 0.92) 100%) !important;
             backdrop-filter: blur(4px) !important;
             -webkit-backdrop-filter: blur(4px) !important;
@@ -1631,7 +1657,7 @@
             border-bottom: none !important;
             border-radius: 16px 16px 0 0 !important;
             box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255,255,255,0.12) !important;
-            padding: 14px 8px 10px 8px !important;
+            padding: 12px 8px 8px 8px !important;
             margin-top: -12px !important;
         }
 
@@ -1646,6 +1672,8 @@
         body.live-ar-active .btn-warn,
         body.live-ar-active #normal-xr-row,
         body.live-ar-active #webxr-grip-row,
+        body.live-ar-active #extra-toggles-row,
+        body.live-ar-active #info-btn-row,
         body.live-ar-active #btn-clothing,
         body.live-ar-active .btn-clothing,
         body.live-ar-active #btn-voice,
@@ -1654,11 +1682,31 @@
         body.live-ar-active .btn-gyro,
         body.live-ar-active #btn-info,
         body.live-ar-active .btn-info,
-        body.live-ar-active .btn-grid-compact:has(#btn-clothing),
-        body.live-ar-active div:has(> #btn-info),
+        body.live-ar-active #btn-place,
         body.live-ar-active .log-box,
         body.live-ar-active #log,
         body.live-ar-active .header-bar,
+        body.live-ai-active .status-grid,
+        body.live-ai-active #btn-scenario,
+        body.live-ai-active .btn-scenario,
+        body.live-ai-active #btn-kontaktstot,
+        body.live-ai-active .btn-kontaktstot,
+        body.live-ai-active #btn-stealth,
+        body.live-ai-active .btn-stealth,
+        body.live-ai-active #btn-warn,
+        body.live-ai-active .btn-warn,
+        body.live-ai-active #normal-xr-row,
+        body.live-ai-active #webxr-grip-row,
+        body.live-ai-active #extra-toggles-row,
+        body.live-ai-active #info-btn-row,
+        body.live-ai-active #btn-clothing,
+        body.live-ai-active #btn-voice,
+        body.live-ai-active #btn-gyro,
+        body.live-ai-active #btn-info,
+        body.live-ai-active #btn-place,
+        body.live-ai-active .log-box,
+        body.live-ai-active #log,
+        body.live-ai-active .header-bar,
         .main-container.live-ar-active .status-grid,
         .main-container.live-ar-active #btn-scenario,
         .main-container.live-ar-active #btn-kontaktstot,
@@ -1666,18 +1714,21 @@
         .main-container.live-ar-active #btn-warn,
         .main-container.live-ar-active #normal-xr-row,
         .main-container.live-ar-active #webxr-grip-row,
+        .main-container.live-ar-active #extra-toggles-row,
+        .main-container.live-ar-active #info-btn-row,
         .main-container.live-ar-active #btn-clothing,
         .main-container.live-ar-active #btn-voice,
         .main-container.live-ar-active #btn-gyro,
         .main-container.live-ar-active #btn-info,
-        .main-container.live-ar-active .btn-grid-compact:has(#btn-clothing),
-        .main-container.live-ar-active div:has(> #btn-info),
+        .main-container.live-ar-active #btn-place,
         .main-container.live-ar-active .log-box {
             display: none !important;
         }
 
         body.live-ar-active .btn-grid-compact:has(#btn-cassette),
         body.live-ar-active .btn-grid-compact:has(#btn-tilt),
+        body.live-ai-active .btn-grid-compact:has(#btn-cassette),
+        body.live-ai-active .btn-grid-compact:has(#btn-tilt),
         .main-container.live-ar-active .btn-grid-compact:has(#btn-cassette),
         .main-container.live-ar-active .btn-grid-compact:has(#btn-tilt) {
             grid-template-columns: 1fr 1fr !important;
@@ -1686,6 +1737,7 @@
         }
 
         body.live-ar-active #live-ar-grip-row,
+        body.live-ai-active #live-ar-grip-row,
         .main-container.live-ar-active #live-ar-grip-row {
             display: grid !important;
             grid-template-columns: 1fr !important;
@@ -1696,12 +1748,13 @@
         }
 
         body.live-ar-active .btn-trigger,
+        body.live-ai-active .btn-trigger,
         .main-container.live-ar-active .btn-trigger {
             background: linear-gradient(180deg, rgba(229, 57, 53, 0.94) 0%, rgba(183, 28, 28, 0.94) 55%, rgba(142, 21, 21, 0.96) 100%) !important;
             border: 1px solid #ff6b6b !important;
             box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55), inset 0 1px 0 rgba(255,255,255,0.32) !important;
-            min-height: 42px !important;
-            padding: 9px 8px !important;
+            min-height: 40px !important;
+            padding: 8px 8px !important;
             margin-top: 2px !important;
             margin-bottom: 5px !important;
         }
@@ -1711,6 +1764,11 @@
         body.live-ar-active #btn-tilt,
         body.live-ar-active #btn-reset,
         body.live-ar-active #btn-live-ar-exit,
+        body.live-ai-active #btn-cassette,
+        body.live-ai-active #btn-battery,
+        body.live-ai-active #btn-tilt,
+        body.live-ai-active #btn-reset,
+        body.live-ai-active #btn-live-ar-exit,
         .main-container.live-ar-active #btn-cassette,
         .main-container.live-ar-active #btn-battery,
         .main-container.live-ar-active #btn-tilt,
@@ -1718,8 +1776,8 @@
         .main-container.live-ar-active #btn-live-ar-exit {
             display: inline-flex !important;
             visibility: visible !important;
-            min-height: 36px !important;
-            padding: 6px 4px !important;
+            min-height: 34px !important;
+            padding: 5px 4px !important;
             font-size: 9.5px !important;
             font-weight: 800 !important;
         }
@@ -2257,33 +2315,27 @@
         <div class="viewport" id="viewport">
             <div id="three-canvas"></div>
             
-            <!-- LIVE AI PERSON TARGET OVERLAY (DOM OVERLAY) -->
+            <!-- LIVE AI PERSON TARGET OVERLAY (MODERN TAKTISK HUD) -->
             <div id="live-target-overlay" class="live-target-overlay" style="display: none;">
-                <svg id="target-svg" class="target-svg" viewBox="0 0 200 400" preserveAspectRatio="none">
-                    <!-- Danger Zone: Huvud & Hals (Gul/Röd) -->
-                    <rect class="zone-box zone-danger head" x="65" y="6" width="70" height="58" rx="29" />
-                    <text x="100" y="38" text-anchor="middle" class="zone-label danger">HUVUD/HALS (EJ NMI)</text>
+                <!-- Huvud: Diskreta röda hörn-markeringar & subtilt kryss -->
+                <div class="hud-zone-head">
+                    <span class="hud-brk tl"></span>
+                    <span class="hud-brk tr"></span>
+                    <span class="hud-brk bl"></span>
+                    <span class="hud-brk br"></span>
+                    <span class="hud-head-cross"></span>
+                </div>
 
-                    <!-- Approved Zone: Bål & Bröstkorg (Grön - Godkänd NMI) -->
-                    <rect class="zone-box zone-approved torso" x="30" y="70" width="140" height="150" rx="8" />
-                    <text x="100" y="149" text-anchor="middle" class="zone-label approved">GODKÄND NMI-ZON (BÅL)</text>
+                <!-- Kropp (Målzon): Tunna gröna hörn-markeringar & svagt transparent grön fyllning -->
+                <div class="hud-zone-torso">
+                    <span class="hud-brk tl"></span>
+                    <span class="hud-brk tr"></span>
+                    <span class="hud-brk bl"></span>
+                    <span class="hud-brk br"></span>
+                </div>
 
-                    <!-- Danger Zone: Skrev / Ljumskar (Gul/Röd) -->
-                    <rect class="zone-box zone-danger groin" x="50" y="226" width="100" height="38" rx="6" />
-                    <text x="100" y="250" text-anchor="middle" class="zone-label danger">SKREV (EJ NMI)</text>
-
-                    <!-- Approved Zone: Ben & Lår (Grön - Godkänd NMI) -->
-                    <rect class="zone-box zone-approved legs" x="36" y="270" width="128" height="124" rx="8" />
-                    <text x="100" y="332" text-anchor="middle" class="zone-label approved">BEN / LÅR (NMI)</text>
-                </svg>
-
-                <!-- Tactical Target Corner Brackets & Distance Tag -->
-                <div class="target-bracket corner-tl"></div>
-                <div class="target-bracket corner-tr"></div>
-                <div class="target-bracket corner-bl"></div>
-                <div class="target-bracket corner-br"></div>
                 <div class="target-badge" id="target-badge">
-                    <span class="target-pulse">●</span> LÅST PÅ MÅL: <span id="target-live-dist">3.0 M</span>
+                    <span class="target-pulse">●</span> <span id="target-live-dist">3.0 M</span>
                 </div>
             </div>
 
@@ -2382,13 +2434,13 @@
                         <button type="button" class="action-btn btn btn-xr-exit" id="btn-live-ar-exit" aria-label="Avsluta Live AR">⛔ AVSLUTA LIVE AR</button>
                     </div>
 
-                    <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr 1fr;">
+                    <div id="extra-toggles-row" class="btn-grid-compact" style="grid-template-columns: 1fr 1fr 1fr;">
                         <button class="action-btn btn-clothing" id="btn-clothing">🧥 Kläder: NORMAL</button>
                         <button class="action-btn btn-voice" id="btn-voice">🎙️ Röst: AV</button>
                         <button class="action-btn btn-gyro" id="btn-gyro">📱 Gyro: AV</button>
                     </div>
 
-                    <div style="margin-top: 4px;">
+                    <div id="info-btn-row" style="margin-top: 4px;">
                         <button class="action-btn btn-info" id="btn-info">ℹ️ Taktisk Lathund & Manual</button>
                     </div>
 

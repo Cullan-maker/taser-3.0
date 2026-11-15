@@ -89,6 +89,7 @@ export class TaserApp {
     this.isTased = false;
     this.isGameOver = false;
     this.isFiring = false;
+    this.liveWires = [];
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -188,6 +189,7 @@ export class TaserApp {
           btnCass.style.borderColor = hasLoaded ? '#2ecc71' : '';
         }
         if (fsm.chamber1 === ChamberState.EMPTY || (fsm.chamber1 === ChamberState.LOADED && fsm.chamber2 === ChamberState.LOADED && fsm.shotsFired === 0)) {
+          this.liveWires = [];
           this.scene.clearWiresAndDarts();
           this.scene.resetTarget();
           this.stopScenario();
@@ -619,15 +621,25 @@ export class TaserApp {
         vWidth
       );
 
-      // Perform 3D raycast on mannequin or Live Target
-      let hitResult = this.scene.fireDarts({ ndc1, ndc2, chamber: firedChamber });
+      // Detect Live-AR (kamera + AI personspårning)
+      const isLiveARActive = !!(
+        (this.aiPose && typeof this.aiPose.isLiveARModeActive === 'function' && this.aiPose.isLiveARModeActive()) ||
+        (typeof document !== 'undefined' && (
+          document.body.classList.contains('live-ar-active') ||
+          document.body.classList.contains('live-ai-active')
+        ))
+      );
 
-      // Live AI-Targeting (Personspårning): Kontrollera endast om Live-AR mot riktig människa är aktivt
-      if (this.aiPose && (typeof this.aiPose.isLiveARModeActive === 'function' ? this.aiPose.isLiveARModeActive() : this.aiPose.isActive) && this.aiPose.isPersonDetected) {
-        const liveHits = this.aiPose.checkScreenHit(this.aimX, this.aimY, spreadInfo.visualDropPx);
-        if (liveHits) {
-          hitResult = liveHits;
-        }
+      let hitResult;
+      if (isLiveARActive) {
+        const liveHits = this.aiPose
+          ? this.aiPose.checkScreenHit(this.aimX, this.aimY, spreadInfo.visualDropPx, this.tilt)
+          : null;
+        hitResult = liveHits || { hit1: null, hit2: null, hitWall1: true, hitWall2: true };
+        this.spawnLiveARWires(firedChamber, hitResult, spreadInfo.visualDropPx);
+      } else {
+        // Perform 3D raycast on mannequin or WebXR target
+        hitResult = this.scene.fireDarts({ ndc1, ndc2, chamber: firedChamber });
       }
 
       // Evaluate NMI success
@@ -792,29 +804,75 @@ export class TaserApp {
     }
   }
 
+  spawnLiveARWires(chamber, hitResult, dropPx) {
+    const hudCanvas = document.getElementById('hud-canvas');
+    const vp = document.getElementById('viewport');
+    const w = (hudCanvas && hudCanvas.clientWidth) || (vp && vp.clientWidth) || window.innerWidth || 360;
+    const h = (hudCanvas && hudCanvas.clientHeight) || (vp && vp.clientHeight) || window.innerHeight || 640;
+
+    const coords = hitResult && hitResult.screenCoords ? hitResult.screenCoords : null;
+    const box = (coords && coords.box) || (this.aiPose && typeof this.aiPose.getCurrentScreenBox === 'function' ? this.aiPose.getCurrentScreenBox() : null);
+
+    const d1X = coords ? coords.d1X : ((this.aimX / 100) * w);
+    const d1Y = coords ? coords.d1Y : ((this.aimY / 100) * h);
+    const tiltRad = ((typeof this.tilt === 'number' ? this.tilt : 0) * Math.PI) / 180;
+    const d2X = coords ? coords.d2X : (d1X - Math.sin(tiltRad) * dropPx);
+    const d2Y = coords ? coords.d2Y : (d1Y + Math.cos(tiltRad) * dropPx);
+
+    const buildProbe = (px, py, hitObj, slot) => {
+      const insideBox = !!(box && box.width > 0 && box.height > 0 &&
+        px >= box.left && px <= box.left + box.width &&
+        py >= box.top && py <= box.top + box.height);
+      const attachedToBox = insideBox && !!(hitObj || (this.aiPose && this.aiPose.isPersonDetected));
+      return {
+        slot,
+        chamber,
+        attachedToBox,
+        relX: attachedToBox ? Math.max(0.05, Math.min(0.95, (px - box.left) / box.width)) : 0.5,
+        relY: attachedToBox ? Math.max(0.05, Math.min(0.95, (py - box.top) / box.height)) : 0.35,
+        screenX: px,
+        screenY: py,
+        isHit: !!hitObj,
+        isApproved: !!(hitObj && hitObj.isApproved),
+        firedAt: performance.now()
+      };
+    };
+
+    const probe1 = buildProbe(d1X, d1Y, hitResult ? hitResult.hit1 : null, 'top');
+    const probe2 = buildProbe(d2X, d2Y, hitResult ? hitResult.hit2 : null, 'bottom');
+
+    this.liveWires.push({
+      chamber,
+      firedAt: performance.now(),
+      probes: [probe1, probe2]
+    });
+  }
+
   updateProjectors() {
     const flashlight = document.getElementById('flashlight');
     const laserGreen = document.getElementById('laser-green');
     const laserRed = document.getElementById('laser-red');
 
-    const isVRMode = (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
-    const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
     const isLiveAR = typeof document !== 'undefined' && (
       document.body.classList.contains('live-ar-active') ||
-      document.body.classList.contains('live-ai-active')
+      document.body.classList.contains('live-ai-active') ||
+      !!(this.aiPose && this.aiPose.isActive)
     );
+    const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
+    const isVRMode = !isLiveAR && (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
+
     const hasCartridge = (this.fsm.chamber1 === ChamberState.LOADED || this.fsm.chamber2 === ChamberState.LOADED);
     const flashlightOn = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
-    const shouldShow = flashlightOn && hasCartridge;
+    const shouldShow = isLiveAR ? flashlightOn : (flashlightOn && hasCartridge);
 
-    if (isVRMode || isXRPresenting) {
-      // VR & WebXR: 3D-laserpunkterna projiceras direkt i Three.js-scenen
-      if (flashlight) flashlight.style.display = flashlightOn ? 'block' : 'none';
+    if (isLiveAR && !isXRPresenting) {
+      // Live-AR: #hud-canvas (z-index: 9999) ritar ficklampa, grön/röd laser, trådar och träffblixtar ovanpå video och AI-spårning
+      if (flashlight) flashlight.style.display = 'none';
       if (laserGreen) laserGreen.style.display = 'none';
       if (laserRed) laserRed.style.display = 'none';
-    } else if (isLiveAR) {
-      // Live-AR: #hud-canvas (z-index: 9999) ritar skarp ficklampa samt grön och röd laser ovanpå kamera och AI-spårning
-      if (flashlight) flashlight.style.display = 'none';
+    } else if (isVRMode || isXRPresenting) {
+      // VR & WebXR: 3D-laserpunkterna projiceras direkt i Three.js-scenen
+      if (flashlight) flashlight.style.display = flashlightOn ? 'block' : 'none';
       if (laserGreen) laserGreen.style.display = 'none';
       if (laserRed) laserRed.style.display = 'none';
     } else {
@@ -835,12 +893,8 @@ export class TaserApp {
 
     const isLiveAR = typeof document !== 'undefined' && (
       document.body.classList.contains('live-ar-active') ||
-      document.body.classList.contains('live-ai-active')
-    );
-    const isVRMode = (typeof window !== 'undefined') && (
-      window.appMode === 'vr' ||
-      document.body.classList.contains('vr-active') ||
-      document.body.classList.contains('vr-headset-mode')
+      document.body.classList.contains('live-ai-active') ||
+      !!(this.aiPose && this.aiPose.isActive)
     );
     const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
 
@@ -858,19 +912,22 @@ export class TaserApp {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
-    if (!isLiveAR || isVRMode || isXRPresenting || (!flashlightOn && !lasersOn)) {
+    const hasWires = Array.isArray(this.liveWires) && this.liveWires.length > 0;
+    if (!isLiveAR || isXRPresenting || (!flashlightOn && !lasersOn && !hasWires)) {
       return;
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cx = w * 0.5;
-    const cy = h * 0.5;
+    const aimPctX = (typeof this.aimX === 'number' && !isNaN(this.aimX)) ? this.aimX : 50;
+    const aimPctY = (typeof this.aimY === 'number' && !isNaN(this.aimY)) ? this.aimY : 50;
+    const cx = (aimPctX / 100) * w;
+    const cy = (aimPctY / 100) * h;
 
     if (flashlightOn) {
-      const beamRadius = Math.max(150, Math.min(w, h) * 0.42);
+      const beamRadius = Math.max(160, Math.min(w, h) * 0.44);
       const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, beamRadius);
       grad.addColorStop(0.0, 'rgba(255, 255, 240, 0.34)');
-      grad.addColorStop(0.45, 'rgba(255, 255, 255, 0.10)');
+      grad.addColorStop(0.45, 'rgba(255, 255, 255, 0.11)');
       grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
       ctx.save();
       ctx.fillStyle = grad;
@@ -893,9 +950,9 @@ export class TaserApp {
       ctx.save();
       ctx.shadowColor = '#00ff00';
       ctx.shadowBlur = 16;
-      ctx.fillStyle = 'rgba(0, 255, 0, 0.38)';
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.42)';
       ctx.beginPath();
-      ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = '#00ff00';
@@ -912,9 +969,9 @@ export class TaserApp {
       ctx.save();
       ctx.shadowColor = '#ff0000';
       ctx.shadowBlur = 16;
-      ctx.fillStyle = `rgba(255, 0, 0, ${(0.38 * pulse).toFixed(3)})`;
+      ctx.fillStyle = `rgba(255, 0, 0, ${(0.42 * pulse).toFixed(3)})`;
       ctx.beginPath();
-      ctx.arc(rx, ry, 9 * (0.9 + 0.15 * pulse), 0, Math.PI * 2);
+      ctx.arc(rx, ry, 9.5 * (0.9 + 0.15 * pulse), 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = `rgba(255, 24, 24, ${pulse.toFixed(3)})`;
@@ -922,6 +979,146 @@ export class TaserApp {
       ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+    }
+
+    // 2D-trådar, sonder och träffblixtar synkade mot AI:ns bounding box i Live-AR
+    if (hasWires) {
+      const now = performance.now();
+      const canvasRect = hudCanvas.getBoundingClientRect();
+      const taserSightEl = document.querySelector('.taser-device .sights') || document.querySelector('.taser-device');
+      let muzzleBaseX = w * 0.5;
+      let muzzleBaseY = h - 24;
+      if (taserSightEl && canvasRect.width > 0) {
+        const sr = taserSightEl.getBoundingClientRect();
+        if (sr.width > 0 && sr.top > 0 && sr.top < canvasRect.bottom) {
+          muzzleBaseX = (sr.left + sr.width * 0.5) - canvasRect.left;
+          muzzleBaseY = Math.max(20, (sr.top - canvasRect.top) + 4);
+        }
+      }
+
+      const liveBox = (this.aiPose && typeof this.aiPose.getCurrentScreenBox === 'function')
+        ? this.aiPose.getCurrentScreenBox()
+        : null;
+      const cycleActive = !!this.fsm.cycleTimer;
+
+      for (let wIdx = 0; wIdx < this.liveWires.length; wIdx++) {
+        const wireSet = this.liveWires[wIdx];
+        const ageMs = now - wireSet.firedAt;
+        const resolvedPts = [];
+
+        for (let pIdx = 0; pIdx < wireSet.probes.length; pIdx++) {
+          const p = wireSet.probes[pIdx];
+          let tx = p.screenX;
+          let ty = p.screenY;
+
+          if (p.attachedToBox && liveBox && liveBox.width > 0 && liveBox.height > 0) {
+            tx = liveBox.left + p.relX * liveBox.width;
+            ty = liveBox.top + p.relY * liveBox.height;
+          }
+          resolvedPts.push({ tx, ty, probe: p });
+
+          const chamberOffX = wireSet.chamber === 1 ? -11 : 11;
+          const slotOffY = p.slot === 'top' ? -4 : 4;
+          const ox = muzzleBaseX + chamberOffX;
+          const oy = muzzleBaseY + slotOffY;
+
+          // Koppartråd från vapnets mynning längst ner till målpunkten
+          const midX = (ox + tx) * 0.5 + (p.slot === 'top' ? -8 : 8);
+          const midY = (oy + ty) * 0.5 + 22;
+
+          ctx.save();
+          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = 'rgba(212, 132, 62, 0.92)';
+          ctx.shadowColor = 'rgba(184, 115, 51, 0.6)';
+          ctx.shadowBlur = 3;
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.quadraticCurveTo(midX, midY, tx, ty);
+          ctx.stroke();
+
+          // Metallspets/sond på träffpunkten
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#e2e8f0';
+          ctx.beginPath();
+          ctx.arc(tx, ty, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Initial träffblixt (impact flash) ~520 ms vid avfyrning
+          if (ageMs < 520) {
+            const flashAlpha = Math.max(0, 1 - ageMs / 520);
+            const radius = 14 + (1 - flashAlpha) * 24;
+            const flashGrad = ctx.createRadialGradient(tx, ty, 1, tx, ty, radius);
+            if (p.isHit) {
+              flashGrad.addColorStop(0.0, `rgba(255, 255, 255, ${flashAlpha.toFixed(3)})`);
+              flashGrad.addColorStop(0.35, `rgba(112, 214, 255, ${(0.95 * flashAlpha).toFixed(3)})`);
+              flashGrad.addColorStop(1.0, 'rgba(56, 189, 248, 0)');
+            } else {
+              flashGrad.addColorStop(0.0, `rgba(255, 245, 200, ${flashAlpha.toFixed(3)})`);
+              flashGrad.addColorStop(0.4, `rgba(255, 170, 0, ${(0.85 * flashAlpha).toFixed(3)})`);
+              flashGrad.addColorStop(1.0, 'rgba(255, 170, 0, 0)');
+            }
+            ctx.fillStyle = flashGrad;
+            ctx.beginPath();
+            ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gniststrålar
+            ctx.strokeStyle = p.isHit
+              ? `rgba(165, 243, 252, ${flashAlpha.toFixed(3)})`
+              : `rgba(253, 224, 71, ${flashAlpha.toFixed(3)})`;
+            ctx.lineWidth = 1.6;
+            for (let s = 0; s < 6; s++) {
+              const ang = (s / 6) * Math.PI * 2 + (ageMs * 0.015);
+              const r1 = 5;
+              const r2 = 12 + flashAlpha * 14;
+              ctx.beginPath();
+              ctx.moveTo(tx + Math.cos(ang) * r1, ty + Math.sin(ang) * r1);
+              ctx.lineTo(tx + Math.cos(ang) * r2, ty + Math.sin(ang) * r2);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+        }
+
+        // Kontinuerlig elektrisk ljusbåge och träffglöd mellan sonderna under aktiv 5-sekunderscykel
+        if (cycleActive && resolvedPts.length === 2 && resolvedPts[0].probe.isHit && resolvedPts[1].probe.isHit) {
+          const pA = resolvedPts[0];
+          const pB = resolvedPts[1];
+          ctx.save();
+          ctx.strokeStyle = '#70d6ff';
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 12;
+          ctx.lineWidth = 2.0;
+          ctx.beginPath();
+          ctx.moveTo(pA.tx, pA.ty);
+          const steps = 6;
+          for (let st = 1; st < steps; st++) {
+            const t = st / steps;
+            const jx = (Math.random() - 0.5) * 14;
+            const jy = (Math.random() - 0.5) * 10;
+            ctx.lineTo(pA.tx + (pB.tx - pA.tx) * t + jx, pA.ty + (pB.ty - pA.ty) * t + jy);
+          }
+          ctx.lineTo(pB.tx, pB.ty);
+          ctx.stroke();
+
+          // Elektriska kontaktblixtar vid båda sonder under strömcykeln
+          [pA, pB].forEach((pt) => {
+            const pulseR = 9 + Math.random() * 6;
+            const g = ctx.createRadialGradient(pt.tx, pt.ty, 1, pt.tx, pt.ty, pulseR);
+            g.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+            g.addColorStop(0.45, 'rgba(112, 214, 255, 0.65)');
+            g.addColorStop(1, 'rgba(56, 189, 248, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(pt.tx, pt.ty, pulseR, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          ctx.restore();
+        }
+      }
     }
   }
 
@@ -1031,8 +1228,12 @@ export class TaserApp {
 
     const driveStunBtn = document.getElementById('btn-kontaktstot');
     if (driveStunBtn) {
+      const isLiveARNow = typeof document !== 'undefined' && (
+        document.body.classList.contains('live-ar-active') ||
+        document.body.classList.contains('live-ai-active')
+      );
       const bothFired = this.fsm.chamber1 === ChamberState.FIRED && this.fsm.chamber2 === ChamberState.FIRED;
-      driveStunBtn.style.display = bothFired && !this.fsm.isSafe ? 'block' : 'none';
+      driveStunBtn.style.display = (!isLiveARNow && bothFired && !this.fsm.isSafe) ? 'block' : 'none';
     }
 
     if (typeof window !== 'undefined' && typeof window.syncWeaponOverlays === 'function') {
@@ -1632,6 +1833,7 @@ export class TaserApp {
     const simControls = document.querySelector('.sim-controls');
     if (simControls) simControls.classList.remove('live-ar-active');
 
+    this.liveWires = [];
     if (this.aiPose) this.aiPose.stop();
     if (this.scene) {
       this.scene.disableARMode();
@@ -1680,6 +1882,11 @@ export class TaserApp {
       this.aimX = 50;
       this.aimY = 50;
     };
+
+    // Aktivera kompakt Live-AR gränssnitt direkt för omedelbar visuell feedback
+    this.liveWires = [];
+    activateLiveARClasses();
+    this.updateDisplay();
 
     // Immediate user feedback
     if (tLabel) tLabel.textContent = 'INITIERAR AI & KAMERA...';
@@ -1836,6 +2043,7 @@ export class TaserApp {
       simControls.classList.remove('live-ar-active');
       simControls.classList.add('ar-combat-mode');
     }
+    this.liveWires = [];
     this.scene.clearWiresAndDarts();
     this.scene.enableARMode();
 
@@ -2095,6 +2303,7 @@ export class TaserApp {
     if (this.scene && this.scene.mixer) {
       this.scene.mixer.timeScale = 1.0;
     }
+    this.liveWires = [];
     this.scene.clearWiresAndDarts();
     this.fsm.reset();
 
@@ -2332,15 +2541,20 @@ export class TaserApp {
         ? window.state.isSafe
         : !!this.fsm.isSafe;
 
+      const isLiveARLoop = (typeof document !== 'undefined') && (
+        document.body.classList.contains('live-ar-active') ||
+        document.body.classList.contains('live-ai-active') ||
+        !!(this.aiPose && this.aiPose.isActive)
+      );
       const currentAppMode = (typeof window !== 'undefined' && window.appMode)
         ? window.appMode
         : (isVRMode ? 'vr' : 'mobile');
       const flashlightOn = !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode;
-      const lasersOn = flashlightOn &&
-        currentCartridge > 0 &&
-        (currentAppMode === 'mobile' || (isHandDetected && weaponVisible));
+      const lasersOn = isLiveARLoop
+        ? flashlightOn
+        : (flashlightOn && currentCartridge > 0 && (currentAppMode === 'mobile' || (isHandDetected && weaponVisible)));
 
-      // Rita skarpa 2D-lasrar och ficklampa på #hud-canvas (z-index: 9999) i Live-AR
+      // Rita skarpa 2D-lasrar, ficklampa, 2D-trådar och träffblixtar på #hud-canvas (z-index: 9999) i Live-AR
       this.drawHudCanvas(flashlightOn, lasersOn);
 
       const aimNDC = this.scene._v3.set(0, 0, 0);

@@ -649,8 +649,13 @@ export class TaserAIPose {
     this.updateTargetOverlay();
   }
 
+  getCurrentScreenBox() {
+    if (!this.isLiveARModeActive() || !this.isPersonDetected) return null;
+    return this._currBox || this.targetBox || null;
+  }
+
   /**
-   * Updates the 2D SVG Taser target overlay to dynamically follow the detected person on screen.
+   * Updates the 2D tactical target overlay to dynamically follow the detected person on screen.
    */
   updateTargetOverlay() {
     const el = document.getElementById('live-target-overlay');
@@ -671,6 +676,7 @@ export class TaserAIPose {
       this._currBox.top += (this.targetBox.top - this._currBox.top) * alpha;
       this._currBox.width += (this.targetBox.width - this._currBox.width) * alpha;
       this._currBox.height += (this.targetBox.height - this._currBox.height) * alpha;
+      this._currBox.distance = this.estimatedDistance;
     }
 
     el.style.transform = `translate3d(${this._currBox.left.toFixed(1)}px, ${this._currBox.top.toFixed(1)}px, 0)`;
@@ -684,20 +690,21 @@ export class TaserAIPose {
   /**
    * Screen-space 2D raycasting against the Live Target bounding box and anatomical zones.
    */
-  checkScreenHit(aimXPct, aimYPct, dropPx) {
+  checkScreenHit(aimXPct, aimYPct, dropPx, tiltDeg = 0) {
     if (!this.isLiveARModeActive() || !this.isPersonDetected || !this.targetBox) return null;
 
     const vp = document.getElementById('viewport');
     const vpW = vp ? vp.clientWidth : window.innerWidth;
     const vpH = vp ? vp.clientHeight : window.innerHeight;
 
-    // Pixel position of aim crosshair (Top Dart)
+    // Pixel position of upper aim laser (Top Dart)
     const d1X = (aimXPct / 100) * vpW;
     const d1Y = (aimYPct / 100) * vpH;
 
-    // Pixel position of lower dart (Bottom Dart with ballistic spread drop)
-    const d2X = d1X + (Math.random() - 0.5) * 4;
-    const d2Y = d1Y + dropPx;
+    // Pixel position of lower laser (Bottom Dart with ballistic spread drop & weapon tilt)
+    const tiltRad = ((Number(tiltDeg) || 0) * Math.PI) / 180;
+    const d2X = d1X - Math.sin(tiltRad) * dropPx;
+    const d2Y = d1Y + Math.cos(tiltRad) * dropPx;
 
     const b = this._currBox || this.targetBox;
 
@@ -752,7 +759,14 @@ export class TaserAIPose {
       hit1,
       hit2,
       hitWall1: !hit1,
-      hitWall2: !hit2
+      hitWall2: !hit2,
+      screenCoords: {
+        d1X,
+        d1Y,
+        d2X,
+        d2Y,
+        box: b ? { ...b } : null
+      }
     };
   }
 }
