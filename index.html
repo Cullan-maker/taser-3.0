@@ -803,61 +803,71 @@
             touch-action: manipulation;
         }
 
-        button.action-btn {
+        button.action-btn,
+        .btn {
             width: 100%;
-            background: linear-gradient(180deg, #2f343e 0%, #1e2127 100%);
-            color: #e4e7eb;
-            border: 1px solid #101215;
-            border-top: 1px solid rgba(255,255,255,0.18);
-            border-bottom: 1px solid rgba(0,0,0,0.7);
-            padding: 8px 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: linear-gradient(180deg, #323844 0%, #1d2027 65%, #15171c 100%);
+            color: #eef2f6;
+            border: 1px solid #0d0f13;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            border-bottom: 1px solid rgba(0,0,0,0.8);
+            padding: 8px 6px;
             margin-bottom: 4px;
-            border-radius: 6px;
+            border-radius: 7px;
             cursor: pointer;
-            font-weight: 700;
-            font-size: 9px;
+            font-weight: 800;
+            font-size: 9.5px;
+            line-height: 1.15;
+            text-align: center;
             touch-action: manipulation;
-            transition: transform 0.06s ease, box-shadow 0.06s ease, background 0.06s ease;
-            box-shadow: 0 3px 0 #0b0d10, 0 4px 8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.4);
+            transition: transform 0.07s ease, box-shadow 0.07s ease, background 0.12s ease, filter 0.12s ease;
+            box-shadow: 0 3px 0 #090a0d, 0 5px 10px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.45);
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            min-height: 38px;
+            letter-spacing: 0.75px;
+            min-height: 39px;
             user-select: none;
             -webkit-user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
         button.action-btn:active,
-        button.action-btn.active-press {
+        button.action-btn.active-press,
+        .btn:active,
+        .btn.active-press {
             transform: translateY(2px) !important;
-            box-shadow: 0 1px 0 #0b0d10, inset 0 2px 4px rgba(0,0,0,0.75) !important;
-            background: linear-gradient(180deg, #17191d 0%, #23272f 100%) !important;
+            box-shadow: 0 1px 0 #090a0d, inset 0 2px 5px rgba(0,0,0,0.8) !important;
+            background: linear-gradient(180deg, #17191f 0%, #242932 100%) !important;
         }
 
         .btn-grid-compact {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 4px;
-            margin-bottom: 4px;
+            gap: 6px;
+            margin-bottom: 6px;
         }
-        .btn-grid-compact .action-btn { margin-bottom: 0; }
+        .btn-grid-compact .action-btn,
+        .btn-grid-compact .btn { margin-bottom: 0; }
 
         /* PRIMÄR AVFYRA-KNAPP (STOR, ERGONOMISK TUMKNAPP) */
         .btn-trigger {
-            background: linear-gradient(180deg, #d32f2f 0%, #b71c1c 50%, #8e1515 100%) !important;
+            background: linear-gradient(180deg, #e53935 0%, #c62828 52%, #8e1515 100%) !important;
             border: 1px solid #5a0e0e !important;
-            border-top: 1px solid rgba(255,255,255,0.35) !important;
+            border-top: 1px solid rgba(255,255,255,0.38) !important;
             color: #ffffff !important;
             font-size: 13px !important;
             font-weight: 900 !important;
-            padding: 12px 6px !important;
+            padding: 12px 8px !important;
             text-transform: uppercase;
-            box-shadow: 0 4px 0 #420808, 0 7px 14px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -2px 0 rgba(0,0,0,0.45) !important;
+            box-shadow: 0 4px 0 #420808, 0 7px 14px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -2px 0 rgba(0,0,0,0.45) !important;
             margin-top: 4px !important;
             margin-bottom: 6px !important;
             width: 100%;
             min-height: 48px;
             letter-spacing: 1.5px;
-            text-shadow: 0 -1px 2px rgba(0,0,0,0.8);
+            text-shadow: 0 -1px 2px rgba(0,0,0,0.85);
         }
         .btn-trigger:active,
         .btn-trigger.active-press {
@@ -867,9 +877,31 @@
         }
 
         .btn-warn {
-            border-color: rgba(241, 196, 15, 0.6) !important;
-            color: #f1c40f !important;
-            box-shadow: 0 3px 0 #0b0d10, inset 0 1px 0 rgba(241, 196, 15, 0.2) !important;
+            background: linear-gradient(180deg, #3c3420 0%, #262114 100%) !important;
+            border: 1px solid #6b5614 !important;
+            border-top: 1px solid rgba(252, 190, 0, 0.4) !important;
+            color: #FCBE00 !important;
+            box-shadow: 0 3px 0 #0b0d10, 0 4px 8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(252, 190, 0, 0.22) !important;
+        }
+        .btn-warn.active-funk {
+            background: linear-gradient(180deg, #ffd23f 0%, #FCBE00 55%, #d49b00 100%) !important;
+            border: 1.5px solid #050505 !important;
+            color: #050505 !important;
+            text-shadow: none !important;
+            box-shadow: 0 3px 0 #8c6500, 0 0 14px rgba(252, 190, 0, 0.7), inset 0 1px 0 rgba(255,255,255,0.5) !important;
+        }
+        .btn-reset {
+            background: linear-gradient(180deg, #d9822b 0%, #b35c00 60%, #803f00 100%) !important;
+            border: 1px solid #522900 !important;
+            border-top: 1px solid rgba(255,255,255,0.3) !important;
+            color: #ffffff !important;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+            box-shadow: 0 3px 0 #3a1c00, 0 4px 8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.22) !important;
+        }
+        .btn-reset:active,
+        .btn-reset.active-press {
+            background: linear-gradient(180deg, #803f00 0%, #b35c00 100%) !important;
+            box-shadow: 0 1px 0 #3a1c00, inset 0 2px 5px rgba(0,0,0,0.8) !important;
         }
         .btn-info {
             background: linear-gradient(180deg, #243342 0%, #18222c 100%) !important;
@@ -995,21 +1027,44 @@
 
         #secondary-controls { display: block; }
 
-        .btn-webxr, #btn-webxr, #webxr-btn {
-            background: linear-gradient(180deg, #1b3a57 0%, #102235 100%) !important;
-            border: 1px solid #2980b9 !important;
-            border-top: 1px solid rgba(0, 255, 255, 0.4) !important;
-            color: #00ffff !important;
-            text-shadow: 0 0 6px rgba(0, 255, 255, 0.5) !important;
+        .btn-webxr, #btn-webxr, #webxr-btn, .btn-xr-move {
+            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 52%, #1e3a8a 100%) !important;
+            border: 1px solid #172554 !important;
+            border-top: 1px solid rgba(147, 197, 253, 0.45) !important;
+            color: #eff6ff !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7) !important;
             font-weight: 800 !important;
+            box-shadow: 0 3px 0 #0f172a, 0 5px 10px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.22) !important;
             display: inline-flex !important;
             align-items: center;
             justify-content: center;
             visibility: visible !important;
         }
-        .btn-webxr:active, #btn-webxr:active, #webxr-btn:active {
-            background: linear-gradient(180deg, #0e1e2d 0%, #1b3a57 100%) !important;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.8) !important;
+        .btn-webxr:active, #btn-webxr:active, #webxr-btn:active, .btn-xr-move:active {
+            background: linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%) !important;
+            box-shadow: 0 1px 0 #0f172a, inset 0 2px 4px rgba(0,0,0,0.8) !important;
+        }
+
+        .btn-xr-exit {
+            background: linear-gradient(180deg, #c0392b 0%, #922b21 60%, #641e16 100%) !important;
+            border: 1px solid #4a120d !important;
+            border-top: 1px solid rgba(255, 190, 190, 0.35) !important;
+            color: #ffffff !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75) !important;
+            font-weight: 800 !important;
+            box-shadow: 0 3px 0 #3b0d09, 0 5px 10px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.22) !important;
+        }
+        .btn-xr-exit:active {
+            background: linear-gradient(180deg, #641e16 0%, #922b21 100%) !important;
+            box-shadow: 0 1px 0 #3b0d09, inset 0 2px 4px rgba(0,0,0,0.8) !important;
+        }
+
+        #webxr-grip-row {
+            display: none !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 4px;
+            margin-bottom: 4px;
         }
 
         /* ----- LIVE AI PERSON TARGET OVERLAY (DOM OVERLAY) ----- */
@@ -1047,19 +1102,6 @@
             stroke: #e74c3c;
             stroke-width: 2px;
             stroke-dasharray: 4 2;
-        }
-
-        .zone-bullseye {
-            fill: none;
-            stroke: #2ecc71;
-            stroke-width: 2px;
-            stroke-dasharray: 3 3;
-        }
-
-        .zone-cross {
-            stroke: #2ecc71;
-            stroke-width: 1.5px;
-            stroke-dasharray: 2 2;
         }
 
         .zone-label {
@@ -1290,7 +1332,13 @@
             display: none !important;
         }
 
-        /* CLEAN AR UI (WebXR Active: Behåll enbart OLED, Säkring, Avfyra, Kassett och Funk. Kontroll) */
+        /* CLEAN AR UI (WebXR Active: Behåll OLED, Säkring, Avfyra, Kassett, Funk. Kontroll och Återställ) */
+        body.ar-combat-mode #normal-xr-row,
+        body.ar-combat-mode .btn-webxr,
+        body.ar-combat-mode #btn-webxr,
+        .main-container.ar-combat-mode #normal-xr-row,
+        .main-container.ar-combat-mode .btn-webxr,
+        .main-container.ar-combat-mode #btn-webxr,
         body.ar-combat-mode .btn-clothing,
         body.ar-combat-mode #btn-clothing,
         body.ar-combat-mode .btn-voice,
@@ -1311,8 +1359,6 @@
         body.ar-combat-mode #btn-scenario,
         body.ar-combat-mode .btn-kontaktstot,
         body.ar-combat-mode #btn-kontaktstot,
-        body.ar-combat-mode .btn-reset,
-        body.ar-combat-mode #btn-reset,
         body.ar-combat-mode #btn-scenario-menu,
         body.ar-combat-mode .status-grid,
         body.ar-combat-mode .log-box,
@@ -1323,111 +1369,218 @@
         .main-container.ar-combat-mode .btn-gyro,
         .main-container.ar-combat-mode .btn-info,
         .main-container.ar-combat-mode .btn-tilt,
+        .main-container.ar-combat-mode #btn-tilt,
         .main-container.ar-combat-mode .btn-place,
         .main-container.ar-combat-mode .btn-stealth,
         .main-container.ar-combat-mode .btn-battery,
         .main-container.ar-combat-mode .btn-scenario,
         .main-container.ar-combat-mode .btn-kontaktstot,
-        .main-container.ar-combat-mode .btn-reset,
         .main-container.ar-combat-mode #btn-scenario-menu,
         .main-container.ar-combat-mode .status-grid,
         .main-container.ar-combat-mode .log-box {
             display: none !important;
         }
 
-        body.ar-combat-mode .btn-grid-compact:has(#btn-cassette),
-        body.ar-combat-mode .btn-grid-compact:has(#btn-warn) {
+        body.ar-combat-mode .btn-grid-compact:has(#btn-cassette) {
             grid-template-columns: 1fr !important;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
         }
 
-        /* Behåll enbart OLED, Säkring, Avfyra, Kassett och Funk. Kontroll synliga och tydliga */
+        body.ar-combat-mode .btn-grid-compact:has(#btn-warn) {
+            grid-template-columns: 1fr 1fr !important;
+            margin-bottom: 5px;
+        }
+
+        body.ar-combat-mode #webxr-grip-row,
+        .main-container.ar-combat-mode #webxr-grip-row {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+            margin-top: 2px !important;
+            margin-bottom: 0 !important;
+            visibility: visible !important;
+        }
+
+        /* Behåll OLED, Säkring, Avfyra, Kassett, Funk. Kontroll, Återställ samt Flytta Mål / Avsluta WebXR synliga i greppet */
         body.ar-combat-mode #taser-display,
         body.ar-combat-mode .safety-container,
         body.ar-combat-mode #btn-trigger,
         body.ar-combat-mode #btn-cassette,
         body.ar-combat-mode #btn-warn,
+        body.ar-combat-mode #btn-reset,
+        body.ar-combat-mode #btn-xr-move-target,
+        body.ar-combat-mode #btn-xr-exit,
         .main-container.ar-combat-mode #taser-display,
         .main-container.ar-combat-mode .safety-container,
         .main-container.ar-combat-mode #btn-trigger,
         .main-container.ar-combat-mode #btn-cassette,
-        .main-container.ar-combat-mode #btn-warn {
-            display: flex !important;
+        .main-container.ar-combat-mode #btn-warn,
+        .main-container.ar-combat-mode #btn-reset,
+        .main-container.ar-combat-mode #btn-xr-move-target,
+        .main-container.ar-combat-mode #btn-xr-exit {
+            display: inline-flex !important;
             visibility: visible !important;
+        }
+        body.ar-combat-mode #taser-display,
+        body.ar-combat-mode .safety-container,
+        .main-container.ar-combat-mode #taser-display,
+        .main-container.ar-combat-mode .safety-container {
+            display: flex !important;
         }
 
         /* FÄRGSTARKT MEN TRANSPARENT AR UI (.ar-combat-mode) - utan horisontella ränder */
         body.ar-combat-mode .taser-device,
         .main-container.ar-combat-mode .taser-device {
-            background-color: rgba(252, 190, 0, 0.72) !important;
+            background-color: rgba(252, 190, 0, 0.78) !important;
             background-image:
-                linear-gradient(to bottom, rgba(28, 30, 36, 0.85) 0%, rgba(18, 20, 24, 0.85) 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
+                linear-gradient(to bottom, rgba(28, 30, 36, 0.88) 0%, rgba(18, 20, 24, 0.88) 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
                 radial-gradient(rgba(17, 17, 17, 0.28) 1.3px, transparent 1.3px),
                 radial-gradient(rgba(17, 17, 17, 0.28) 1.3px, transparent 1.3px) !important;
             background-position: 0 0, 0 0, 6px 6px !important;
             background-size: 100% 100%, 12px 12px, 12px 12px !important;
             background-repeat: no-repeat, repeat, repeat !important;
-            border: 2px solid rgba(252, 190, 0, 0.8) !important;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5), inset 0 2px 8px rgba(255,255,255,0.15) !important;
-            backdrop-filter: blur(2px) !important;
-            -webkit-backdrop-filter: blur(2px) !important;
+            border: 2px solid rgba(252, 190, 0, 0.82) !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.55), inset 0 2px 8px rgba(255,255,255,0.16) !important;
+            backdrop-filter: blur(3px) !important;
+            -webkit-backdrop-filter: blur(3px) !important;
         }
 
         body.ar-combat-mode .display-bezel,
         .main-container.ar-combat-mode .display-bezel {
-            background-color: rgba(20, 20, 20, 0.7) !important;
-            border-color: rgba(0, 0, 0, 0.8) !important;
+            background-color: rgba(16, 18, 22, 0.84) !important;
+            border-color: rgba(0, 0, 0, 0.85) !important;
             backdrop-filter: blur(2px) !important;
             -webkit-backdrop-filter: blur(2px) !important;
         }
 
         body.ar-combat-mode .display-screen,
         .main-container.ar-combat-mode .display-screen {
-            background-color: rgba(20, 20, 20, 0.7) !important;
+            background-color: rgba(12, 14, 18, 0.88) !important;
         }
 
         body.ar-combat-mode #taser-display.oled-inverted,
-        .main-container.ar-combat-mode #taser-display.oled-inverted {
-            background-color: rgba(255, 204, 0, 0.6) !important;
-            color: #000000 !important;
+        body.ar-combat-mode #taser-display.funk-mode,
+        .main-container.ar-combat-mode #taser-display.oled-inverted,
+        .main-container.ar-combat-mode #taser-display.funk-mode {
+            background-color: #FCBE00 !important;
+            background: #FCBE00 !important;
+            color: #050505 !important;
         }
 
         body.ar-combat-mode .sim-controls,
         .main-container.ar-combat-mode .sim-controls {
-            background-color: rgba(20, 20, 20, 0.7) !important;
-            backdrop-filter: blur(2px) !important;
-            -webkit-backdrop-filter: blur(2px) !important;
-            border: 1px solid rgba(255, 204, 0, 0.4) !important;
+            background: linear-gradient(180deg, rgba(24, 27, 33, 0.86) 0%, rgba(13, 15, 19, 0.92) 100%) !important;
+            backdrop-filter: blur(4px) !important;
+            -webkit-backdrop-filter: blur(4px) !important;
+            border: 1.5px solid rgba(252, 190, 0, 0.52) !important;
             border-bottom: none !important;
             border-radius: 16px 16px 0 0 !important;
-            box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.5) !important;
-            padding: 8px 10px 14px 10px !important;
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255,255,255,0.12) !important;
+            padding: 10px 10px 14px 10px !important;
         }
 
         body.ar-combat-mode #btn-cassette,
-        body.ar-combat-mode #btn-warn,
-        .main-container.ar-combat-mode #btn-cassette,
-        .main-container.ar-combat-mode #btn-warn {
-            display: inline-flex !important;
-            justify-content: center;
-            align-items: center;
+        .main-container.ar-combat-mode #btn-cassette {
+            background: linear-gradient(180deg, #323844 0%, #1e222a 100%) !important;
+            border: 1px solid #101216 !important;
+            border-top: 1px solid rgba(255,255,255,0.22) !important;
+            color: #f4f6f8 !important;
             min-height: 40px;
-            font-size: 11px;
-            font-weight: 700;
-            background-color: rgba(20, 20, 20, 0.7) !important;
-            backdrop-filter: blur(2px) !important;
-            -webkit-backdrop-filter: blur(2px) !important;
-            border: 1px solid rgba(255, 204, 0, 0.6) !important;
-            color: #ffffff !important;
+            font-size: 10.5px;
+            font-weight: 800;
+        }
+
+        body.ar-combat-mode #btn-warn:not(.active-funk),
+        .main-container.ar-combat-mode #btn-warn:not(.active-funk) {
+            background: linear-gradient(180deg, #3c3420 0%, #241f12 100%) !important;
+            border: 1px solid rgba(252, 190, 0, 0.65) !important;
+            border-top: 1px solid rgba(252, 190, 0, 0.45) !important;
+            color: #FCBE00 !important;
+            min-height: 40px;
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        body.ar-combat-mode #btn-reset,
+        body.ar-combat-mode #btn-xr-move-target,
+        body.ar-combat-mode #btn-xr-exit,
+        .main-container.ar-combat-mode #btn-reset,
+        .main-container.ar-combat-mode #btn-xr-move-target,
+        .main-container.ar-combat-mode #btn-xr-exit {
+            min-height: 40px;
+            font-size: 10px;
+            font-weight: 800;
         }
 
         body.ar-combat-mode .btn-trigger,
         .main-container.ar-combat-mode .btn-trigger {
-            background: linear-gradient(180deg, rgba(231, 76, 60, 0.88) 0%, rgba(192, 57, 43, 0.88) 100%) !important;
-            border-color: #ff5252 !important;
-            box-shadow: 0 0 16px rgba(231, 76, 60, 0.6) !important;
-            backdrop-filter: blur(2px) !important;
-            -webkit-backdrop-filter: blur(2px) !important;
+            background: linear-gradient(180deg, rgba(229, 57, 53, 0.94) 0%, rgba(183, 28, 28, 0.94) 55%, rgba(142, 21, 21, 0.96) 100%) !important;
+            border: 1px solid #ff6b6b !important;
+            box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55), inset 0 1px 0 rgba(255,255,255,0.32) !important;
+        }
+
+        /* FUNKTIONSKONTROLL-LÄGE: TYDLIG TASER-GUL BAKGRUND (#FCBE00) I BÅDE STANDARD- OCH WEBXR-LÄGE */
+        #funk-status-pill {
+            display: none;
+            position: fixed;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9996;
+            pointer-events: none;
+            background: #FCBE00;
+            color: #050505;
+            border: 2px solid #050505;
+            border-radius: 7px;
+            padding: 5px 12px;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 16px rgba(252, 190, 0, 0.55);
+            white-space: nowrap;
+        }
+        body.function-check-active #funk-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        body.function-check-active .viewport::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 85;
+            border: 3px solid rgba(252, 190, 0, 0.85);
+            box-shadow: inset 0 0 44px rgba(252, 190, 0, 0.22);
+        }
+        body.function-check-active .taser-device,
+        .main-container.function-check-active .taser-device {
+            background-color: #FCBE00 !important;
+            background-image:
+                linear-gradient(to bottom, #FCBE00 0%, #e5ab00 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
+                radial-gradient(rgba(17, 17, 17, 0.24) 1.3px, transparent 1.3px),
+                radial-gradient(rgba(17, 17, 17, 0.24) 1.3px, transparent 1.3px) !important;
+            border-color: #050505 !important;
+            box-shadow: 0 10px 26px rgba(252, 190, 0, 0.4), inset 0 2px 6px rgba(255,255,255,0.35) !important;
+        }
+        body.function-check-active .sight-dot {
+            background-color: #050505 !important;
+        }
+        body.function-check-active .sim-controls,
+        body.ar-combat-mode.function-check-active .sim-controls {
+            background: linear-gradient(180deg, #FCBE00 0%, #e6ad00 100%) !important;
+            border-color: #050505 !important;
+            box-shadow: 0 -6px 24px rgba(252, 190, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.45) !important;
+        }
+        body.function-check-active .sim-controls .status-box {
+            background: rgba(5, 5, 5, 0.9) !important;
+        }
+        body.function-check-active #btn-cassette,
+        body.ar-combat-mode.function-check-active #btn-cassette {
+            background: linear-gradient(180deg, #2b2e35 0%, #17191d 100%) !important;
+            border-color: #050505 !important;
+            color: #FCBE00 !important;
         }
 
         /* MODALER */
@@ -1755,36 +1908,6 @@
             transform: translateX(-50%) translateY(2px);
         }
 
-        #btn-xr-move-target {
-            display: none;
-            position: fixed;
-            top: 12px;
-            right: 12px;
-            z-index: 9999;
-            pointer-events: auto !important;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            background: rgba(15, 18, 24, 0.9);
-            color: #fcbe00;
-            border: 1.5px solid rgba(252, 190, 0, 0.8);
-            border-radius: 8px;
-            padding: 7px 12px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            cursor: pointer;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-            touch-action: manipulation;
-        }
-        #btn-xr-move-target:active {
-            transform: translateY(1px);
-            background: rgba(252, 190, 0, 0.2);
-        }
-
         /* VR-HEADSET STEREOSKOPISKT HELSKÄRMSLÄGE (Döljer HTML-knappar i botten) */
         body.vr-active .simulator-wrapper,
         body.vr-headset-mode .simulator-wrapper {
@@ -1868,9 +1991,10 @@
 
     <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
     <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
-    <!-- WEBXR HIT-TEST PLACERINGS- & FLYTTA MÅL-KNAPPAR -->
+    <!-- STATUSPILL FÖR FUNKTIONSKONTROLL -->
+    <div id="funk-status-pill" aria-live="polite">⚡ FUNKTIONSKONTROLL AKTIV</div>
+    <!-- WEBXR HIT-TEST PLACERINGSKNAPP -->
     <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 FASTSTÄLL POSITION</button>
-    <button type="button" id="btn-xr-move-target" aria-label="Flytta mål">🔄 FLYTTA MÅL</button>
     <!-- DISKRET STATUSNOTIS NÄR VR-JOYSTICK ÄR ANSLUTEN -->
     <div id="vr-joystick-status" role="status" aria-live="polite">🎮 VR-Joystick ansluten</div>
 
@@ -1935,9 +2059,6 @@
 
                     <!-- Approved Zone: Bål & Bröstkorg (Grön - Godkänd NMI) -->
                     <rect class="zone-box zone-approved torso" x="30" y="70" width="140" height="150" rx="8" />
-                    <circle cx="100" cy="145" r="32" class="zone-bullseye" />
-                    <line x1="68" y1="145" x2="132" y2="145" class="zone-cross" />
-                    <line x1="100" y1="113" x2="100" y2="177" class="zone-cross" />
                     <text x="100" y="149" text-anchor="middle" class="zone-label approved">GODKÄND NMI-ZON (BÅL)</text>
 
                     <!-- Danger Zone: Skrev / Ljumskar (Gul/Röd) -->
@@ -2036,10 +2157,16 @@
                         <button class="action-btn btn-reset" id="btn-reset">♻️ Återställ</button>
                     </div>
 
-                    <!-- Primär WebXR AR-kontroll i huvudknappsatsen -->
-                    <div class="btn-grid-compact" style="grid-template-columns: 1.4fr 1fr;">
-                        <button class="action-btn btn-webxr" id="btn-webxr" data-alias="webxr-btn">🌐 WebXR</button>
-                        <button class="action-btn" id="btn-place">📍 Flytta</button>
+                    <!-- Primär WebXR AR-kontroll i huvudknappsatsen (döljs i aktivt WebXR-läge) -->
+                    <div id="normal-xr-row" class="btn-grid-compact" style="grid-template-columns: 1.4fr 1fr;">
+                        <button class="action-btn btn btn-webxr" id="btn-webxr" data-alias="webxr-btn">🌐 WebXR</button>
+                        <button class="action-btn btn" id="btn-place">📍 Flytta</button>
+                    </div>
+
+                    <!-- WebXR-specifika knappar integrerade i handgreppet (visas endast när WebXR är aktivt) -->
+                    <div id="webxr-grip-row" class="btn-grid-compact">
+                        <button type="button" class="action-btn btn btn-xr-move" id="btn-xr-move-target" aria-label="Flytta mål">🔄 FLYTTA MÅL</button>
+                        <button type="button" class="action-btn btn btn-xr-exit" id="btn-xr-exit" aria-label="Avsluta WebXR">⛔ AVSLUTA WEBXR</button>
                     </div>
 
                     <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr 1fr;">
@@ -2162,6 +2289,7 @@
       window.appMode = appMode;
       window.currentMode = currentMode;
       window.isFiring = false;
+      window.isPlacing = false;
       window.state = window.state || { tilt: 0, isSafe: true, functionCheckMode: false, activeCartridge: 1, isFiring: false };
       if (typeof window.state.functionCheckMode !== 'boolean') window.state.functionCheckMode = false;
       if (typeof window.state.activeCartridge !== 'number') window.state.activeCartridge = 1;
@@ -2755,8 +2883,8 @@
             window.appMode = appMode;
             window.currentMode = currentMode;
 
-            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
-            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
+            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing', 'function-check-active');
+            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing', 'function-check-active');
 
             const mainContainer = document.getElementById('main-container');
             if (mainContainer) mainContainer.classList.remove('ar-combat-mode');
@@ -2767,12 +2895,11 @@
             if (stdEl) stdEl.style.display = 'block';
             const btnPlaceXr = document.getElementById('btn-place-xr');
             if (btnPlaceXr) btnPlaceXr.style.display = 'none';
-            const btnXrMove = document.getElementById('btn-xr-move-target');
-            if (btnXrMove) btnXrMove.style.display = 'none';
             const hint = document.getElementById('place-hint');
             if (hint) hint.classList.remove('visible');
 
             window.isFiring = false;
+            window.isPlacing = false;
             if (window.state) {
               window.state.functionCheckMode = false;
               window.state.isSafe = true;
@@ -2798,6 +2925,7 @@
               window.taserApp.isGameOver = false;
               window.taserApp.hideFailOverlay();
               if (window.taserApp.xr) {
+                window.taserApp.xr.isPlacing = false;
                 window.taserApp.xr.placeMode = false;
                 window.taserApp.xr.figureLocked = true;
               }

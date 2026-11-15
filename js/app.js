@@ -260,12 +260,16 @@ export class TaserApp {
         this.audio.startElectricSound();
         const dEl = document.getElementById('taser-display');
         if (dEl) {
-          // EXKLUSIVT funktionskontroll får gul inverterad skärm
+          // EXKLUSIVT funktionskontroll får gul inverterad skärm & gult gränssnitt
           const isFunk = payload.isFunk && (this.fsm.isFunkLocked || this.fsm.displayState === 'FUNK_MODE') && !this.fsm.isSafe;
           if (isFunk) {
             dEl.classList.add('oled-inverted', 'funk-mode', 'inverted');
           } else {
             dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+          }
+          if (typeof document !== 'undefined') {
+            document.body.classList.toggle('function-check-active', !!isFunk);
+            document.documentElement.classList.toggle('function-check-active', !!isFunk);
           }
           dEl.innerHTML = `5 SEK<br>CYKEL: 1`;
         }
@@ -297,6 +301,10 @@ export class TaserApp {
         const dEl = document.getElementById('taser-display');
         if (dEl) {
           dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+        }
+        if (typeof document !== 'undefined') {
+          document.body.classList.remove('function-check-active');
+          document.documentElement.classList.remove('function-check-active');
         }
         if (typeof window !== 'undefined' && window.state) {
           window.state.functionCheckMode = false;
@@ -330,6 +338,10 @@ export class TaserApp {
   }
 
   initInputs() {
+    if (this.xr) {
+      this.xr.onPhysicalTilt = (dir, gamma) => this.handlePhysicalTilt(dir, gamma);
+    }
+
     // Auto-engage gyro immediately on devices without explicit permission barrier
     if (
       typeof DeviceOrientationEvent !== 'undefined' &&
@@ -419,6 +431,13 @@ export class TaserApp {
     this.setupTactileButton('safety-switch', () => window.toggleSafety());
     this.setupTactileButton('btn-place-xr', () => this.confirmPlacement(), { useClick: true });
     this.setupTactileButton('btn-xr-move-target', () => this.togglePlaceMode(), { useClick: true });
+    this.setupTactileButton('btn-xr-exit', () => {
+      if (this.xr && this.xr.xrSession) {
+        this.xr.endXRSession();
+      } else {
+        this.onXRSessionEnd();
+      }
+    }, { useClick: true });
     this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
     this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
 
@@ -453,7 +472,7 @@ export class TaserApp {
     const placementTarget = viewport || this.scene.renderer.domElement;
     if (placementTarget) {
       placementTarget.addEventListener('pointerdown', (e) => {
-        if (!this.xr.placeMode) return;
+        if (!this.xr.isPlacing || !this.xr.placeMode) return;
         if (e.target && e.target.closest && e.target.closest('button')) return;
 
         if (this.xr.xrSession) {
@@ -865,6 +884,10 @@ export class TaserApp {
       dEl.innerHTML = '';
       dEl.className = 'display-screen';
       dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted', 'dimmed');
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('function-check-active');
+        document.documentElement.classList.remove('function-check-active');
+      }
       const driveStunBtn = document.getElementById('btn-kontaktstot');
       if (driveStunBtn) driveStunBtn.style.display = 'none';
       this.updateProjectors();
@@ -878,6 +901,10 @@ export class TaserApp {
 
     // Inverterat Funktionskontroll-läge när functionCheckMode är aktivt och vapnet är osäkrat
     const isFunkMode = !!this.fsm.functionCheckMode || (typeof window !== 'undefined' && window.state && !!window.state.functionCheckMode);
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('function-check-active', isFunkMode);
+      document.documentElement.classList.toggle('function-check-active', isFunkMode);
+    }
 
     if (isFunkMode) {
       // FUNKTIONSKONTROLL: Taser-gul bakgrund med svarta ikoner/text
@@ -1057,14 +1084,14 @@ export class TaserApp {
       // 3. Standoff distance & Z-axis coordinates
       if (this.xr && this.xr.xrSession) {
         // In WebXR AR space
+        this.xr.isPlacing = false;
         this.xr.placeMode = false;
         this.xr.figureLocked = true;
+        if (typeof window !== 'undefined') window.isPlacing = false;
         document.body.classList.remove('xr-placing');
         document.documentElement.classList.remove('xr-placing');
         const btnPlaceXr = document.getElementById('btn-place-xr');
         if (btnPlaceXr) btnPlaceXr.style.display = 'none';
-        const btnXrMove = document.getElementById('btn-xr-move-target');
-        if (btnXrMove) btnXrMove.style.display = 'inline-flex';
         const plcCtrl = document.getElementById('placement-controls');
         if (plcCtrl) plcCtrl.style.display = 'none';
         const stdCtrl = document.getElementById('standard-controls');
@@ -1616,10 +1643,15 @@ export class TaserApp {
     if (simControls) simControls.classList.remove('ar-combat-mode');
     this.scene.disableARMode();
 
+    this.xr.isPlacing = false;
+    this.xr.placeMode = false;
+    if (typeof window !== 'undefined') window.isPlacing = false;
+    if (this.scene && this.scene.placementMarker) {
+      this.scene.placementMarker.visible = false;
+    }
+
     const btnPlaceXr = document.getElementById('btn-place-xr');
     if (btnPlaceXr) btnPlaceXr.style.display = 'none';
-    const btnXrMove = document.getElementById('btn-xr-move-target');
-    if (btnXrMove) btnXrMove.style.display = 'none';
 
     const btnWebXR = document.getElementById('btn-webxr') || document.getElementById('webxr-btn');
     if (btnWebXR) {
@@ -1627,7 +1659,6 @@ export class TaserApp {
       btnWebXR.style.backgroundColor = '';
     }
 
-    if (this.xr.placeMode) this.confirmPlacement();
     this.scene.clearWiresAndDarts();
     this.scene.resetTarget();
     this.stopScenario();
@@ -1636,11 +1667,13 @@ export class TaserApp {
   }
 
   togglePlaceMode() {
+    this.xr.isPlacing = true;
     this.xr.placeMode = true;
     this.xr.figureLocked = false;
     this.xr.hasHitTestPose = false;
+    if (typeof window !== 'undefined') window.isPlacing = true;
 
-    // Dölj hela kontrollpanelen under placering och visa endast en placeringsknapp längst ner
+    // Dölj hela kontrollpanelen under placering och visa endast placeringsknappen längst ner
     document.body.classList.add('xr-placing');
     document.documentElement.classList.add('xr-placing');
 
@@ -1648,8 +1681,6 @@ export class TaserApp {
     if (plcEl) plcEl.style.display = 'none';
     const btnPlaceXr = document.getElementById('btn-place-xr');
     if (btnPlaceXr) btnPlaceXr.style.display = 'inline-flex';
-    const btnXrMove = document.getElementById('btn-xr-move-target');
-    if (btnXrMove) btnXrMove.style.display = 'none';
 
     this.scene.set3DVisibility(false);
     if (this.scene.placementMarker) {
@@ -1719,24 +1750,23 @@ export class TaserApp {
       this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
     }
 
+    this.xr.isPlacing = false;
     this.xr.placeMode = false;
     this.xr.figureLocked = true;
+    if (typeof window !== 'undefined') window.isPlacing = false;
 
     document.body.classList.remove('xr-placing');
     document.documentElement.classList.remove('xr-placing');
 
     this.scene.set3DVisibility(true);
     if (marker) marker.visible = false;
+    if (this.scene.reticle) this.scene.reticle.visible = false;
 
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
 
     const btnPlaceXr = document.getElementById('btn-place-xr');
     if (btnPlaceXr) btnPlaceXr.style.display = 'none';
-    const btnXrMove = document.getElementById('btn-xr-move-target');
-    if (btnXrMove) {
-      btnXrMove.style.display = this.xr.xrSession ? 'inline-flex' : 'none';
-    }
 
     const stdEl = document.getElementById('standard-controls');
     if (stdEl) stdEl.style.display = 'block';
@@ -1753,6 +1783,38 @@ export class TaserApp {
     this.updateDisplay();
   }
 
+  handlePhysicalTilt(direction, gamma) {
+    if (this.isFiring || (this.fsm && this.fsm.isFiring)) return;
+
+    if (!this.fsm.hasBattery) {
+      this.log("<span style='color:#f1c40f'>📱 Tilt/Snärt registrerad! Sätter i batteri och osäkrar vapnet...</span>");
+      this.fsm.hasBattery = true;
+      this.fsm.isSafe = false;
+      this.fsm.chamber1 = ChamberState.LOADED;
+      this.fsm.chamber2 = ChamberState.LOADED;
+      this.fsm.displayState = 'ACTIVE';
+      this.updateDisplay();
+    } else if (this.fsm.isSafe) {
+      this.log("<span style='color:#f1c40f'>📱 Tilt/Snärt registrerad! Osäkrar vapnet för aktiv insats...</span>");
+      this.fsm.isSafe = false;
+      this.fsm.displayState = 'ACTIVE';
+      this.updateDisplay();
+    } else if (this.fsm.chamber1 === ChamberState.EMPTY) {
+      this.fsm.chamber1 = ChamberState.LOADED;
+      this.fsm.chamber2 = ChamberState.LOADED;
+      this.updateDisplay();
+    }
+
+    const switched = this.fsm.tiltWeapon();
+    if (switched) {
+      if (navigator.vibrate) {
+        try { navigator.vibrate([40, 30, 40]); } catch (e) {}
+      }
+      this.updateDisplay();
+      this.log(`📱 <span style='color:#3498db; font-weight:bold;'>GYRO-SNÄRT (${String(direction || '').toUpperCase()} ${Math.round(gamma || 0)}°):</span> Växlar till kammare ${this.fsm.activeChamber} (${this.fsm.activeChamber === 1 ? '12°' : '3.5°'})!`);
+    }
+  }
+
   initGyro(silent = false) {
     this.audio.init();
     this.xr.initGyro(
@@ -1761,35 +1823,7 @@ export class TaserApp {
         this.aimY = aimY;
         this.updateAimVisuals();
       },
-      (direction, gamma) => {
-        if (!this.fsm.hasBattery) {
-          this.log("<span style='color:#f1c40f'>📱 Tilt/Snärt registrerad! Sätter i batteri och osäkrar vapnet...</span>");
-          this.fsm.hasBattery = true;
-          this.fsm.isSafe = false;
-          this.fsm.chamber1 = ChamberState.LOADED;
-          this.fsm.chamber2 = ChamberState.LOADED;
-          this.fsm.displayState = 'ACTIVE';
-          this.updateDisplay();
-        } else if (this.fsm.isSafe) {
-          this.log("<span style='color:#f1c40f'>📱 Tilt/Snärt registrerad! Osäkrar vapnet för aktiv insats...</span>");
-          this.fsm.isSafe = false;
-          this.fsm.displayState = 'ACTIVE';
-          this.updateDisplay();
-        } else if (this.fsm.chamber1 === ChamberState.EMPTY) {
-          this.fsm.chamber1 = ChamberState.LOADED;
-          this.fsm.chamber2 = ChamberState.LOADED;
-          this.updateDisplay();
-        }
-
-        const switched = this.fsm.tiltWeapon();
-        if (switched) {
-          if (navigator.vibrate) {
-            try { navigator.vibrate([40, 30, 40]); } catch (e) {}
-          }
-          this.updateDisplay();
-          this.log(`📱 <span style='color:#3498db; font-weight:bold;'>GYRO-SNÄRT (${direction.toUpperCase()} ${Math.round(gamma)}°):</span> Växlar till kammare ${this.fsm.activeChamber} (${this.fsm.activeChamber === 1 ? '12°' : '3.5°'})!`);
-        }
-      }
+      (direction, gamma) => this.handlePhysicalTilt(direction, gamma)
     ).then((res) => {
       const btn = document.getElementById('btn-gyro');
       if (res && res.success) {
@@ -1817,6 +1851,10 @@ export class TaserApp {
     const dEl = document.getElementById('taser-display');
     if (dEl) {
       dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+    }
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('function-check-active');
+      document.documentElement.classList.remove('function-check-active');
     }
     this.hideFailOverlay();
     this.isTased = false;
@@ -1855,6 +1893,10 @@ export class TaserApp {
     }
 
     this.scene.resetTarget();
+    if (this.xr && this.xr.xrSession) {
+      if (!this.fsm.hasBattery) this.fsm.hasBattery = true;
+      this.scene.set3DVisibility(true);
+    }
     this.currentDistance = 3.0;
     this.aimX = 50;
     this.aimY = 50;
@@ -1875,7 +1917,11 @@ export class TaserApp {
       warnBtn.style.borderColor = '';
       warnBtn.style.boxShadow = '';
     }
-    this.stopScenario();
+    if (this.xr && this.xr.xrSession && (this.xr.scenario === 'moving' || this.xr.scenario === 'charging')) {
+      this.startScenario();
+    } else {
+      this.stopScenario();
+    }
     this.updateAimVisuals();
     this.updateDisplay();
     this.updateWarningUI();
