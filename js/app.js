@@ -76,6 +76,7 @@ export class TaserApp {
     this.aimY = 50; // percentage
     this.tilt = 0; // degrees (-90 to +90)
     this._tiltTarget = 0;
+    this._lastNonZeroTilt = -90;
     this._tiltTweenRaf = null;
 
     // Threat escalation & Verbal warnings
@@ -87,6 +88,7 @@ export class TaserApp {
     this.isScenarioActive = false;
     this.isTased = false;
     this.isGameOver = false;
+    this.isFiring = false;
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -110,10 +112,6 @@ export class TaserApp {
     // Expose tactical methods to window for clean button handlers
     window.app = this;
     window.toggleBattery = () => {
-      // Smoothly request gyro permission during startup on iOS if not yet granted
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function' && !this.xr.gyroEnabled) {
-        this.initGyro();
-      }
       const res = this.fsm.toggleBattery();
       this.updateDisplay();
       return res;
@@ -125,15 +123,11 @@ export class TaserApp {
     };
     window.toggleCartridge = () => this.toggleCartridge();
     window.toggleSafety = () => {
-      // Omedelbar rensning av alla inverterade varningsfärger vid säkringsinteraktion
-      const dEl = document.getElementById('taser-display');
-      if (dEl) {
-        dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
-      }
       const res = this.fsm.toggleSafety();
       this.updateDisplay();
       return res;
     };
+    window.toggleFunctionCheck = () => this.toggleFunctionCheck();
     window.tiltWeapon = () => this.cycleTilt();
     window.activateStealth = () => this.fsm.activateStealth();
     window.toggleClothing = () => this.fsm.toggleClothing();
@@ -164,6 +158,7 @@ export class TaserApp {
     window.promptInstall = () => this.pwa.promptInstall();
     window.toggleVoice = () => this.voice.toggle();
     window.testVoiceCommand = (cmd) => this.voice.simulateCommand(cmd);
+    window.updateUI = () => this.updateDisplay();
   }
 
   initFSMSubscriptions() {
@@ -199,9 +194,8 @@ export class TaserApp {
         }
         this.updateDisplay();
       } else if (event === 'SAFETY_CHANGED') {
-        const dEl = document.getElementById('taser-display');
-        if (dEl) {
-          dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+        if (typeof window !== 'undefined' && window.state) {
+          window.state.isSafe = !!fsm.isSafe;
         }
         const sSwitch = document.getElementById('safety-switch');
         const sLabel = document.getElementById('safety-label');
@@ -212,8 +206,22 @@ export class TaserApp {
         if (secControls) secControls.style.display = 'block';
 
         this.updateDisplay();
+      } else if (event === 'FUNCTION_CHECK_CHANGED') {
+        if (typeof window !== 'undefined' && window.state) {
+          window.state.functionCheckMode = !!fsm.functionCheckMode;
+        }
+        const warnBtn = document.getElementById('btn-warn');
+        if (warnBtn) {
+          warnBtn.classList.toggle('active-funk', !!fsm.functionCheckMode);
+          warnBtn.style.borderColor = fsm.functionCheckMode ? '#f1c40f' : '';
+          warnBtn.style.boxShadow = fsm.functionCheckMode ? '0 0 10px rgba(241, 196, 15, 0.7), 0 3px 0 #0b0d10' : '';
+        }
+        this.updateDisplay();
       } else if (event === 'CHAMBER_CHANGED') {
-        if (typeof window !== 'undefined' && typeof window.syncActiveCartridgeFromFSM === 'function') {
+        this.isFiring = !!fsm.isFiring;
+        if (typeof window !== 'undefined' && typeof window.syncWeaponOverlays === 'function') {
+          window.syncWeaponOverlays(this.fsm);
+        } else if (typeof window !== 'undefined' && typeof window.syncActiveCartridgeFromFSM === 'function') {
           window.syncActiveCartridgeFromFSM(this.fsm);
         }
         this.updateAimVisuals();
@@ -290,12 +298,24 @@ export class TaserApp {
         if (dEl) {
           dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
         }
+        if (typeof window !== 'undefined' && window.state) {
+          window.state.functionCheckMode = false;
+          window.state.isSafe = !!fsm.isSafe;
+        }
+        const warnBtn = document.getElementById('btn-warn');
+        if (warnBtn) {
+          warnBtn.classList.remove('active-funk');
+          warnBtn.style.borderColor = '';
+          warnBtn.style.boxShadow = '';
+        }
         this.hideNMIOverlay();
+        this.isFiring = false;
         this.scene.stopWarningArc();
         this.stopWarningArcHaptics();
         this.currentDistance = 3.0;
         this.aimX = 50;
         this.aimY = 50;
+        this._lastNonZeroTilt = -90;
         this.setTilt(0);
         this.warningGiven = false;
         this.updateWarningUI();
@@ -319,20 +339,21 @@ export class TaserApp {
       this.initGyro(true);
     }
 
-    // Unlock AudioContext and silent MediaSession loop on first touch/click
+    // Unlock AudioContext and silent MediaSession loop on first pointer interaction
     const unlockAudio = () => {
       this.audio.init();
       if (this.audio.silentAudioEl) {
         this.audio.silentAudioEl.play().catch(() => {});
       }
-      if (!this.xr.gyroEnabled) {
+      if (
+        !this.xr.gyroEnabled &&
+        typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission !== 'function'
+      ) {
         this.initGyro(true);
       }
-      window.removeEventListener('pointerdown', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
     };
     window.addEventListener('pointerdown', unlockAudio, { once: true });
-    window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
 
     // Hardware/Bluetooth VR-joystick keydown-lyssnare hanteras globalt i index.html
 
@@ -374,27 +395,9 @@ export class TaserApp {
     this.setupTactileButton('btn-battery', () => window.toggleBattery());
     this.setupTactileButton('btn-stealth', () => this.fsm.activateStealth());
     this.setupTactileButton('btn-tilt', () => this.cycleTilt());
-    this.setupTactileButton('btn-warn', () => window.pressDualWarning());
+    this.setupTactileButton('btn-warn', () => this.toggleFunctionCheck());
     this.setupTactileButton('btn-reset', () => this.resetSimulator());
-    const failResetBtn = document.getElementById('btn-fail-reset');
-    if (failResetBtn) {
-      let lastFailResetTs = 0;
-      const onFailReset = (e) => {
-        if (e) {
-          if (e.cancelable) e.preventDefault();
-          e.stopPropagation();
-        }
-        const now = Date.now();
-        if (now - lastFailResetTs < 350) return;
-        lastFailResetTs = now;
-        if (navigator.vibrate) {
-          try { navigator.vibrate(14); } catch (_) {}
-        }
-        this.resetSimulator();
-      };
-      failResetBtn.addEventListener('touchstart', onFailReset, { passive: false });
-      failResetBtn.addEventListener('click', onFailReset);
-    }
+    this.setupTactileButton('btn-fail-reset', () => this.resetSimulator());
     this.setupTactileButton('btn-clothing', () => this.fsm.toggleClothing());
     this.setupTactileButton('btn-voice', () => this.voice.toggle());
     this.setupTactileButton('btn-gyro', () => this.initGyro());
@@ -414,8 +417,7 @@ export class TaserApp {
     this.setupTactileButton('warn-left', () => window.pressSingleWarning());
     this.setupTactileButton('warn-right', () => window.pressSingleWarning());
     this.setupTactileButton('safety-switch', () => window.toggleSafety());
-    this.setupTactileButton('btn-confirm', () => this.confirmPlacement());
-    this.setupTactileButton('btn-xr-place-confirm', () => this.confirmPlacement(), { useClick: true });
+    this.setupTactileButton('btn-place-xr', () => this.confirmPlacement(), { useClick: true });
     this.setupTactileButton('btn-xr-move-target', () => this.togglePlaceMode(), { useClick: true });
     this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
     this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
@@ -489,7 +491,7 @@ export class TaserApp {
 
       const triggerAction = (e) => {
         const now = Date.now();
-        if (now - lastActionTs < 280) return;
+        if (now - lastActionTs < 250) return;
         lastActionTs = now;
         clearPress();
 
@@ -518,7 +520,7 @@ export class TaserApp {
         }
       });
 
-      // click-fallback för tangentbord och standardklick
+      // click-fallback endast för tangentbord (e.detail === 0) eller om pointerup ej hanterat
       el.addEventListener('click', (e) => {
         if (!firedInCurrentGesture) {
           firedInCurrentGesture = true;
@@ -530,9 +532,7 @@ export class TaserApp {
 
     const fireAction = (e) => {
       const now = Date.now();
-      // Debounce window to prevent double invocation from pointerdown + synthetic click
-      if (now - lastActionTs < 350) {
-        if (e && e.cancelable) e.preventDefault();
+      if (now - lastActionTs < 220) {
         return;
       }
       lastActionTs = now;
@@ -552,28 +552,26 @@ export class TaserApp {
       } catch (err) {
         console.error('Tactile button error on', el.id, err);
       }
-
-      if (e && e.cancelable && e.type !== 'click') {
-        e.preventDefault();
-      }
     };
 
-    // Primary responsive event: pointerdown gives 0ms immediate response for weapon controls
-    el.addEventListener('pointerdown', fireAction);
-
-    // Click handler fallback with 400ms guard to ensure no double-fire
-    el.addEventListener('click', (e) => {
-      const now = Date.now();
-      if (now - lastActionTs < 400) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
+    // Enhetlig pointerdown-hanterare: reagerar direkt på första touchen/klicket utan touchstart/click-krockar
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
       fireAction(e);
+    });
+
+    // Endast tangentbord / programmatiskt click() (e.detail === 0) körs via click
+    el.addEventListener('click', (e) => {
+      if (e.detail === 0) {
+        fireAction(e);
+      }
     });
   }
 
   handleTrigger() {
+    if (this.isFiring || this.fsm.isFiring || (typeof window !== 'undefined' && window.isFiring)) {
+      return;
+    }
     if (this.isGameOver) {
       this.audio.init();
       if (typeof this.audio.playClickSound === 'function') {
@@ -652,6 +650,7 @@ export class TaserApp {
       return evalResult;
     });
 
+    this.isFiring = !!this.fsm.isFiring;
     this.updateDisplay();
   }
 
@@ -664,10 +663,17 @@ export class TaserApp {
     this.tilt = clamped;
     if (!fromTween) {
       this._tiltTarget = clamped;
+      if (Math.abs(clamped) >= 45) {
+        this._lastNonZeroTilt = clamped > 0 ? 90 : -90;
+      }
     }
     if (typeof window !== 'undefined') {
-      window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe };
+      window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe, functionCheckMode: !!this.fsm.functionCheckMode };
       window.state.tilt = clamped;
+      if (window.weaponGroup && window.THREE) {
+        window.weaponGroup.rotation.order = 'YXZ';
+        window.weaponGroup.rotation.z = window.THREE.MathUtils.degToRad(-clamped);
+      }
     }
     const tiltBtn = document.getElementById('btn-tilt');
     if (tiltBtn) {
@@ -684,12 +690,13 @@ export class TaserApp {
       this._tiltTweenRaf = null;
     }
     const current = typeof this._tiltTarget === 'number' ? this._tiltTarget : (this.tilt || 0);
+    // Tvåvägs cykel: 0° -> 90° -> 0° -> -90° -> 0°
     let next = 0;
-    if (current >= 0 && current < 35) {
-      next = 45;
-    } else if (current >= 35 && current < 75) {
-      next = 90;
+    if (Math.abs(current) < 45) {
+      next = (this._lastNonZeroTilt > 0) ? -90 : 90;
+      this._lastNonZeroTilt = next;
     } else {
+      this._lastNonZeroTilt = current > 0 ? 90 : -90;
       next = 0;
     }
     this._tiltTarget = next;
@@ -713,9 +720,19 @@ export class TaserApp {
     };
     this._tiltTweenRaf = requestAnimationFrame(step);
 
-    const desc = next === 0 ? 'Vertikal spridning' : (next === 90 ? 'Horisontell spridning' : 'Kantat läge');
+    const desc = next === 0 ? 'Vertikal spridning' : `Horisontell spridning (${next}°)`;
     this.log(`🔄 Vapen vinklat: <b>${next}°</b> (${desc})`);
     return next;
+  }
+
+  toggleFunctionCheck() {
+    const active = this.fsm.toggleFunctionCheck();
+    if (typeof window !== 'undefined') {
+      window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe, functionCheckMode: false };
+      window.state.functionCheckMode = active;
+    }
+    this.updateDisplay();
+    return active;
   }
 
   toggleCartridge() {
@@ -762,16 +779,17 @@ export class TaserApp {
 
     const isVRMode = (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
     const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
-    const shouldShow = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
+    const hasCartridge = (this.fsm.chamber1 === ChamberState.LOADED || this.fsm.chamber2 === ChamberState.LOADED);
+    const shouldShow = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode && hasCartridge;
 
-    if (flashlight) flashlight.style.display = shouldShow ? 'block' : 'none';
+    if (flashlight) flashlight.style.display = (!this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode) ? 'block' : 'none';
 
     if (isVRMode || isXRPresenting) {
       // VR & WebXR: 3D-laserpunkterna projiceras direkt i Three.js-scenen
       if (laserGreen) laserGreen.style.display = 'none';
       if (laserRed) laserRed.style.display = 'none';
     } else {
-      // Mobil/Handhållet läge: visa de ursprungliga siktespunkterna i 2D-HUD
+      // Mobil/Handhållet läge: visa siktespunkterna i 2D-HUD när vapnet är osäkrat och kassett är i
       if (laserGreen) laserGreen.style.display = shouldShow ? 'block' : 'none';
       if (laserRed) laserRed.style.display = shouldShow ? 'block' : 'none';
     }
@@ -833,40 +851,42 @@ export class TaserApp {
     if (this.fsm.cycleTimer) return;
     this.updateAimVisuals();
 
+    if (typeof window !== 'undefined') {
+      window.state = window.state || { tilt: 0, isSafe: true, functionCheckMode: false };
+      window.state.isSafe = !!this.fsm.isSafe;
+      window.state.functionCheckMode = !!this.fsm.functionCheckMode;
+    }
+
     const dEl = document.getElementById('taser-display');
     if (!dEl) return;
 
-    if (!this.fsm.hasBattery) {
+    // CID-skärmen ska ALLTID vara helt släckt/svart när vapnet saknar batteri eller är säkrat
+    if (!this.fsm.hasBattery || this.fsm.isSafe) {
       dEl.innerHTML = '';
       dEl.className = 'display-screen';
-      dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
+      dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted', 'dimmed');
+      const driveStunBtn = document.getElementById('btn-kontaktstot');
+      if (driveStunBtn) driveStunBtn.style.display = 'none';
       this.updateProjectors();
+      if (typeof window !== 'undefined' && typeof window.syncWeaponOverlays === 'function') {
+        window.syncWeaponOverlays(this.fsm);
+      }
       return;
     }
 
     dEl.classList.toggle('dimmed', this.fsm.stealthMode);
 
-    // Stenhård isolering av Funktionskontroll:
-    // Displayen ska EXKLUSIVT vara inverterad/gul om tillståndet är exakt FUNK_MODE och osäkrat
-    const isFunkMode = (this.fsm.displayState === 'FUNK_MODE' || this.fsm.isFunkLocked) && !this.fsm.isSafe;
+    // Inverterat Funktionskontroll-läge när functionCheckMode är aktivt och vapnet är osäkrat
+    const isFunkMode = !!this.fsm.functionCheckMode || (typeof window !== 'undefined' && window.state && !!window.state.functionCheckMode);
 
     if (isFunkMode) {
-      // EXKLUSIVT FUNKTIONSKONTROLL: Gul bakgrund med svarta ikoner
+      // FUNKTIONSKONTROLL: Taser-gul bakgrund med svarta ikoner/text
       dEl.innerHTML = this.renderIconsHTML();
       dEl.classList.add('oled-inverted', 'funk-mode', 'inverted');
     } else {
-      // I ALLA ANDRA FALL (DEFAULT): Svart OLED-bakgrund med lysande text/ikoner
+      // Skarpt osäkrat läge: Svart OLED-bakgrund med lysande gula symboler
       dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
-
-      if (this.fsm.displayState === 'BOOT') {
-        dEl.innerHTML = 'v1.4.10<br>[||||] 94%';
-      } else if (this.fsm.displayState === 'ACTIVE' || !this.fsm.isSafe) {
-        // Skarpt osäkrat läge: Svart OLED med lysande gula symboler
-        dEl.innerHTML = this.renderIconsHTML();
-      } else {
-        // Säkrat läge: Släckt skärm
-        dEl.innerHTML = '';
-      }
+      dEl.innerHTML = this.renderIconsHTML();
     }
 
     this.updateProjectors();
@@ -1039,6 +1059,12 @@ export class TaserApp {
         // In WebXR AR space
         this.xr.placeMode = false;
         this.xr.figureLocked = true;
+        document.body.classList.remove('xr-placing');
+        document.documentElement.classList.remove('xr-placing');
+        const btnPlaceXr = document.getElementById('btn-place-xr');
+        if (btnPlaceXr) btnPlaceXr.style.display = 'none';
+        const btnXrMove = document.getElementById('btn-xr-move-target');
+        if (btnXrMove) btnXrMove.style.display = 'inline-flex';
         const plcCtrl = document.getElementById('placement-controls');
         if (plcCtrl) plcCtrl.style.display = 'none';
         const stdCtrl = document.getElementById('standard-controls');
@@ -1064,7 +1090,12 @@ export class TaserApp {
             0, // ground level
             camPos.z + forward.z
           );
-          this.scene.taserGroup.lookAt(camPos.x, 0, camPos.z);
+          this.scene.taserGroup.rotation.set(0, 0, 0);
+          this.scene.taserGroup.quaternion.identity();
+          if (this.scene.glbDummy) {
+            this.scene.glbDummy.rotation.set(0, 0, 0);
+            this.scene.glbDummy.quaternion.identity();
+          }
           this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
         }
       } else {
@@ -1577,16 +1608,16 @@ export class TaserApp {
   }
 
   onXRSessionEnd() {
-    document.body.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode');
-    document.documentElement.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode');
+    document.body.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
+    document.documentElement.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
     const mainContainer = document.getElementById('main-container');
     if (mainContainer) mainContainer.classList.remove('ar-combat-mode');
     const simControls = document.querySelector('.sim-controls');
     if (simControls) simControls.classList.remove('ar-combat-mode');
     this.scene.disableARMode();
 
-    const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
-    if (btnXrConfirm) btnXrConfirm.style.display = 'none';
+    const btnPlaceXr = document.getElementById('btn-place-xr');
+    if (btnPlaceXr) btnPlaceXr.style.display = 'none';
     const btnXrMove = document.getElementById('btn-xr-move-target');
     if (btnXrMove) btnXrMove.style.display = 'none';
 
@@ -1608,25 +1639,28 @@ export class TaserApp {
     this.xr.placeMode = true;
     this.xr.figureLocked = false;
     this.xr.hasHitTestPose = false;
-    const stdEl = document.getElementById('standard-controls');
-    if (stdEl) stdEl.style.display = 'none';
-    const plcEl = document.getElementById('placement-controls');
-    if (plcEl) plcEl.style.display = 'block';
 
-    const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
-    if (btnXrConfirm) btnXrConfirm.style.display = 'inline-flex';
+    // Dölj hela kontrollpanelen under placering och visa endast en placeringsknapp längst ner
+    document.body.classList.add('xr-placing');
+    document.documentElement.classList.add('xr-placing');
+
+    const plcEl = document.getElementById('placement-controls');
+    if (plcEl) plcEl.style.display = 'none';
+    const btnPlaceXr = document.getElementById('btn-place-xr');
+    if (btnPlaceXr) btnPlaceXr.style.display = 'inline-flex';
     const btnXrMove = document.getElementById('btn-xr-move-target');
     if (btnXrMove) btnXrMove.style.display = 'none';
 
     this.scene.set3DVisibility(false);
-    if (this.scene.placementMarker) this.scene.placementMarker.visible = true;
+    if (this.scene.placementMarker) {
+      this.scene.placementMarker.rotation.set(0, 0, 0);
+      this.scene.placementMarker.quaternion.identity();
+      this.scene.placementMarker.visible = true;
+    }
 
     const hint = document.getElementById('place-hint');
-    if (hint) {
-      hint.innerHTML = this.xr.xrSession ? 'Rikta mot golvet &amp; tryck "PLACERA MÅL HÄR" eller tappa på skärmen' : 'Klicka på golvet &amp; tryck "PLACERA MÅL HÄR"';
-      hint.classList.add('visible');
-    }
-    this.log('Sök efter golvet och bekräfta placering...');
+    if (hint) hint.classList.remove('visible');
+    this.log('Sök efter golvet och fastställ position...');
   }
 
   confirmPlacement() {
@@ -1635,12 +1669,16 @@ export class TaserApp {
       const xrCam = this.scene.renderer.xr.getCamera(this.scene.camera);
       if (marker && marker.visible && (this.xr.hasHitTestPose || marker.position.lengthSq() > 0.001)) {
         if (this.scene.taserGroup) {
-          this.scene.taserGroup.position.set(
-            marker.position.x,
-            Math.max(0, marker.position.y - 0.01),
-            marker.position.z
-          );
-          this.scene.taserGroup.lookAt(xrCam.position.x, this.scene.taserGroup.position.y, xrCam.position.z);
+          marker.updateMatrix();
+          marker.updateMatrixWorld(true);
+          this.scene.taserGroup.position.setFromMatrixPosition(marker.matrix);
+          this.scene.taserGroup.position.y = Math.max(0, this.scene.taserGroup.position.y - 0.01);
+          this.scene.taserGroup.rotation.set(0, 0, 0);
+          this.scene.taserGroup.quaternion.identity();
+          if (this.scene.glbDummy) {
+            this.scene.glbDummy.rotation.set(0, 0, 0);
+            this.scene.glbDummy.quaternion.identity();
+          }
           this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
           this.scene.taserGroup.visible = true;
         }
@@ -1655,15 +1693,28 @@ export class TaserApp {
             0,
             xrCam.position.z + forward.z
           );
-          this.scene.taserGroup.lookAt(xrCam.position.x, 0, xrCam.position.z);
+          this.scene.taserGroup.rotation.set(0, 0, 0);
+          this.scene.taserGroup.quaternion.identity();
+          if (this.scene.glbDummy) {
+            this.scene.glbDummy.rotation.set(0, 0, 0);
+            this.scene.glbDummy.quaternion.identity();
+          }
           this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
           this.scene.taserGroup.visible = true;
         }
         this.log("<span style='color:#f39c12'>Standardposition vald (3m rakt framför dig).</span>");
       }
     } else if (this.scene.taserGroup && marker && marker.visible) {
-      this.scene.taserGroup.position.copy(marker.position);
-      this.scene.taserGroup.position.y = Math.max(0, marker.position.y - 0.01);
+      marker.updateMatrix();
+      marker.updateMatrixWorld(true);
+      this.scene.taserGroup.position.setFromMatrixPosition(marker.matrix);
+      this.scene.taserGroup.position.y = Math.max(0, this.scene.taserGroup.position.y - 0.01);
+      this.scene.taserGroup.rotation.set(0, 0, 0);
+      this.scene.taserGroup.quaternion.identity();
+      if (this.scene.glbDummy) {
+        this.scene.glbDummy.rotation.set(0, 0, 0);
+        this.scene.glbDummy.quaternion.identity();
+      }
       this.scene.taserGroup.visible = true;
       this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
     }
@@ -1671,14 +1722,17 @@ export class TaserApp {
     this.xr.placeMode = false;
     this.xr.figureLocked = true;
 
+    document.body.classList.remove('xr-placing');
+    document.documentElement.classList.remove('xr-placing');
+
     this.scene.set3DVisibility(true);
     if (marker) marker.visible = false;
 
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
 
-    const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
-    if (btnXrConfirm) btnXrConfirm.style.display = 'none';
+    const btnPlaceXr = document.getElementById('btn-place-xr');
+    if (btnPlaceXr) btnPlaceXr.style.display = 'none';
     const btnXrMove = document.getElementById('btn-xr-move-target');
     if (btnXrMove) {
       btnXrMove.style.display = this.xr.xrSession ? 'inline-flex' : 'none';
@@ -1767,6 +1821,8 @@ export class TaserApp {
     this.hideFailOverlay();
     this.isTased = false;
     this.isGameOver = false;
+    this.isFiring = false;
+    if (typeof window !== 'undefined') window.isFiring = false;
     if (this.threatInterval) {
       clearInterval(this.threatInterval);
       this.threatInterval = null;
@@ -1802,13 +1858,22 @@ export class TaserApp {
     this.currentDistance = 3.0;
     this.aimX = 50;
     this.aimY = 50;
+    this._lastNonZeroTilt = -90;
     this.setTilt(0);
 
     if (typeof window !== 'undefined') {
+      window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe, functionCheckMode: false };
+      window.state.functionCheckMode = false;
       window.activeCartridge = 1;
       if (typeof window.resetWeaponPhase4 === 'function') {
         window.resetWeaponPhase4(this.fsm);
       }
+    }
+    const warnBtn = document.getElementById('btn-warn');
+    if (warnBtn) {
+      warnBtn.classList.remove('active-funk');
+      warnBtn.style.borderColor = '';
+      warnBtn.style.boxShadow = '';
     }
     this.stopScenario();
     this.updateAimVisuals();
@@ -1994,21 +2059,39 @@ export class TaserApp {
         ? window.state.isSafe
         : !!this.fsm.isSafe;
 
-      const shouldShowLasers = isVRMode
-        ? (isHandDetected && weaponVisible && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0)
-        : (renderer.xr.isPresenting && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0);
+      const currentAppMode = (typeof window !== 'undefined' && window.appMode)
+        ? window.appMode
+        : (isVRMode ? 'vr' : 'mobile');
+      const lasersOn = !isSafeState &&
+        this.fsm.hasBattery &&
+        !this.fsm.stealthMode &&
+        currentCartridge > 0 &&
+        (currentAppMode === 'mobile' || (isHandDetected && weaponVisible));
 
-      const aimNDC = renderer.xr.isPresenting
-        ? this.scene._v3.set(0, 0, 0)
-        : this.scene._v3.set((this.aimX / 100) * 2 - 1, -(this.aimY / 100) * 2 + 1, 0);
+      const aimNDC = this.scene._v3.set(0, 0, 0);
+      let customNdcBottom = null;
+      if (!isVRMode && !renderer.xr.isPresenting && lasersOn) {
+        const vp = document.getElementById('viewport');
+        const vH = vp ? vp.clientHeight : 320;
+        const vW = vp ? vp.clientWidth : 320;
+        const ballCoords = this.ballistics.calculateNdcCoordinates(
+          this.currentDistance || 3.0,
+          currentCartridge,
+          vH,
+          this.tilt || 0,
+          vW
+        );
+        customNdcBottom = ballCoords.ndc2;
+      }
 
       const laserHit = this.scene.updateDynamicLaserRaycast(
         activeCamera,
         aimNDC,
         currentCartridge,
         (d, ch) => this.ballistics.calculateSpread(d, ch),
-        shouldShowLasers,
-        this.currentDistance || 3.0
+        lasersOn,
+        this.currentDistance || 3.0,
+        customNdcBottom
       );
 
       if (laserHit && laserHit.hit) {

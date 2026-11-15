@@ -194,6 +194,10 @@ export class TaserXR {
               pose.transform.position.y + 0.01,
               pose.transform.position.z
             );
+            this.taserScene.placementMarker.rotation.set(0, 0, 0);
+            this.taserScene.placementMarker.quaternion.identity();
+            this.taserScene.placementMarker.updateMatrix();
+            this.taserScene.placementMarker.updateMatrixWorld(true);
           }
         } else if (this.taserScene.placementMarker && !this.hasHitTestPose && activeCamera) {
           // Visa preliminär markör på golvnivå framför kameran tills golvplan detekterats
@@ -207,6 +211,10 @@ export class TaserXR {
             0.01,
             activeCamera.position.z + fwd.z
           );
+          this.taserScene.placementMarker.rotation.set(0, 0, 0);
+          this.taserScene.placementMarker.quaternion.identity();
+          this.taserScene.placementMarker.updateMatrix();
+          this.taserScene.placementMarker.updateMatrixWorld(true);
         }
       } else if (this.taserScene.placementMarker && activeCamera) {
         const fwd = this.taserScene._v1.set(0, 0, -1).applyQuaternion(activeCamera.quaternion);
@@ -219,6 +227,10 @@ export class TaserXR {
           0.01,
           activeCamera.position.z + fwd.z
         );
+        this.taserScene.placementMarker.rotation.set(0, 0, 0);
+        this.taserScene.placementMarker.quaternion.identity();
+        this.taserScene.placementMarker.updateMatrix();
+        this.taserScene.placementMarker.updateMatrixWorld(true);
       }
     }
 
@@ -426,7 +438,11 @@ export class TaserXR {
 
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
-        const permission = await DeviceOrientationEvent.requestPermission();
+        const permPromises = [DeviceOrientationEvent.requestPermission()];
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+          permPromises.push(DeviceMotionEvent.requestPermission().catch(() => 'denied'));
+        }
+        const [permission] = await Promise.all(permPromises);
         if (permission === 'granted') {
           this.enableGyro(onOrientationChange, onPhysicalTilt);
           return { success: true, permission: 'granted' };
@@ -461,13 +477,19 @@ export class TaserXR {
     this.gyroEnabled = true;
 
     // Tactical Constants for Snärt / Wrist Tilt (TASER 7 Tilt Select)
-    // Snärt med handleden: tröskelvärde höjt till > 75 grader och 1000ms debounce för att förhindra byte vid vanliga steg
-    const TILT_ANGLE_THRESHOLD = 75; // Höjt tröskelvärde (> 75 grader)
-    const NEUTRAL_RESET_THRESHOLD = 30; // Återgå till < 30 grader för att nollställa
-    const COOLDOWN_MS = 1000; // 1 sekunds debounce (1000 ms)
+    const TILT_ANGLE_THRESHOLD = 55; // Symmetrisk vinkeltröskel för vänster & höger snärt (±55°)
+    const NEUTRAL_RESET_THRESHOLD = 32; // Återställ till neutral när |gamma| < 32° (oberoende av beta/pitch)
+    const FLICK_RATE_THRESHOLD = 175; // deg/s runt längsgående rullaxel (rotationRate.gamma)
+    const COOLDOWN_MS = 650; // Debounce som förhindrar dubbeltriggning vid rekyl men tillåter växling tillbaka
 
     let lastGamma = null;
     let lastGammaTime = 0;
+
+    const triggerPhysicalTilt = (dir, gammaVal, now) => {
+      this.tiltState = dir;
+      this.lastTiltTime = now;
+      onPhysicalTilt(dir, typeof gammaVal === 'number' && !isNaN(gammaVal) ? gammaVal : 0);
+    };
 
     const handleOrientation = (event) => {
       // 1. NaN and Undefined Sanitizer
@@ -475,7 +497,7 @@ export class TaserXR {
       const rawBeta = typeof event.beta === 'number' && !isNaN(event.beta) ? event.beta : null;
       const rawGamma = typeof event.gamma === 'number' && !isNaN(event.gamma) ? event.gamma : null;
 
-      // 2. Physical Tilt Detection (Gamma axis = Roll i porträttläge)
+      // 2. Physical Tilt Detection (Gamma axis = Roll i porträttläge, oberoende av pitch/beta vid neutral-reset)
       if (rawGamma !== null && typeof onPhysicalTilt === 'function') {
         const now = Date.now();
         const absGamma = Math.abs(rawGamma);
@@ -486,20 +508,18 @@ export class TaserXR {
         lastGamma = rawGamma;
         lastGammaTime = now;
 
-        // Snärt-detektering: kräver avsevärd vinkel (> 75 grader på gamma eller beta) och snabb acceleration/hastighet
-        const isFlick = (absGamma >= TILT_ANGLE_THRESHOLD || absBeta >= TILT_ANGLE_THRESHOLD) && (angularVelocity > 100 || absGamma >= 80);
-
-        if (this.tiltState === 'neutral') {
+        // Nollställ till neutral så fort telefonen rullat tillbaka mot upprätt läge (< 32° gamma)
+        if (absGamma < NEUTRAL_RESET_THRESHOLD) {
+          this.tiltState = 'neutral';
+        } else {
+          // Undvik falsk gamma-avläsning vid gimbal-lock när telefonen hålls helt lodrätt (|beta| >= 82°)
+          const isGimbalStable = absBeta < 82;
+          const isFlick = isGimbalStable && absGamma >= TILT_ANGLE_THRESHOLD && (angularVelocity > 75 || absGamma >= 65);
           if (isFlick && (now - this.lastTiltTime > COOLDOWN_MS)) {
             const currentDir = rawGamma > 0 ? 'right' : 'left';
-            this.tiltState = currentDir;
-            this.lastTiltTime = now;
-            onPhysicalTilt(currentDir, rawGamma);
-          }
-        } else {
-          // Enheten har återgått till upprätt läge (< 30 grader): nollställ så nästa snärt kan registreras
-          if (absGamma < NEUTRAL_RESET_THRESHOLD && absBeta < NEUTRAL_RESET_THRESHOLD) {
-            this.tiltState = 'neutral';
+            if (this.tiltState === 'neutral' || this.tiltState !== currentDir) {
+              triggerPhysicalTilt(currentDir, rawGamma, now);
+            }
           }
         }
       }
@@ -535,21 +555,17 @@ export class TaserXR {
     this._orientationHandler = handleOrientation;
     window.addEventListener('deviceorientation', this._orientationHandler);
 
-    // Sekundär snärt-avkänning via devicemotion för distinkt handledssnärt
-    if (typeof window !== 'undefined' && 'ondevicemotion' in window) {
+    // Sekundär snärt-avkänning via devicemotion (rotationshastighet runt telefonens längsgående axel, fri från gimbal-lock)
+    if (typeof window !== 'undefined' && ('DeviceMotionEvent' in window || 'ondevicemotion' in window)) {
       this._motionHandler = (e) => {
         if (!this.gyroEnabled || !e.rotationRate || typeof onPhysicalTilt !== 'function') return;
-        const rot = e.rotationRate;
-        // Kraftig rotationssnärt runt telefonens längsgående axel krävs för att inte trigga vid gång
-        const rate = Math.abs(rot.gamma || 0) + Math.abs(rot.alpha || 0);
+        const rotGamma = typeof e.rotationRate.gamma === 'number' && !isNaN(e.rotationRate.gamma) ? e.rotationRate.gamma : 0;
+        const absRate = Math.abs(rotGamma);
         const now = Date.now();
-        if (rate > 220 && this.tiltState === 'neutral' && (now - this.lastTiltTime > COOLDOWN_MS)) {
-          if (lastGamma !== null && Math.abs(lastGamma) >= 60) {
-            const dir = (rot.gamma || 0) >= 0 ? 'right' : 'left';
-            this.tiltState = dir;
-            this.lastTiltTime = now;
-            onPhysicalTilt(dir, lastGamma);
-          }
+        if (absRate >= FLICK_RATE_THRESHOLD && (now - this.lastTiltTime > COOLDOWN_MS)) {
+          const dir = rotGamma > 0 ? 'right' : 'left';
+          const angleHint = lastGamma !== null ? lastGamma : (dir === 'right' ? 60 : -60);
+          triggerPhysicalTilt(dir, angleHint, now);
         }
       };
       window.addEventListener('devicemotion', this._motionHandler, { passive: true });

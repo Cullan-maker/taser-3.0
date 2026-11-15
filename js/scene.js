@@ -335,32 +335,30 @@ export class TaserScene {
     this.placementGround.name = 'Environment';
     this.scene.add(this.placementGround);
 
-    this.placementMarker = new THREE.Group();
-    this.placementMarker.name = 'PlacementMarker';
-    const outerRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.28, 0.36, 48),
-      new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthTest: false })
-    );
-    const innerRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.10, 0.14, 32),
-      new THREE.MeshBasicMaterial({ color: 0xfcbe00, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthTest: false })
-    );
-    const centerDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.045, 24),
-      new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthTest: false })
-    );
-    outerRing.rotation.x = -Math.PI / 2;
-    innerRing.rotation.x = -Math.PI / 2;
-    centerDot.rotation.x = -Math.PI / 2;
-    outerRing.renderOrder = 999;
-    innerRing.renderOrder = 999;
-    centerDot.renderOrder = 999;
+    // Rensa eventuell tidigare markörring så att endast EN enda reticle instansieras i scenen
+    if (this.placementMarker) {
+      this.scene.remove(this.placementMarker);
+      if (this.placementMarker.geometry) this.placementMarker.geometry.dispose();
+      if (this.placementMarker.material) this.placementMarker.material.dispose();
+      this.placementMarker = null;
+    }
 
-    this.placementMarker.add(outerRing);
-    this.placementMarker.add(innerRing);
-    this.placementMarker.add(centerDot);
+    const reticleGeo = new THREE.RingGeometry(0.15, 0.21, 36);
+    reticleGeo.rotateX(-Math.PI / 2);
+    const reticleMat = new THREE.MeshBasicMaterial({
+      color: 0x00ff88,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthTest: false
+    });
+
+    this.placementMarker = new THREE.Mesh(reticleGeo, reticleMat);
+    this.placementMarker.name = 'PlacementMarker';
+    this.placementMarker.renderOrder = 999;
     this.placementMarker.position.y = 0.015;
     this.placementMarker.visible = false;
+    this.reticle = this.placementMarker;
     this.scene.add(this.placementMarker);
   }
 
@@ -1394,9 +1392,8 @@ export class TaserScene {
     this.updateWeaponVisibility();
 
     if (this.taserGroup) {
-      this.taserGroup.rotation.x = 0;
-      this.taserGroup.rotation.y = 0;
-      this.taserGroup.rotation.z = 0;
+      this.taserGroup.rotation.set(0, 0, 0);
+      this.taserGroup.quaternion.identity();
       const startPos = this.taserGroup.userData.startPos || new THREE.Vector3(0, 0, 0);
       this.taserGroup.position.copy(startPos);
       if (this.taserGroup.userData.preFallPos) {
@@ -1884,7 +1881,7 @@ export class TaserScene {
     this.scene.add(this.laserDotBottom);
   }
 
-  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeCartridge = 1, calculateSpreadFn = null, shouldShow = true, fallbackDistance = 3.0) {
+  updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeCartridge = 1, calculateSpreadFn = null, shouldShow = true, fallbackDistance = 3.0, customNdcBottom = null) {
     const isVRMode = (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
     const handDetected = (typeof window !== 'undefined') ? !!window.handDetected : false;
     const weaponGroupVisible = (typeof window !== 'undefined' && window.weaponGroup)
@@ -1932,6 +1929,12 @@ export class TaserScene {
       dirTop.set(0, 0, -1).applyQuaternion(this._qTarget).normalize();
       // Undre punkt vinklad nedåt i vapnets lutade lokalplan (följer vapnets vinkel och tilt)
       dirBottom.set(0, -Math.sin(spreadRad), -Math.cos(spreadRad)).applyQuaternion(this._qTarget).normalize();
+    } else if (customNdcBottom && typeof customNdcBottom.x === 'number' && typeof customNdcBottom.y === 'number') {
+      this.raycaster.setFromCamera(aimNDC, camera);
+      origin.copy(this.raycaster.ray.origin);
+      dirTop.copy(this.raycaster.ray.direction).normalize();
+      this.raycaster.setFromCamera(customNdcBottom, camera);
+      dirBottom.copy(this.raycaster.ray.direction).normalize();
     } else {
       this.raycaster.setFromCamera(aimNDC, camera);
       origin.copy(this.raycaster.ray.origin);

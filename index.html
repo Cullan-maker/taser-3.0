@@ -599,15 +599,15 @@
             letter-spacing: 1px;
             transition: all 0.2s;
         }
-        /* INVERTERAT LÄGE / FUNKTIONSKONTROLL (GUL BAKGRUND, SVART TEXT & IKONER) */
+        /* INVERTERAT LÄGE / FUNKTIONSKONTROLL (TASER-GUL BAKGRUND, SVART TEXT & IKONER) */
         .display-screen.oled-inverted,
         .display-screen.funk-mode,
         .display-screen.inverted {
-            background-color: #ffff00 !important;
-            background: #ffff00 !important;
+            background-color: #FCBE00 !important;
+            background: #FCBE00 !important;
             color: #050505 !important;
             text-shadow: none !important;
-            border: 1px solid rgba(0,0,0,0.4);
+            border: 1px solid rgba(0,0,0,0.45);
         }
         .display-screen.oled-inverted *,
         .display-screen.funk-mode *,
@@ -715,18 +715,22 @@
             box-shadow: none !important;
         }
 
-        /* SVG-ikoner i inverterat läge */
+        /* SVG-ikoner i inverterat läge (behåll fill: none på kassett-ramen så kryss/streck syns tydligt) */
         .oled-inverted svg,
         .funk-mode svg,
         .inverted svg {
-            fill: #050505 !important;
             stroke: #050505 !important;
             color: #050505 !important;
         }
-        .oled-inverted svg *,
-        .funk-mode svg *,
-        .inverted svg * {
-            fill: #050505 !important;
+        .oled-inverted .cassette-svg .box,
+        .funk-mode .cassette-svg .box,
+        .inverted .cassette-svg .box {
+            fill: none !important;
+            stroke: #050505 !important;
+        }
+        .oled-inverted .cassette-svg line,
+        .funk-mode .cassette-svg line,
+        .inverted .cassette-svg line {
             stroke: #050505 !important;
         }
 
@@ -1119,24 +1123,8 @@
             to { opacity: 1; }
         }
 
-        /* AR PLACERING */
-        #placement-controls { display: none; text-align: center; padding-top: 4px; }
-        .btn-confirm {
-            width: 100%;
-            padding: 10px;
-            background: linear-gradient(to bottom, #27ae60 0%, #219653 100%) !important;
-            color: white;
-            font-weight: bold;
-            font-size: 12px;
-            border: 2px solid #2ecc71 !important;
-            border-radius: 6px;
-            cursor: pointer;
-            text-transform: uppercase;
-            box-shadow: 0 3px 0 #1e8449;
-            margin-bottom: 6px;
-            min-height: 44px;
-        }
-        .btn-confirm:active { background: #219653 !important; transform: translateY(3px); box-shadow: 0 0 0 #1e8449; }
+        /* AR PLACERING (Gammal kontrollpanel dold, ersatt av #btn-place-xr) */
+        #placement-controls { display: none !important; }
 
         /* WEBXR, AR-ACTIVE & LIVE-AI FULLSKÄRMSTRANSPARENS */
         html.ar-active,
@@ -1504,7 +1492,13 @@
             box-shadow: 0 2px 0 #1a252f;
             touch-action: manipulation;
         }
-        .scenario-btn:hover, .scenario-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; border-color: #f1c40f; }
+        button, .action-btn, .safety-switch, .warning-btn, .main-menu-btn, .scenario-btn {
+            touch-action: manipulation;
+        }
+        .scenario-btn:active { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; border-color: #f1c40f; }
+        @media (hover: hover) and (pointer: fine) {
+            .scenario-btn:hover { transform: translateY(2px); box-shadow: 0 0 0 #1a252f; border-color: #f1c40f; }
+        }
         .scenario-btn span { display: block; font-size: 9px; font-weight: normal; color: #bdc3c7; margin-top: 2px; }
 
         /* TAKTISK FELBANNER / VARNING (Synlig även under WebXR DOM-overlay) */
@@ -1720,11 +1714,22 @@
             background: rgba(241, 196, 15, 0.2);
         }
 
-        /* WEBXR HIT-TEST PLACERINGS- & FLYTTA MÅL-KNAPPAR (OVANPÅ WEBXR-VYN) */
-        #btn-xr-place-confirm {
+        /* WEBXR PLACERINGSLÄGE: Dölj kontrollpanelen helt och visa en enda knapp längst ner */
+        body.xr-placing .main-container,
+        body.xr-placing .sim-controls,
+        body.xr-placing #placement-controls,
+        body.xr-placing #standard-controls,
+        body.xr-placing #place-hint,
+        body.xr-placing .header-bar {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+
+        #btn-place-xr {
             display: none;
             position: fixed;
-            top: 58px;
+            bottom: max(24px, env(safe-area-inset-bottom, 24px));
             left: 50%;
             transform: translateX(-50%);
             z-index: 9999;
@@ -1735,9 +1740,9 @@
             background: linear-gradient(180deg, #2ecc71 0%, #219653 100%);
             color: #050505;
             border: 2px solid #a3f7bf;
-            border-radius: 10px;
-            padding: 12px 20px;
-            font-size: 13px;
+            border-radius: 12px;
+            padding: 14px 26px;
+            font-size: 14px;
             font-weight: 900;
             letter-spacing: 0.9px;
             text-transform: uppercase;
@@ -1746,7 +1751,7 @@
             touch-action: manipulation;
             white-space: nowrap;
         }
-        #btn-xr-place-confirm:active {
+        #btn-place-xr:active {
             transform: translateX(-50%) translateY(2px);
         }
 
@@ -1864,7 +1869,7 @@
     <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
     <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
     <!-- WEBXR HIT-TEST PLACERINGS- & FLYTTA MÅL-KNAPPAR -->
-    <button type="button" id="btn-xr-place-confirm" aria-label="Placera mål här">📍 PLACERA MÅL HÄR</button>
+    <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 FASTSTÄLL POSITION</button>
     <button type="button" id="btn-xr-move-target" aria-label="Flytta mål">🔄 FLYTTA MÅL</button>
     <!-- DISKRET STATUSNOTIS NÄR VR-JOYSTICK ÄR ANSLUTEN -->
     <div id="vr-joystick-status" role="status" aria-live="polite">🎮 VR-Joystick ansluten</div>
@@ -2049,12 +2054,6 @@
 
                 </div>
 
-                <div id="placement-controls">
-                    <p style="color: #2ecc71; font-size: 11px; font-weight: bold; margin-bottom: 3px; margin-top: 0;">📍 AR Placeringsläge</p>
-                    <p style="color: #ecf0f1; font-size: 10px; margin-bottom: 10px;">Rikta kameran mot golvet och vänta på markören. Tryck nedan när det ser bra ut.</p>
-                    <button class="action-btn btn-confirm" id="btn-confirm">✅ FASTSTÄLL POSITION</button>
-                </div>
-
                 <div class="log-box" id="log"></div>
             </div>
         </div>
@@ -2063,7 +2062,7 @@
     <!-- WebXR / AR Scenario Modal -->
     <div id="scenario-modal" class="modal-overlay">
         <div class="modal-content">
-            <button class="modal-close" id="btn-close-scenario" onclick="window.closeModal('scenario-modal')">×</button>
+            <button class="modal-close" id="btn-close-scenario">×</button>
             <h2>Välj Träningsläge</h2>
             <p style="font-size: 10px; color: #bdc3c7; margin-bottom: 8px;">Välj mellan verklig människa via Live AI-kamera eller virtuell 3D-modell i rummet.</p>
             <button id="btn-start-real-person-xr" class="scenario-btn" style="border: 2px solid #2ecc71; background: rgba(46, 204, 113, 0.15);">
@@ -2162,7 +2161,11 @@
       let currentMode = 'mobile';
       window.appMode = appMode;
       window.currentMode = currentMode;
-      window.state = window.state || { tilt: 0, isSafe: true };
+      window.isFiring = false;
+      window.state = window.state || { tilt: 0, isSafe: true, functionCheckMode: false, activeCartridge: 1, isFiring: false };
+      if (typeof window.state.functionCheckMode !== 'boolean') window.state.functionCheckMode = false;
+      if (typeof window.state.activeCartridge !== 'number') window.state.activeCartridge = 1;
+      if (typeof window.state.isFiring !== 'boolean') window.state.isFiring = false;
 
       (function initMainMenuAndVR() {
         const mainMenu = document.getElementById('main-menu');
@@ -2318,6 +2321,7 @@
         function triggerFire() {
           const app = window.taserApp;
           if (!app) return;
+          if (window.isFiring || app.isFiring || (app.fsm && app.fsm.isFiring)) return;
           ensureAppArmedForInput();
           if (app.audio && typeof app.audio.init === 'function') {
             app.audio.init();
@@ -2751,8 +2755,8 @@
             window.appMode = appMode;
             window.currentMode = currentMode;
 
-            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
-            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
+            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
+            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
 
             const mainContainer = document.getElementById('main-container');
             if (mainContainer) mainContainer.classList.remove('ar-combat-mode');
@@ -2761,16 +2765,31 @@
 
             const stdEl = document.getElementById('standard-controls');
             if (stdEl) stdEl.style.display = 'block';
-            const plcEl = document.getElementById('placement-controls');
-            if (plcEl) plcEl.style.display = 'none';
-            const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
-            if (btnXrConfirm) btnXrConfirm.style.display = 'none';
+            const btnPlaceXr = document.getElementById('btn-place-xr');
+            if (btnPlaceXr) btnPlaceXr.style.display = 'none';
             const btnXrMove = document.getElementById('btn-xr-move-target');
             if (btnXrMove) btnXrMove.style.display = 'none';
             const hint = document.getElementById('place-hint');
             if (hint) hint.classList.remove('visible');
 
+            window.isFiring = false;
+            if (window.state) {
+              window.state.functionCheckMode = false;
+              window.state.isSafe = true;
+              window.state.isFiring = false;
+              window.state.activeCartridge = 1;
+            }
+            const warnBtnEl = document.getElementById('btn-warn');
+            if (warnBtnEl) {
+              warnBtnEl.classList.remove('active-funk');
+              warnBtnEl.style.borderColor = '';
+              warnBtnEl.style.boxShadow = '';
+            }
             if (window.taserApp) {
+              if (window.taserApp.fsm) {
+                window.taserApp.fsm.functionCheckMode = false;
+                window.taserApp.fsm.isFunkLocked = false;
+              }
               if (typeof window.taserApp.setTilt === 'function') {
                 window.taserApp.setTilt(0);
               } else {
@@ -2811,7 +2830,8 @@
       window.muzzlePoint = null;
       window.activeCartridge = activeCartridge;
       window.handDetected = false;
-      window.state = window.state || { tilt: 0, isSafe: true };
+      window.state = window.state || { tilt: 0, isSafe: true, functionCheckMode: false };
+      if (typeof window.state.functionCheckMode !== 'boolean') window.state.functionCheckMode = false;
 
       (function initPhase3And4Weapon() {
         let weaponMount = null;
@@ -2971,8 +2991,52 @@
           cidTexture.magFilter = THREE.LinearFilter;
         }
 
-        function drawCrossedBox(ctx, x, y, w, h, loaded, label, isActive) {
+        function drawCrossedBox(ctx, x, y, w, h, loaded, label, isActive, inverted = false) {
           ctx.save();
+          if (inverted) {
+            if (loaded) {
+              ctx.fillStyle = isActive ? '#050505' : 'rgba(5, 5, 5, 0.14)';
+              ctx.fillRect(x, y, w, h);
+              ctx.strokeStyle = '#050505';
+              ctx.lineWidth = isActive ? 7 : 5;
+              ctx.strokeRect(x, y, w, h);
+
+              ctx.fillStyle = isActive ? '#FCBE00' : '#050505';
+              ctx.font = 'bold 34px monospace';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(label, x + w / 2, y + h / 2);
+            } else {
+              ctx.fillStyle = 'rgba(5, 5, 5, 0.08)';
+              ctx.fillRect(x, y, w, h);
+              ctx.strokeStyle = '#050505';
+              ctx.lineWidth = isActive ? 6 : 4;
+              ctx.strokeRect(x, y, w, h);
+
+              ctx.strokeStyle = '#050505';
+              ctx.lineWidth = 6;
+              ctx.beginPath();
+              ctx.moveTo(x + 12, y + 12);
+              ctx.lineTo(x + w - 12, y + h - 12);
+              ctx.moveTo(x + w - 12, y + 12);
+              ctx.lineTo(x + 12, y + h - 12);
+              ctx.stroke();
+
+              ctx.fillStyle = '#050505';
+              ctx.font = 'bold 20px monospace';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'bottom';
+              ctx.fillText(label, x + w / 2, y + h - 6);
+            }
+
+            if (isActive) {
+              ctx.fillStyle = '#050505';
+              ctx.fillRect(x, y + h + 10, w, 10);
+            }
+            ctx.restore();
+            return;
+          }
+
           if (loaded) {
             ctx.fillStyle = isActive ? '#227a2a' : '#1b5e20';
             ctx.fillRect(x, y, w, h);
@@ -3019,47 +3083,81 @@
           ctx.restore();
         }
 
-        function updateCIDTexture(c1Loaded, c2Loaded, batteryPct = 99, isSafe = true, activeCh = activeCartridge) {
+        function updateCIDTexture(c1Loaded, c2Loaded, batteryPct = 99, isSafe = true, activeCh = activeCartridge, isFunkMode = false) {
           ensureCIDCanvas();
           const ctx = cidCtx;
           const W = cidCanvas.width;
           const H = cidCanvas.height;
 
-          // Taser-gul ytterram
+          const hasPower = batteryPct > 0;
+
+          // Säkrat läge eller inget batteri: CID-skärmen ska vara helt svart/släckt
+          if (isSafe || !hasPower) {
+            ctx.fillStyle = '#040507';
+            ctx.fillRect(0, 0, W, H);
+            if (cidTexture) cidTexture.needsUpdate = true;
+            return;
+          }
+
+          const pct = Math.max(0, Math.min(100, Math.round(batteryPct)));
+          const battX = 350;
+          const battY = 30;
+          const battW = 68;
+          const battH = 32;
+
+          if (isFunkMode) {
+            // Inverterad CID-skärm (Funktionskontroll): Taser-gul bakgrund med svarta ikoner/text
+            ctx.fillStyle = '#FCBE00';
+            ctx.fillRect(0, 0, W, H);
+            ctx.strokeStyle = '#050505';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5, 5, W - 10, H - 10);
+
+            ctx.fillStyle = '#050505';
+            ctx.font = 'bold 24px monospace';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('FUNK KONTROLL', 36, 30);
+
+            ctx.strokeStyle = '#050505';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(battX, battY, battW, battH);
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(battX + battW, battY + 8, 7, 16);
+            const fillW = Math.max(4, Math.round((battW - 10) * (pct / 100)));
+            ctx.fillRect(battX + 5, battY + 5, fillW, battH - 10);
+
+            ctx.fillStyle = '#050505';
+            ctx.font = 'bold 26px monospace';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`${pct}%`, W - 32, 32);
+
+            drawCrossedBox(ctx, 56, 88, 175, 112, !!c1Loaded, 'C1', activeCh === 1, true);
+            drawCrossedBox(ctx, 281, 88, 175, 112, !!c2Loaded, 'C2', activeCh === 2, true);
+
+            if (cidTexture) cidTexture.needsUpdate = true;
+            return;
+          }
+
+          // Standard aktivt/osäkrat läge: Mörk OLED-bakgrund med lysande ikoner
           ctx.fillStyle = '#f1c40f';
           ctx.fillRect(0, 0, W, H);
           ctx.strokeStyle = '#111111';
           ctx.lineWidth = 10;
           ctx.strokeRect(5, 5, W - 10, H - 10);
 
-          // Mörk OLED-bakgrund i mitten
           ctx.fillStyle = '#06080b';
           ctx.fillRect(18, 18, W - 36, H - 36);
 
-          const hasPower = batteryPct > 0;
-          if (!hasPower) {
-            ctx.fillStyle = '#475569';
-            ctx.font = 'bold 28px monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('NO BATTERY', W / 2, H / 2);
-            if (cidTexture) cidTexture.needsUpdate = true;
-            return;
-          }
-
-          // Toppstatus (SÄKRAD / OSÄKRAD)
-          ctx.fillStyle = isSafe ? '#2ecc71' : '#ff4757';
+          // Toppstatus (OSÄKRAD)
+          ctx.fillStyle = '#ff4757';
           ctx.font = 'bold 24px monospace';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
-          ctx.fillText(isSafe ? 'SAFE' : 'ARMED', 36, 30);
+          ctx.fillText('ARMED', 36, 30);
 
           // Batteri-ikon + procent (t.ex. "99%")
-          const pct = Math.max(0, Math.min(100, Math.round(batteryPct)));
-          const battX = 350;
-          const battY = 30;
-          const battW = 68;
-          const battH = 32;
           ctx.strokeStyle = '#f1c40f';
           ctx.lineWidth = 4;
           ctx.strokeRect(battX, battY, battW, battH);
@@ -3076,8 +3174,8 @@
           ctx.fillText(`${pct}%`, W - 32, 32);
 
           // Kassett 1 & Kassett 2 rektangulära boxar med tydlig markering på aktiv kassett
-          drawCrossedBox(ctx, 56, 88, 175, 112, !!c1Loaded, 'C1', activeCh === 1);
-          drawCrossedBox(ctx, 281, 88, 175, 112, !!c2Loaded, 'C2', activeCh === 2);
+          drawCrossedBox(ctx, 56, 88, 175, 112, !!c1Loaded, 'C1', activeCh === 1, false);
+          drawCrossedBox(ctx, 281, 88, 175, 112, !!c2Loaded, 'C2', activeCh === 2, false);
 
           if (cidTexture) {
             cidTexture.needsUpdate = true;
@@ -3396,9 +3494,10 @@
           if (c1 === 'fired' && c2 === 'fired') {
             activeCartridge = 0;
           } else if (c1 === 'fired' && c2 === 'loaded') {
-            activeCartridge = 2;
+            // Behåll 1 under 800 ms omladdningsfördröjning innan byte till kassett 2
+            activeCartridge = fsm.isFiring ? 1 : 2;
           } else if (c2 === 'fired' && c1 === 'loaded') {
-            activeCartridge = 1;
+            activeCartridge = fsm.isFiring ? 2 : 1;
           } else if (c1 === 'loaded' && c2 === 'loaded') {
             activeCartridge = fsm.activeChamber === 2 ? 2 : 1;
           } else if (c1 === 'empty' && c2 === 'empty') {
@@ -3408,6 +3507,7 @@
           }
 
           window.activeCartridge = activeCartridge;
+          if (window.state) window.state.activeCartridge = activeCartridge;
           return activeCartridge;
         }
         window.syncActiveCartridgeFromFSM = syncActiveCartridgeFromFSM;
@@ -3421,11 +3521,12 @@
           const c1Fired = c1State === 'fired';
           const c2Fired = c2State === 'fired';
           const batteryPct = fsm.hasBattery ? 99 : 0;
+          const isFunkMode = !!fsm.functionCheckMode || (typeof window !== 'undefined' && window.state && !!window.state.functionCheckMode);
 
           if (chamber1Overlay) chamber1Overlay.visible = c1Fired;
           if (chamber2Overlay) chamber2Overlay.visible = c2Fired;
           const resolvedActive = syncActiveCartridgeFromFSM(fsm);
-          updateCIDTexture(c1Loaded, c2Loaded, batteryPct, !!fsm.isSafe, resolvedActive);
+          updateCIDTexture(c1Loaded, c2Loaded, batteryPct, !!fsm.isSafe, resolvedActive, isFunkMode);
         }
         window.syncWeaponOverlays = syncWeaponOverlays;
 
@@ -3435,15 +3536,18 @@
           } else if (firedChamber === 2 && chamber2Overlay) {
             chamber2Overlay.visible = true;
           }
-          // Växla activeCartridge omedelbart: 1 -> 2 (eller 2 -> 0)
-          if (firedChamber === 1) {
-            const c2Loaded = fsm && String(fsm.chamber2 || '').toLowerCase() === 'loaded';
-            activeCartridge = c2Loaded ? 2 : 0;
-          } else if (firedChamber === 2) {
-            const c1Loaded = fsm && String(fsm.chamber1 || '').toLowerCase() === 'loaded';
-            activeCartridge = c1Loaded ? 1 : 0;
+          // Växla INTE activeCartridge omedelbart: behåll avfyrad kassett under 800 ms laddningspaus tills fsm.js växlar
+          const c1Loaded = fsm && String(fsm.chamber1 || '').toLowerCase() === 'loaded';
+          const c2Loaded = fsm && String(fsm.chamber2 || '').toLowerCase() === 'loaded';
+          if (!c1Loaded && !c2Loaded) {
+            activeCartridge = 0;
+          } else if (fsm && fsm.isFiring) {
+            activeCartridge = firedChamber;
+          } else {
+            activeCartridge = fsm && fsm.activeChamber ? fsm.activeChamber : firedChamber;
           }
           window.activeCartridge = activeCartridge;
+          if (window.state) window.state.activeCartridge = activeCartridge;
           syncWeaponOverlays(fsm);
         }
         window.onChamberFired = onChamberFired;
@@ -3451,11 +3555,17 @@
         function resetWeaponPhase4(fsm) {
           activeCartridge = 1;
           window.activeCartridge = 1;
+          window.isFiring = false;
+          if (window.state) {
+            window.state.activeCartridge = 1;
+            window.state.isFiring = false;
+          }
           if (chamber1Overlay) chamber1Overlay.visible = false;
           if (chamber2Overlay) chamber2Overlay.visible = false;
           const batteryPct = fsm ? (fsm.hasBattery ? 99 : 0) : 99;
           const isSafe = fsm ? !!fsm.isSafe : true;
-          updateCIDTexture(true, true, batteryPct, isSafe);
+          const isFunkMode = fsm ? !!fsm.functionCheckMode : false;
+          updateCIDTexture(true, true, batteryPct, isSafe, 1, isFunkMode);
         }
         window.resetWeaponPhase4 = resetWeaponPhase4;
 
