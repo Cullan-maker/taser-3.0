@@ -26,6 +26,7 @@ export class TaserScene {
 
     this.activeWires = [];
     this.activeDarts = [];
+    this.wiresVisible = false;
     this.muzzlePoint = null;
     this.figureFallen = false;
     this.isTased = false;
@@ -91,8 +92,8 @@ export class TaserScene {
     this.isSoftwareGl = this.detectSoftwareGl();
 
     this.scene = new THREE.Scene();
-    this.defaultBackground = null;
-    this.scene.background = null;
+    this.defaultBackground = new THREE.Color(0x050505);
+    this.scene.background = this.defaultBackground;
 
     const width = this.container.clientWidth || 320;
     const height = this.container.clientHeight || 320;
@@ -108,7 +109,7 @@ export class TaserScene {
     });
     this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(width, height);
-    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.setClearColor(0x050505, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -335,20 +336,30 @@ export class TaserScene {
     this.scene.add(this.placementGround);
 
     this.placementMarker = new THREE.Group();
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.25, 0.4, 48),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    this.placementMarker.name = 'PlacementMarker';
+    const outerRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.28, 0.36, 48),
+      new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthTest: false })
     );
-    const circle = new THREE.Mesh(
-      new THREE.CircleGeometry(0.12, 32),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+    const innerRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.10, 0.14, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfcbe00, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthTest: false })
     );
-    ring.rotation.x = -Math.PI / 2;
-    circle.rotation.x = -Math.PI / 2;
+    const centerDot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.045, 24),
+      new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthTest: false })
+    );
+    outerRing.rotation.x = -Math.PI / 2;
+    innerRing.rotation.x = -Math.PI / 2;
+    centerDot.rotation.x = -Math.PI / 2;
+    outerRing.renderOrder = 999;
+    innerRing.renderOrder = 999;
+    centerDot.renderOrder = 999;
 
-    this.placementMarker.add(ring);
-    this.placementMarker.add(circle);
-    this.placementMarker.position.y = 0.01;
+    this.placementMarker.add(outerRing);
+    this.placementMarker.add(innerRing);
+    this.placementMarker.add(centerDot);
+    this.placementMarker.position.y = 0.015;
     this.placementMarker.visible = false;
     this.scene.add(this.placementMarker);
   }
@@ -1171,7 +1182,9 @@ export class TaserScene {
       ? this.aiPose.hitboxGroup
       : this.taserGroup;
 
-    const muzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const rawMuzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const isHandWeaponVisible = (typeof window !== 'undefined' && window.weaponGroup) ? !!window.weaponGroup.visible : false;
+    const muzzle = isHandWeaponVisible ? rawMuzzle : null;
     const muzzlePos = new THREE.Vector3();
     const muzzleQuat = new THREE.Quaternion();
     const dir1 = new THREE.Vector3();
@@ -1262,7 +1275,8 @@ export class TaserScene {
     this.spawnSparks(endPoint2, !hitWall2);
     this.spawnElectricArc(endPoint1, endPoint2, !hitWall1 && !hitWall2);
 
-    // Deploy insulated high-tensile copper-clad wire lines (0xB87333) from muzzlePoint
+    // Deploy insulated high-tensile copper-clad wire lines (0xB87333) from muzzlePoint on shot fired
+    this.wiresVisible = true;
     const wireMat = new THREE.LineBasicMaterial({
       color: 0xB87333, // Realistisk kopparfärg
       transparent: true,
@@ -1272,12 +1286,14 @@ export class TaserScene {
     const geo1 = new THREE.BufferGeometry().setFromPoints([muzzlePos.clone(), endPoint1]);
     const wire1 = new THREE.Line(geo1, wireMat);
     wire1.frustumCulled = false;
+    wire1.visible = true;
     this.scene.add(wire1);
     this.activeWires.push({ line: wire1, chamber, dart: d1, slot: 'top' });
 
     const geo2 = new THREE.BufferGeometry().setFromPoints([muzzlePos.clone(), endPoint2]);
     const wire2 = new THREE.Line(geo2, wireMat.clone());
     wire2.frustumCulled = false;
+    wire2.visible = true;
     this.scene.add(wire2);
     this.activeWires.push({ line: wire2, chamber, dart: d2, slot: 'bottom' });
 
@@ -1423,10 +1439,14 @@ export class TaserScene {
   }
 
   clearWiresAndDarts() {
+    this.wiresVisible = false;
     this.activeWires.forEach((w) => {
-      this.scene.remove(w.line);
-      if (w.line.geometry) w.line.geometry.dispose();
-      if (w.line.material) w.line.material.dispose();
+      if (w.line) {
+        w.line.visible = false;
+        this.scene.remove(w.line);
+        if (w.line.geometry) w.line.geometry.dispose();
+        if (w.line.material) w.line.material.dispose();
+      }
     });
     this.activeWires = [];
 
@@ -1440,8 +1460,16 @@ export class TaserScene {
 
   updateWireDynamics(activeCamera) {
     if (this.activeWires.length === 0) return;
+    if (!this.wiresVisible) {
+      for (let i = 0; i < this.activeWires.length; i++) {
+        if (this.activeWires[i].line) this.activeWires[i].line.visible = false;
+      }
+      return;
+    }
 
-    const muzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const rawMuzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const isHandWeaponVisible = (typeof window !== 'undefined' && window.weaponGroup) ? !!window.weaponGroup.visible : false;
+    const muzzle = isHandWeaponVisible ? rawMuzzle : null;
     if (muzzle) {
       muzzle.updateWorldMatrix(true, false);
       muzzle.getWorldPosition(this._v2);
@@ -1483,9 +1511,18 @@ export class TaserScene {
   }
 
   disableARMode() {
-    this.scene.background = null;
-    if (this.renderer) {
-      this.renderer.setClearColor(0x000000, 0);
+    const isVR = (typeof window !== 'undefined' && (window.appMode === 'vr' || document.body.classList.contains('vr-active')));
+    if (isVR) {
+      this.scene.background = null;
+      if (this.renderer) {
+        this.renderer.setClearColor(0x000000, 0);
+      }
+    } else {
+      if (!this.defaultBackground) this.defaultBackground = new THREE.Color(0x050505);
+      this.scene.background = this.defaultBackground;
+      if (this.renderer) {
+        this.renderer.setClearColor(0x050505, 1);
+      }
     }
     setTimeout(() => this.onResize(), 50);
   }
@@ -1848,14 +1885,21 @@ export class TaserScene {
   }
 
   updateDynamicLaserRaycast(camera, aimNDC = { x: 0, y: 0 }, activeCartridge = 1, calculateSpreadFn = null, shouldShow = true, fallbackDistance = 3.0) {
+    const isVRMode = (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
     const handDetected = (typeof window !== 'undefined') ? !!window.handDetected : false;
     const weaponGroupVisible = (typeof window !== 'undefined' && window.weaponGroup)
       ? !!window.weaponGroup.visible
       : ((typeof window !== 'undefined' && window.weaponMesh) ? !!window.weaponMesh.visible : false);
 
-    if (!shouldShow || !handDetected || !weaponGroupVisible || !(activeCartridge > 0) || !this.laserDotTop || !this.laserDotBottom) {
+    if (!shouldShow || !(activeCartridge > 0) || !this.laserDotTop || !this.laserDotBottom) {
       if (this.laserDotTop) this.laserDotTop.visible = false;
       if (this.laserDotBottom) this.laserDotBottom.visible = false;
+      return null;
+    }
+
+    if (isVRMode && (!handDetected || !weaponGroupVisible)) {
+      this.laserDotTop.visible = false;
+      this.laserDotBottom.visible = false;
       return null;
     }
 
@@ -1863,14 +1907,21 @@ export class TaserScene {
       ? this.aiPose.hitboxGroup
       : (this.taserGroup && this.taserGroup.visible ? this.taserGroup : null);
 
-    const muzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const rawMuzzle = this.muzzlePoint || (typeof window !== 'undefined' ? window.muzzlePoint : null);
+    const muzzle = (isVRMode && weaponGroupVisible) ? rawMuzzle : null;
     const origin = this._v1;
     const dirTop = this._v2;
     const dirBottom = this._v3;
 
-    // Kassett 2 ökar det vertikala avståndet mellan punkterna något för bredare spridningsvinkel
-    const spreadDeg = activeCartridge === 2 ? 8.5 : 4.5;
+    // Kassett 1 (CQB) = 12°, Kassett 2 (Standoff) = 3.5° via ballistikmotorn
+    const spreadDeg = (typeof calculateSpreadFn === 'function')
+      ? calculateSpreadFn(fallbackDistance, activeCartridge).angleDeg
+      : (activeCartridge === 2 ? 3.5 : 12.0);
     const spreadRad = THREE.MathUtils.degToRad(spreadDeg);
+
+    const tiltDeg = (typeof window !== 'undefined' && window.state && typeof window.state.tilt === 'number')
+      ? window.state.tilt
+      : ((typeof window !== 'undefined' && window.taserApp && typeof window.taserApp.tilt === 'number') ? window.taserApp.tilt : 0);
 
     if (muzzle) {
       muzzle.updateWorldMatrix(true, false);
@@ -1885,7 +1936,12 @@ export class TaserScene {
       this.raycaster.setFromCamera(aimNDC, camera);
       origin.copy(this.raycaster.ray.origin);
       dirTop.copy(this.raycaster.ray.direction).normalize();
-      dirBottom.copy(dirTop).applyAxisAngle(new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), -spreadRad).normalize();
+      const tiltRad = THREE.MathUtils.degToRad(-tiltDeg);
+      const pitchAxis = new THREE.Vector3(1, 0, 0)
+        .applyQuaternion(camera.quaternion)
+        .applyAxisAngle(dirTop, tiltRad)
+        .normalize();
+      dirBottom.copy(dirTop).applyAxisAngle(pitchAxis, -spreadRad).normalize();
     }
 
     const filterValidHit = (intersects) => intersects.find((hit) => {

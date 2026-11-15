@@ -67,6 +67,11 @@ export class TaserXR {
     }
 
     // Release camera stream synchronously if held by WebRTC to prevent camera HAL hardware conflict
+    if (typeof window !== 'undefined' && typeof window.stopCameraPassThrough === 'function') {
+      try {
+        window.stopCameraPassThrough();
+      } catch (e) {}
+    }
     if (this.useCamera && this.videoStream) {
       console.log('[WEBXR PREP] Frigör WebRTC-kameran synkront inför WebXR...');
       try {
@@ -164,12 +169,16 @@ export class TaserXR {
     // Hit-testing for floor placement
     if (this.placeMode) {
       if (!this.hitTestSourceRequested) {
-        this.xrSession.requestReferenceSpace('viewer').then((viewerSpace) => {
-          this.xrSession.requestHitTestSource({ space: viewerSpace }).then((source) => {
-            this.xrHitTestSource = source;
-          });
-        });
         this.hitTestSourceRequested = true;
+        this.hasHitTestPose = false;
+        this.xrSession.requestReferenceSpace('viewer').then((viewerSpace) => {
+          return this.xrSession.requestHitTestSource({ space: viewerSpace });
+        }).then((source) => {
+          this.xrHitTestSource = source;
+        }).catch((err) => {
+          console.warn('[WEBXR HIT-TEST] Kunde inte begära hit-test source:', err);
+          this.hitTestSourceRequested = false;
+        });
       }
 
       if (this.xrHitTestSource) {
@@ -178,6 +187,7 @@ export class TaserXR {
           const hit = hitTestResults[0];
           const pose = hit.getPose(referenceSpace);
           if (pose && this.taserScene.placementMarker) {
+            this.hasHitTestPose = true;
             this.taserScene.placementMarker.visible = true;
             this.taserScene.placementMarker.position.set(
               pose.transform.position.x,
@@ -185,9 +195,30 @@ export class TaserXR {
               pose.transform.position.z
             );
           }
-        } else if (this.taserScene.placementMarker) {
-          this.taserScene.placementMarker.visible = false;
+        } else if (this.taserScene.placementMarker && !this.hasHitTestPose && activeCamera) {
+          // Visa preliminär markör på golvnivå framför kameran tills golvplan detekterats
+          const fwd = this.taserScene._v1.set(0, 0, -1).applyQuaternion(activeCamera.quaternion);
+          fwd.y = 0;
+          if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
+          fwd.normalize().multiplyScalar(2.5);
+          this.taserScene.placementMarker.visible = true;
+          this.taserScene.placementMarker.position.set(
+            activeCamera.position.x + fwd.x,
+            0.01,
+            activeCamera.position.z + fwd.z
+          );
         }
+      } else if (this.taserScene.placementMarker && activeCamera) {
+        const fwd = this.taserScene._v1.set(0, 0, -1).applyQuaternion(activeCamera.quaternion);
+        fwd.y = 0;
+        if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
+        fwd.normalize().multiplyScalar(2.5);
+        this.taserScene.placementMarker.visible = true;
+        this.taserScene.placementMarker.position.set(
+          activeCamera.position.x + fwd.x,
+          0.01,
+          activeCamera.position.z + fwd.z
+        );
       }
     }
 
@@ -501,12 +532,13 @@ export class TaserXR {
       }
     };
 
-    window.addEventListener('deviceorientation', handleOrientation);
+    this._orientationHandler = handleOrientation;
+    window.addEventListener('deviceorientation', this._orientationHandler);
 
     // Sekundär snärt-avkänning via devicemotion för distinkt handledssnärt
     if (typeof window !== 'undefined' && 'ondevicemotion' in window) {
-      window.addEventListener('devicemotion', (e) => {
-        if (!e.rotationRate || typeof onPhysicalTilt !== 'function') return;
+      this._motionHandler = (e) => {
+        if (!this.gyroEnabled || !e.rotationRate || typeof onPhysicalTilt !== 'function') return;
         const rot = e.rotationRate;
         // Kraftig rotationssnärt runt telefonens längsgående axel krävs för att inte trigga vid gång
         const rate = Math.abs(rot.gamma || 0) + Math.abs(rot.alpha || 0);
@@ -519,7 +551,8 @@ export class TaserXR {
             onPhysicalTilt(dir, lastGamma);
           }
         }
-      }, { passive: true });
+      };
+      window.addEventListener('devicemotion', this._motionHandler, { passive: true });
     }
   }
 }

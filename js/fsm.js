@@ -130,12 +130,9 @@ export class TaserFSM {
    * KRITISK TAKTISK REGEL: Vapnet MÅSTE vara säkrat innan kassetter matas ut eller byts!
    */
   toggleCassette() {
-    // Om båda kassetterna redan är laddade och vapnet är osäkrat, varna om säkerhet innan utmatning
+    // Om båda kassetterna är laddade och vapnet är osäkrat: växla mellan Kassett 1 och Kassett 2
     if (!this.isSafe && this.chamber1 === ChamberState.LOADED && this.chamber2 === ChamberState.LOADED) {
-      this.notify('LOG', {
-        message: "<span style='color:#e74c3c; font-weight:bold; font-size:9.5px;'>⚠️ TAKTISKT FEL: Vapnet måste SÄKRAS innan skarpa kassetter kan matas ut!</span>"
-      });
-      return false;
+      return this.toggleCartridge();
     }
 
     // Om kassetterna är tomma eller någon/båda är förbrukade (skjutna): Ladda in nya kassetter omedelbart!
@@ -216,13 +213,31 @@ export class TaserFSM {
     return true;
   }
 
+  toggleCartridge() {
+    if (this.chamber1 === ChamberState.EMPTY && this.chamber2 === ChamberState.EMPTY) {
+      return this.toggleCassette();
+    }
+    if (this.activeChamber === 1 && this.chamber2 === ChamberState.LOADED) {
+      this.activeChamber = 2;
+      this.notify('LOG', { message: '🔄 Växlar till Kassett 2 (3.5° Standoff).' });
+      this.notify('CHAMBER_CHANGED');
+      this.notify('DISPLAY_CHANGED');
+      return true;
+    }
+    if (this.activeChamber === 2 && this.chamber1 === ChamberState.LOADED) {
+      this.activeChamber = 1;
+      this.notify('LOG', { message: '🔄 Växlar till Kassett 1 (12° CQB).' });
+      this.notify('CHAMBER_CHANGED');
+      this.notify('DISPLAY_CHANGED');
+      return true;
+    }
+    this.notify('LOG', { message: `Endast Kassett ${this.activeChamber} är laddad.` });
+    return false;
+  }
+
   tiltWeapon() {
     if (!this.hasBattery || this.isSafe || this.chamber1 === ChamberState.EMPTY) return false;
-    this.activeChamber = this.activeChamber === 1 ? 2 : 1;
-    this.notify('LOG', { message: `Växlar manuellt till kammare ${this.activeChamber} (${this.activeChamber === 1 ? '12°' : '3.5°'}).` });
-    this.notify('CHAMBER_CHANGED');
-    this.notify('DISPLAY_CHANGED');
-    return true;
+    return this.toggleCartridge();
   }
 
   setChamber(num) {

@@ -74,7 +74,9 @@ export class TaserApp {
     this.currentDistance = 3.0; // meters
     this.aimX = 50; // percentage
     this.aimY = 50; // percentage
-    this.tilt = 0; // degrees (-25 to +25)
+    this.tilt = 0; // degrees (-90 to +90)
+    this._tiltTarget = 0;
+    this._tiltTweenRaf = null;
 
     // Threat escalation & Verbal warnings
     this.threatLevel = 0;
@@ -121,6 +123,7 @@ export class TaserApp {
       this.updateDisplay();
       return res;
     };
+    window.toggleCartridge = () => this.toggleCartridge();
     window.toggleSafety = () => {
       // Omedelbar rensning av alla inverterade varningsfärger vid säkringsinteraktion
       const dEl = document.getElementById('taser-display');
@@ -131,7 +134,7 @@ export class TaserApp {
       this.updateDisplay();
       return res;
     };
-    window.tiltWeapon = () => this.fsm.tiltWeapon();
+    window.tiltWeapon = () => this.cycleTilt();
     window.activateStealth = () => this.fsm.activateStealth();
     window.toggleClothing = () => this.fsm.toggleClothing();
     window.toggleScenario = () => this.toggleScenario();
@@ -189,7 +192,7 @@ export class TaserApp {
         if (btnCass) {
           btnCass.style.borderColor = hasLoaded ? '#2ecc71' : '';
         }
-        if (fsm.chamber1 === ChamberState.EMPTY) {
+        if (fsm.chamber1 === ChamberState.EMPTY || (fsm.chamber1 === ChamberState.LOADED && fsm.chamber2 === ChamberState.LOADED && fsm.shotsFired === 0)) {
           this.scene.clearWiresAndDarts();
           this.scene.resetTarget();
           this.stopScenario();
@@ -210,6 +213,10 @@ export class TaserApp {
 
         this.updateDisplay();
       } else if (event === 'CHAMBER_CHANGED') {
+        if (typeof window !== 'undefined' && typeof window.syncActiveCartridgeFromFSM === 'function') {
+          window.syncActiveCartridgeFromFSM(this.fsm);
+        }
+        this.updateAimVisuals();
         this.updateDisplay();
       } else if (event === 'DISPLAY_CHANGED') {
         this.updateDisplay();
@@ -289,7 +296,7 @@ export class TaserApp {
         this.currentDistance = 3.0;
         this.aimX = 50;
         this.aimY = 50;
-        this.tilt = 0;
+        this.setTilt(0);
         this.warningGiven = false;
         this.updateWarningUI();
         this.scene.resetTarget();
@@ -366,10 +373,28 @@ export class TaserApp {
     this.setupTactileButton('btn-cassette', () => window.toggleCassette());
     this.setupTactileButton('btn-battery', () => window.toggleBattery());
     this.setupTactileButton('btn-stealth', () => this.fsm.activateStealth());
-    this.setupTactileButton('btn-tilt', () => this.fsm.tiltWeapon());
+    this.setupTactileButton('btn-tilt', () => this.cycleTilt());
     this.setupTactileButton('btn-warn', () => window.pressDualWarning());
     this.setupTactileButton('btn-reset', () => this.resetSimulator());
-    this.setupTactileButton('btn-fail-reset', () => this.resetSimulator());
+    const failResetBtn = document.getElementById('btn-fail-reset');
+    if (failResetBtn) {
+      let lastFailResetTs = 0;
+      const onFailReset = (e) => {
+        if (e) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+        }
+        const now = Date.now();
+        if (now - lastFailResetTs < 350) return;
+        lastFailResetTs = now;
+        if (navigator.vibrate) {
+          try { navigator.vibrate(14); } catch (_) {}
+        }
+        this.resetSimulator();
+      };
+      failResetBtn.addEventListener('touchstart', onFailReset, { passive: false });
+      failResetBtn.addEventListener('click', onFailReset);
+    }
     this.setupTactileButton('btn-clothing', () => this.fsm.toggleClothing());
     this.setupTactileButton('btn-voice', () => this.voice.toggle());
     this.setupTactileButton('btn-gyro', () => this.initGyro());
@@ -390,6 +415,8 @@ export class TaserApp {
     this.setupTactileButton('warn-right', () => window.pressSingleWarning());
     this.setupTactileButton('safety-switch', () => window.toggleSafety());
     this.setupTactileButton('btn-confirm', () => this.confirmPlacement());
+    this.setupTactileButton('btn-xr-place-confirm', () => this.confirmPlacement(), { useClick: true });
+    this.setupTactileButton('btn-xr-move-target', () => this.togglePlaceMode(), { useClick: true });
     this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
     this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
 
@@ -420,20 +447,29 @@ export class TaserApp {
       });
     });
 
-    // Reticle placement tap in WebXR
-    this.scene.renderer.domElement.addEventListener('pointerdown', (e) => {
-      if (this.xr.placeMode && this.xr.xrSession) {
-        const rect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-        const hits = this.scene.setPlacementFromScreen(x, y);
-        if (hits.length > 0 && this.scene.placementMarker) {
-          this.scene.placementMarker.position.copy(hits[0].point);
-          this.scene.placementMarker.position.y += 0.01;
-          this.scene.placementMarker.visible = true;
+    // Reticle / floor placement tap in WebXR or Mobile Place mode
+    const placementTarget = viewport || this.scene.renderer.domElement;
+    if (placementTarget) {
+      placementTarget.addEventListener('pointerdown', (e) => {
+        if (!this.xr.placeMode) return;
+        if (e.target && e.target.closest && e.target.closest('button')) return;
+
+        if (this.xr.xrSession) {
+          // I WebXR placeringsläge: tryck på skärmen låser måltavlan vid golvmarkören
+          this.confirmPlacement();
+        } else {
+          const rect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+          const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          const hits = this.scene.setPlacementFromScreen(x, y);
+          if (hits.length > 0 && this.scene.placementMarker) {
+            this.scene.placementMarker.position.copy(hits[0].point);
+            this.scene.placementMarker.position.y += 0.01;
+            this.scene.placementMarker.visible = true;
+          }
         }
-      }
-    });
+      });
+    }
   }
 
   setupTactileButton(elementOrId, callback, options = {}) {
@@ -556,10 +592,13 @@ export class TaserApp {
       // Calculate ballistic coordinates
       const viewport = document.getElementById('viewport');
       const vHeight = viewport ? viewport.clientHeight : 320;
+      const vWidth = viewport ? viewport.clientWidth : 320;
       const { ndc1, ndc2, spreadInfo } = this.ballistics.calculateNdcCoordinates(
         this.currentDistance,
         firedChamber,
-        vHeight
+        vHeight,
+        this.tilt,
+        vWidth
       );
 
       // Perform 3D raycast on mannequin or Live Target
@@ -616,17 +655,103 @@ export class TaserApp {
     this.updateDisplay();
   }
 
+  setTilt(deg, fromTween = false) {
+    if (!fromTween && this._tiltTweenRaf) {
+      cancelAnimationFrame(this._tiltTweenRaf);
+      this._tiltTweenRaf = null;
+    }
+    const clamped = Math.max(-90, Math.min(90, Number(deg) || 0));
+    this.tilt = clamped;
+    if (!fromTween) {
+      this._tiltTarget = clamped;
+    }
+    if (typeof window !== 'undefined') {
+      window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe };
+      window.state.tilt = clamped;
+    }
+    const tiltBtn = document.getElementById('btn-tilt');
+    if (tiltBtn) {
+      const rounded = Math.round(clamped);
+      tiltBtn.textContent = rounded === 0 ? '🔄 Vinkla (Tilt)' : `🔄 Vinkla (${rounded}°)`;
+    }
+    this.updateAimVisuals();
+    return clamped;
+  }
+
+  cycleTilt() {
+    if (this._tiltTweenRaf) {
+      cancelAnimationFrame(this._tiltTweenRaf);
+      this._tiltTweenRaf = null;
+    }
+    const current = typeof this._tiltTarget === 'number' ? this._tiltTarget : (this.tilt || 0);
+    let next = 0;
+    if (current >= 0 && current < 35) {
+      next = 45;
+    } else if (current >= 35 && current < 75) {
+      next = 90;
+    } else {
+      next = 0;
+    }
+    this._tiltTarget = next;
+
+    const startVal = this.tilt || 0;
+    const duration = 180;
+    const startTime = performance.now();
+
+    const step = (now) => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const val = startVal + (next - startVal) * eased;
+      this.setTilt(val, true);
+      if (progress < 1) {
+        this._tiltTweenRaf = requestAnimationFrame(step);
+      } else {
+        this._tiltTweenRaf = null;
+        this.setTilt(next, true);
+        this._tiltTarget = next;
+      }
+    };
+    this._tiltTweenRaf = requestAnimationFrame(step);
+
+    const desc = next === 0 ? 'Vertikal spridning' : (next === 90 ? 'Horisontell spridning' : 'Kantat läge');
+    this.log(`🔄 Vapen vinklat: <b>${next}°</b> (${desc})`);
+    return next;
+  }
+
+  toggleCartridge() {
+    if (this.fsm.chamber1 === ChamberState.EMPTY && this.fsm.chamber2 === ChamberState.EMPTY) {
+      const loaded = this.fsm.toggleCassette();
+      this.updateDisplay();
+      return loaded;
+    }
+    const switched = this.fsm.toggleCartridge();
+    if (typeof window !== 'undefined' && typeof window.syncActiveCartridgeFromFSM === 'function') {
+      window.syncActiveCartridgeFromFSM(this.fsm);
+    }
+    this.updateAimVisuals();
+    this.updateDisplay();
+    return switched;
+  }
+
   updateAimVisuals() {
-    const spreadData = this.ballistics.calculateSpread(this.currentDistance, this.fsm.activeChamber);
+    const activeCh = this.fsm.activeChamber || 1;
+    const spreadData = this.ballistics.calculateSpread(this.currentDistance, activeCh);
 
     const distLabel = document.getElementById('dist-label');
     const spreadLabel = document.getElementById('spread-label');
     if (distLabel) distLabel.textContent = `${spreadData.distanceMeters.toFixed(1)} M`;
-    if (spreadLabel) spreadLabel.textContent = `SPRIDNING: ${spreadData.spreadCm.toFixed(1)} CM`;
+    if (spreadLabel) spreadLabel.textContent = `SPRIDNING: ${spreadData.spreadCm.toFixed(1)} CM (K${activeCh})`;
+
+    const tiltDeg = typeof this.tilt === 'number' ? this.tilt : 0;
+    const tiltRad = (tiltDeg * Math.PI) / 180;
+    const drop = spreadData.visualDropPx;
+    const dx = -Math.sin(tiltRad) * drop;
+    const dy = Math.cos(tiltRad) * drop;
 
     const laserRed = document.getElementById('laser-red');
     if (laserRed) {
-      laserRed.style.top = `calc(50% + ${spreadData.visualDropPx}px)`;
+      laserRed.style.left = `calc(50% + ${dx.toFixed(2)}px)`;
+      laserRed.style.top = `calc(50% + ${dy.toFixed(2)}px)`;
     }
   }
 
@@ -635,11 +760,21 @@ export class TaserApp {
     const laserGreen = document.getElementById('laser-green');
     const laserRed = document.getElementById('laser-red');
 
+    const isVRMode = (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
+    const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
     const shouldShow = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
+
     if (flashlight) flashlight.style.display = shouldShow ? 'block' : 'none';
-    // Fas 4: 3D-lasrarna projiceras direkt från muzzlePoint i Three.js-scenen
-    if (laserGreen) laserGreen.style.display = 'none';
-    if (laserRed) laserRed.style.display = 'none';
+
+    if (isVRMode || isXRPresenting) {
+      // VR & WebXR: 3D-laserpunkterna projiceras direkt i Three.js-scenen
+      if (laserGreen) laserGreen.style.display = 'none';
+      if (laserRed) laserRed.style.display = 'none';
+    } else {
+      // Mobil/Handhållet läge: visa de ursprungliga siktespunkterna i 2D-HUD
+      if (laserGreen) laserGreen.style.display = shouldShow ? 'block' : 'none';
+      if (laserRed) laserRed.style.display = shouldShow ? 'block' : 'none';
+    }
   }
 
   renderIconsHTML() {
@@ -1424,6 +1559,7 @@ export class TaserApp {
     if (mainContainer) mainContainer.classList.add('ar-combat-mode');
     const simControls = document.querySelector('.sim-controls');
     if (simControls) simControls.classList.add('ar-combat-mode');
+    this.scene.clearWiresAndDarts();
     this.scene.enableARMode();
 
     const btnWebXR = document.getElementById('btn-webxr') || document.getElementById('webxr-btn');
@@ -1449,13 +1585,19 @@ export class TaserApp {
     if (simControls) simControls.classList.remove('ar-combat-mode');
     this.scene.disableARMode();
 
+    const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
+    if (btnXrConfirm) btnXrConfirm.style.display = 'none';
+    const btnXrMove = document.getElementById('btn-xr-move-target');
+    if (btnXrMove) btnXrMove.style.display = 'none';
+
     const btnWebXR = document.getElementById('btn-webxr') || document.getElementById('webxr-btn');
     if (btnWebXR) {
-      btnWebXR.textContent = '🌐 WebXR Scenarier';
+      btnWebXR.textContent = '🌐 WebXR';
       btnWebXR.style.backgroundColor = '';
     }
 
     if (this.xr.placeMode) this.confirmPlacement();
+    this.scene.clearWiresAndDarts();
     this.scene.resetTarget();
     this.stopScenario();
     this.updateDisplay();
@@ -1465,43 +1607,63 @@ export class TaserApp {
   togglePlaceMode() {
     this.xr.placeMode = true;
     this.xr.figureLocked = false;
+    this.xr.hasHitTestPose = false;
     const stdEl = document.getElementById('standard-controls');
     if (stdEl) stdEl.style.display = 'none';
     const plcEl = document.getElementById('placement-controls');
     if (plcEl) plcEl.style.display = 'block';
+
+    const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
+    if (btnXrConfirm) btnXrConfirm.style.display = 'inline-flex';
+    const btnXrMove = document.getElementById('btn-xr-move-target');
+    if (btnXrMove) btnXrMove.style.display = 'none';
 
     this.scene.set3DVisibility(false);
     if (this.scene.placementMarker) this.scene.placementMarker.visible = true;
 
     const hint = document.getElementById('place-hint');
     if (hint) {
-      hint.innerHTML = this.xr.xrSession ? 'Peka mot golvet och vänta på markör' : 'Klicka på golvet';
+      hint.innerHTML = this.xr.xrSession ? 'Rikta mot golvet &amp; tryck "PLACERA MÅL HÄR" eller tappa på skärmen' : 'Klicka på golvet &amp; tryck "PLACERA MÅL HÄR"';
       hint.classList.add('visible');
     }
-    this.log('Sök efter golvet och bekräfta...');
+    this.log('Sök efter golvet och bekräfta placering...');
   }
 
   confirmPlacement() {
     const marker = this.scene.placementMarker;
-    if (this.xr.xrSession && (!marker || !marker.visible)) {
+    if (this.xr.xrSession) {
       const xrCam = this.scene.renderer.xr.getCamera(this.scene.camera);
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
-      forward.y = 0;
-      if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
-      forward.normalize().multiplyScalar(3.0);
-      if (this.scene.taserGroup) {
-        this.scene.taserGroup.position.set(
-          xrCam.position.x + forward.x,
-          0,
-          xrCam.position.z + forward.z
-        );
-        this.scene.taserGroup.lookAt(xrCam.position.x, 0, xrCam.position.z);
-        this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
-        this.scene.taserGroup.visible = true;
+      if (marker && marker.visible && (this.xr.hasHitTestPose || marker.position.lengthSq() > 0.001)) {
+        if (this.scene.taserGroup) {
+          this.scene.taserGroup.position.set(
+            marker.position.x,
+            Math.max(0, marker.position.y - 0.01),
+            marker.position.z
+          );
+          this.scene.taserGroup.lookAt(xrCam.position.x, this.scene.taserGroup.position.y, xrCam.position.z);
+          this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
+          this.scene.taserGroup.visible = true;
+        }
+      } else {
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
+        forward.y = 0;
+        if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+        forward.normalize().multiplyScalar(3.0);
+        if (this.scene.taserGroup) {
+          this.scene.taserGroup.position.set(
+            xrCam.position.x + forward.x,
+            0,
+            xrCam.position.z + forward.z
+          );
+          this.scene.taserGroup.lookAt(xrCam.position.x, 0, xrCam.position.z);
+          this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
+          this.scene.taserGroup.visible = true;
+        }
+        this.log("<span style='color:#f39c12'>Standardposition vald (3m rakt framför dig).</span>");
       }
-      this.log("<span style='color:#f39c12'>Standardposition vald (3m rakt framför dig).</span>");
     } else if (this.scene.taserGroup && marker && marker.visible) {
       this.scene.taserGroup.position.copy(marker.position);
+      this.scene.taserGroup.position.y = Math.max(0, marker.position.y - 0.01);
       this.scene.taserGroup.visible = true;
       this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
     }
@@ -1515,13 +1677,26 @@ export class TaserApp {
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
 
+    const btnXrConfirm = document.getElementById('btn-xr-place-confirm');
+    if (btnXrConfirm) btnXrConfirm.style.display = 'none';
+    const btnXrMove = document.getElementById('btn-xr-move-target');
+    if (btnXrMove) {
+      btnXrMove.style.display = this.xr.xrSession ? 'inline-flex' : 'none';
+    }
+
     const stdEl = document.getElementById('standard-controls');
     if (stdEl) stdEl.style.display = 'block';
     const plcEl = document.getElementById('placement-controls');
     if (plcEl) plcEl.style.display = 'none';
 
     this.log("<span style='color:#2ecc71'><b>🔒 Figuren är fastlåst!</b> Redo för insats.</span>");
-    this.stopScenario();
+    if (this.xr.xrSession && (this.xr.scenario === 'moving' || this.xr.scenario === 'charging')) {
+      this.startScenario();
+    } else {
+      this.stopScenario();
+    }
+    this.updateAimVisuals();
+    this.updateDisplay();
   }
 
   initGyro(silent = false) {
@@ -1589,21 +1764,56 @@ export class TaserApp {
     if (dEl) {
       dEl.classList.remove('oled-inverted', 'funk-mode', 'inverted');
     }
-    this.fsm.reset();
+    this.hideFailOverlay();
     this.isTased = false;
     this.isGameOver = false;
-    this.hideFailOverlay();
+    if (this.threatInterval) {
+      clearInterval(this.threatInterval);
+      this.threatInterval = null;
+    }
+    this.threatLevel = 0;
+    if (typeof window !== 'undefined') window.threatLevel = 0;
+
     if (this.scene && this.scene.mixer) {
       this.scene.mixer.timeScale = 1.0;
     }
     this.scene.clearWiresAndDarts();
-    this.scene.resetTarget();
-    if (typeof window !== 'undefined' && typeof window.resetWeaponPhase4 === 'function') {
-      window.resetWeaponPhase4(this.fsm);
+    this.fsm.reset();
+
+    if (this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting && this.scene.taserGroup) {
+      const xrCam = this.scene.renderer.xr.getCamera(this.scene.camera);
+      const distSq = xrCam.position.distanceToSquared(this.scene.taserGroup.position);
+      if (distSq < 1.44) {
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
+        forward.y = 0;
+        if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+        forward.normalize().multiplyScalar(3.0);
+        this.scene.taserGroup.userData.startPos = new THREE.Vector3(
+          xrCam.position.x + forward.x,
+          0,
+          xrCam.position.z + forward.z
+        );
+      }
+    } else if (this.scene && this.scene.taserGroup) {
+      this.scene.taserGroup.userData.startPos = new THREE.Vector3(0, 0, 0);
     }
+
+    this.scene.resetTarget();
+    this.currentDistance = 3.0;
+    this.aimX = 50;
+    this.aimY = 50;
+    this.setTilt(0);
+
+    if (typeof window !== 'undefined') {
+      window.activeCartridge = 1;
+      if (typeof window.resetWeaponPhase4 === 'function') {
+        window.resetWeaponPhase4(this.fsm);
+      }
+    }
+    this.stopScenario();
+    this.updateAimVisuals();
     this.updateDisplay();
     this.updateWarningUI();
-    this.stopScenario();
     this.log("♻️ <span style='color:#2ecc71; font-weight:bold;'>Simulator återställd: Nya kassetter laddade (2/2 skarpa), mål och kablar rensade.</span>");
   }
 
@@ -1705,10 +1915,33 @@ export class TaserApp {
         }
       }
 
-      if (this.scene.scene.background !== null) {
-        this.scene.scene.background = null;
+      const isVRMode = (typeof window !== 'undefined') && (
+        window.appMode === 'vr' ||
+        document.body.classList.contains('vr-active') ||
+        document.body.classList.contains('vr-headset-mode')
+      );
+      const isTransparentPassThrough = isVRMode ||
+        renderer.xr.isPresenting ||
+        this.xr.useCamera ||
+        document.body.classList.contains('ar-active') ||
+        document.body.classList.contains('webxr-mode') ||
+        document.body.classList.contains('live-ai-active') ||
+        document.body.classList.contains('camera-active');
+
+      if (isTransparentPassThrough) {
+        if (this.scene.scene.background !== null) {
+          this.scene.scene.background = null;
+        }
+        renderer.setClearColor(0x000000, 0);
+      } else {
+        if (!this.scene.defaultBackground) {
+          this.scene.defaultBackground = new THREE.Color(0x050505);
+        }
+        if (this.scene.scene.background !== this.scene.defaultBackground) {
+          this.scene.scene.background = this.scene.defaultBackground;
+        }
+        renderer.setClearColor(0x050505, 1);
       }
-      renderer.setClearColor(0x000000, 0);
 
       if (!renderer.xr.isPresenting) {
         // Desktop / Mobile Non-XR Perspective Viewport Orbit
@@ -1738,7 +1971,7 @@ export class TaserApp {
       // Dynamic High-Voltage Warning Arc updates (syncs taserModel to activeCamera)
       this.scene.updateWarningArc(activeCamera);
 
-      // Dynamic First-Person TASER 7 3D Weapon Pose, Convergence & Tilt update (uppdaterar muzzlePoint matrixWorld)
+      // Dynamic First-Person TASER 7 3D Weapon Pose, Convergence & Tilt update (endast aktiv i VR-läget)
       if (typeof window !== 'undefined' && typeof window.updateWeaponPose === 'function') {
         window.updateWeaponPose(this);
       }
@@ -1760,7 +1993,11 @@ export class TaserApp {
       const isSafeState = (typeof window !== 'undefined' && window.state && typeof window.state.isSafe === 'boolean')
         ? window.state.isSafe
         : !!this.fsm.isSafe;
-      const shouldShowLasers = isHandDetected && weaponVisible && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0;
+
+      const shouldShowLasers = isVRMode
+        ? (isHandDetected && weaponVisible && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0)
+        : (renderer.xr.isPresenting && !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode && currentCartridge > 0);
+
       const aimNDC = renderer.xr.isPresenting
         ? this.scene._v3.set(0, 0, 0)
         : this.scene._v3.set((this.aimX / 100) * 2 - 1, -(this.aimY / 100) * 2 + 1, 0);

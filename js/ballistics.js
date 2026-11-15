@@ -32,16 +32,22 @@ export class TaserBallistics {
     };
   }
 
-  calculateNdcCoordinates(distance, chamber, viewportHeight = 320) {
+  calculateNdcCoordinates(distance, chamber, viewportHeight = 320, tiltDeg = 0, viewportWidth = viewportHeight) {
     const spreadInfo = this.calculateSpread(distance, chamber);
     const ndc1 = { x: 0, y: 0 }; // Top dart aligned with central aim
 
     // Gravity ballistic drop on distances > 3.0m
     const safeDist = spreadInfo.distanceMeters;
     const ballisticDrop = safeDist > 3.0 ? Math.pow(safeDist - 3.0, 2) * 0.002 : 0;
-    const ndcDrop = (spreadInfo.visualDropPx / (viewportHeight / 2)) + ballisticDrop;
+    const totalDropNdcY = (spreadInfo.visualDropPx / (viewportHeight / 2)) + ballisticDrop;
 
-    const ndc2 = { x: 0, y: -ndcDrop };
+    const tiltRad = ((Number(tiltDeg) || 0) * Math.PI) / 180;
+    const aspectRatio = (viewportHeight > 0 && viewportWidth > 0) ? (viewportHeight / viewportWidth) : 1;
+
+    const ndc2 = {
+      x: -Math.sin(tiltRad) * totalDropNdcY * aspectRatio,
+      y: -Math.cos(tiltRad) * totalDropNdcY
+    };
 
     return { ndc1, ndc2, spreadInfo, ballisticDrop };
   }
