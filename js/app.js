@@ -90,6 +90,7 @@ export class TaserApp {
     this.isGameOver = false;
     this.isFiring = false;
     this.liveWires = [];
+    this.liveARRoomCode = null;
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -657,6 +658,20 @@ export class TaserApp {
         this.log(`<span style='color:#2ecc71; font-weight:bold;'>NMI UPPNÅDD!</span> ${evalResult.reason}`);
         this.showNMIOverlay(true, evalResult.reason, evalResult.spreadCm);
         this.fsm.startCycle('NMI påbörjad...', 'DARTS');
+
+        // Skicka realtidsträff till ansluten Markör i Firestore om Live AR är aktivt
+        if (isLiveARActive && this.liveARRoomCode && typeof window !== 'undefined' && window.taserFirebase && typeof window.taserFirebase.reportLiveHit === 'function') {
+          window.taserFirebase.reportLiveHit(this.liveARRoomCode).then((ok) => {
+            if (ok) {
+              this.log(`<span style='color:#2ecc71; font-weight:bold;'>📡 Markör-träff skickad (Kod ${this.liveARRoomCode})!</span>`);
+            }
+          });
+          const badgeEl = document.getElementById('live-ar-room-badge');
+          if (badgeEl) {
+            badgeEl.classList.add('hit-sent');
+            setTimeout(() => badgeEl.classList.remove('hit-sent'), 2500);
+          }
+        }
 
         if (this.threatInterval) clearInterval(this.threatInterval);
         const sub = document.getElementById('subtitle-overlay');
@@ -1834,6 +1849,12 @@ export class TaserApp {
     if (simControls) simControls.classList.remove('live-ar-active');
 
     this.liveWires = [];
+    this.liveARRoomCode = null;
+    const roomBadgeStop = document.getElementById('live-ar-room-badge');
+    if (roomBadgeStop) {
+      roomBadgeStop.style.display = 'none';
+      roomBadgeStop.classList.remove('hit-sent');
+    }
     if (this.aiPose) this.aiPose.stop();
     if (this.scene) {
       this.scene.disableARMode();
@@ -1887,6 +1908,23 @@ export class TaserApp {
     this.liveWires = [];
     activateLiveARClasses();
     this.updateDisplay();
+
+    // Generera 4-siffrig rumskod för Markör-koppling och skapa session i Firestore
+    const roomCode = String(Math.floor(1000 + Math.random() * 9000));
+    this.liveARRoomCode = roomCode;
+    const roomBadge = document.getElementById('live-ar-room-badge');
+    if (roomBadge) {
+      roomBadge.textContent = `🔗 MARKÖR-KOD: ${roomCode}`;
+      roomBadge.classList.remove('hit-sent');
+      roomBadge.style.display = 'inline-flex';
+    }
+    if (typeof window !== 'undefined' && window.taserFirebase && typeof window.taserFirebase.createSession === 'function') {
+      window.taserFirebase.createSession(roomCode).then((ok) => {
+        if (ok) {
+          this.log(`<span style='color:#2ecc71; font-weight:bold;'>🔗 Markör-rum skapat: ${roomCode}</span>`);
+        }
+      });
+    }
 
     // Immediate user feedback
     if (tLabel) tLabel.textContent = 'INITIERAR AI & KAMERA...';
@@ -2029,6 +2067,12 @@ export class TaserApp {
     }
     const liveOverlayXR = document.getElementById('live-target-overlay');
     if (liveOverlayXR) liveOverlayXR.style.display = 'none';
+    this.liveARRoomCode = null;
+    const roomBadgeXR = document.getElementById('live-ar-room-badge');
+    if (roomBadgeXR) {
+      roomBadgeXR.style.display = 'none';
+      roomBadgeXR.classList.remove('hit-sent');
+    }
     document.body.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
     document.documentElement.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
     document.body.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');

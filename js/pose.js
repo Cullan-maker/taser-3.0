@@ -85,8 +85,8 @@ export class TaserAIPose {
     this.torsoMesh.userData.isAI = true;
     this.hitboxGroup.add(this.torsoMesh);
 
-    // 2. Head / Huvud & Hals (Forbidden Danger Zone - Farlig_Zon)
-    this.headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), createInvisibleHitboxMat());
+    // 2. Head / Huvud (Forbidden Danger Zone - Snävt beräknad runt skalle/ansikte)
+    this.headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 10), createInvisibleHitboxMat());
     this.headMesh.name = 'Huvud / Hals';
     this.headMesh.userData.zoneType = 'Head';
     this.headMesh.userData.isAI = true;
@@ -308,8 +308,18 @@ export class TaserAIPose {
       lm[i] = { x: cx, y: cy, z: 0, visibility: 0.95 };
     }
 
-    // Head / Nose
+    // Head / Face landmarks (0: nose, 1-6: eyes, 7-8: ears, 9-10: mouth)
     lm[0] = { x: cx, y: cy - 0.22, z: 0, visibility: 0.99 };
+    lm[1] = { x: cx - 0.008, y: cy - 0.232, z: 0, visibility: 0.96 };
+    lm[2] = { x: cx - 0.015, y: cy - 0.232, z: 0, visibility: 0.96 };
+    lm[3] = { x: cx - 0.022, y: cy - 0.232, z: 0, visibility: 0.95 };
+    lm[4] = { x: cx + 0.008, y: cy - 0.232, z: 0, visibility: 0.96 };
+    lm[5] = { x: cx + 0.015, y: cy - 0.232, z: 0, visibility: 0.96 };
+    lm[6] = { x: cx + 0.022, y: cy - 0.232, z: 0, visibility: 0.95 };
+    lm[7] = { x: cx - 0.030, y: cy - 0.224, z: 0, visibility: 0.92 };
+    lm[8] = { x: cx + 0.030, y: cy - 0.224, z: 0, visibility: 0.92 };
+    lm[9] = { x: cx - 0.012, y: cy - 0.204, z: 0, visibility: 0.95 };
+    lm[10] = { x: cx + 0.012, y: cy - 0.204, z: 0, visibility: 0.95 };
 
     // Shoulders
     lm[11] = { x: cx - 0.09, y: cy - 0.15, z: 0, visibility: 0.98 };
@@ -534,9 +544,9 @@ export class TaserAIPose {
     const shoulderBreadth3D = Math.max(0.32, pLShoulder.distanceTo(pRShoulder));
     const torsoHeight3D = Math.max(0.40, shoulderMid.distanceTo(hipMid));
 
-    // Update Targets & Orientations
-    this.targets.torsoPos.copy(torsoMid);
-    this.targets.torsoScale.set(shoulderBreadth3D * 1.15, torsoHeight3D * 1.05, 0.28);
+    // Update Targets & Orientations (generös 3D-bål upp mot nyckelben och ut åt sidorna)
+    this.targets.torsoPos.copy(torsoMid).lerp(shoulderMid, 0.09);
+    this.targets.torsoScale.set(shoulderBreadth3D * 1.40, torsoHeight3D * 1.24, 0.30);
 
     // Anatomical orientation for Torso
     const chestDirX = this._diff.copy(pRShoulder).sub(pLShoulder).normalize();
@@ -565,26 +575,127 @@ export class TaserAIPose {
     this.targets.rightLegQuat.setFromUnitVectors(new THREE.Vector3(0, -1, 0), this._diff);
 
     // ============================================================
-    // 3. COMPUTE 2D SCREEN TARGET OVERLAY BOUNDING BOX (DOMOVERLAY)
+    // 3. COMPUTE 2D SCREEN TARGET OVERLAY & HIT ZONES (PIXEL-EXAKT)
     // ============================================================
     const vp = document.getElementById('viewport');
-    const vpW = vp ? vp.clientWidth : window.innerWidth;
-    const vpH = vp ? vp.clientHeight : window.innerHeight;
+    const vpW = (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth;
+    const vpH = (vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight;
 
-    const minX = Math.min(nose.x, lShoulder.x, rShoulder.x, lHip.x, rHip.x, lAnkle.x, rAnkle.x);
-    const maxX = Math.max(nose.x, lShoulder.x, rShoulder.x, lHip.x, rHip.x, lAnkle.x, rAnkle.x);
-    const minY = Math.min(nose.y - 0.06, lShoulder.y, rShoulder.y);
-    const maxY = Math.max(lAnkle.y, rAnkle.y, lHip.y + 0.35);
+    const lShPx = { x: lShoulder.x * vpW, y: lShoulder.y * vpH };
+    const rShPx = { x: rShoulder.x * vpW, y: rShoulder.y * vpH };
+    const lHipPx = { x: lHip.x * vpW, y: lHip.y * vpH };
+    const rHipPx = { x: rHip.x * vpW, y: rHip.y * vpH };
+    const nosePx = { x: nose.x * vpW, y: nose.y * vpH };
 
-    const padX = (maxX - minX) * 0.18;
-    const padY = (maxY - minY) * 0.05;
+    const shoulderPx = Math.max(28, Math.hypot(rShPx.x - lShPx.x, rShPx.y - lShPx.y));
+    const shMidX = (lShPx.x + rShPx.x) * 0.5;
+    const shTopY = Math.min(lShPx.y, rShPx.y);
+    const hipBotY = Math.max(lHipPx.y, rHipPx.y);
+
+    // 3A. Snäv Röd Huvudbox: endast ansikte/skalle (landmarks 0..10 med tajt marginal)
+    const faceIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const validFacePts = [];
+    for (let i = 0; i < faceIndices.length; i++) {
+      const p = lm[faceIndices[i]];
+      if (!p) continue;
+      const visOk = (p.visibility === undefined || p.visibility > 0.35);
+      if (!visOk) continue;
+      const px = p.x * vpW;
+      const py = p.y * vpH;
+      if (Math.hypot(px - nosePx.x, py - nosePx.y) <= shoulderPx * 0.85) {
+        validFacePts.push({ x: px, y: py });
+      }
+    }
+    if (validFacePts.length === 0) {
+      validFacePts.push({ x: nosePx.x, y: nosePx.y });
+    }
+
+    let fMinX = Infinity, fMaxX = -Infinity, fMinY = Infinity, fMaxY = -Infinity;
+    for (let i = 0; i < validFacePts.length; i++) {
+      const pt = validFacePts[i];
+      if (pt.x < fMinX) fMinX = pt.x;
+      if (pt.x > fMaxX) fMaxX = pt.x;
+      if (pt.y < fMinY) fMinY = pt.y;
+      if (pt.y > fMaxY) fMaxY = pt.y;
+    }
+
+    const rawFaceW = Math.max(0, fMaxX - fMinX);
+    const rawFaceH = Math.max(0, fMaxY - fMinY);
+    const faceCenterX = (fMinX + fMaxX) * 0.5;
+
+    // Tajt skalle/ansikte utan halsmarginal
+    const padHeadX = Math.max(shoulderPx * 0.035, rawFaceW * 0.08);
+    const headW = Math.max(shoulderPx * 0.28, Math.min(shoulderPx * 0.46, rawFaceW + padHeadX * 2));
+    const headLeft = Math.max(0, Math.min(vpW - headW, faceCenterX - headW * 0.5));
+
+    const padHeadTop = Math.max(shoulderPx * 0.13, rawFaceH * 0.38);
+    const padHeadBottom = Math.max(shoulderPx * 0.04, rawFaceH * 0.14);
+    const headBottom = fMaxY + padHeadBottom;
+    const rawHeadH = headBottom - (fMinY - padHeadTop);
+    const headH = Math.max(shoulderPx * 0.34, Math.min(shoulderPx * 0.52, rawHeadH));
+    const headTop = Math.max(0, headBottom - headH);
+
+    // 3B. Generös Grön KMI-zon (Kropp/Bål): bredare axel-till-höft & sträcker sig ända upp mot hakans underkant (inkl. nyckelben)
+    const shMinX = Math.min(lShPx.x, rShPx.x);
+    const shMaxX = Math.max(lShPx.x, rShPx.x);
+    const hipMinX = Math.min(lHipPx.x, rHipPx.x);
+    const hipMaxX = Math.max(lHipPx.x, rHipPx.x);
+    const bodyBaseLeft = Math.min(shMinX, hipMinX);
+    const bodyBaseRight = Math.max(shMaxX, hipMaxX);
+    const bodySpanW = Math.max(shoulderPx * 0.85, bodyBaseRight - bodyBaseLeft);
+    const torsoHeightPx = Math.max(shoulderPx * 0.85, hipBotY - shTopY);
+
+    // Extra bredd på båda sidor så ytterkant bål/axlar alltid räknas som godkänd grön träff
+    const torsoPadX = Math.max(shoulderPx * 0.24, bodySpanW * 0.24);
+    const torsoLeft = Math.max(0, bodyBaseLeft - torsoPadX);
+    const torsoRight = Math.min(vpW, bodyBaseRight + torsoPadX);
+    const torsoW = Math.max(56, torsoRight - torsoLeft);
+
+    // Sträck bålboxen högt upp till strax under hakan (täcker nyckelben & övre bröstkorg)
+    const neckGapPx = Math.max(2, shTopY - headBottom);
+    const torsoTop = Math.max(
+      headTop + headH + 2,
+      Math.min(shTopY - shoulderPx * 0.10, headBottom + Math.min(5, neckGapPx * 0.15))
+    );
+    const torsoBottom = Math.min(vpH, hipBotY + torsoHeightPx * 0.08);
+    const torsoH = Math.max(60, torsoBottom - torsoTop);
+
+    // 3C. Yttre person-omfång (inkludera ben om synliga utan att låta brusiga anklar blåsa upp X)
+    let legMaxY = torsoBottom + torsoHeightPx * 0.55;
+    const legLandmarks = [lKnee, rKnee, lAnkle, rAnkle];
+    for (let i = 0; i < legLandmarks.length; i++) {
+      const lp = legLandmarks[i];
+      if (lp && (lp.visibility === undefined || lp.visibility > 0.35)) {
+        const ly = lp.y * vpH;
+        if (ly > torsoBottom && ly <= vpH * 1.05) {
+          legMaxY = Math.max(legMaxY, ly);
+        }
+      }
+    }
+
+    const boxLeft = Math.max(0, Math.min(headLeft, torsoLeft));
+    const boxRight = Math.min(vpW, Math.max(headLeft + headW, torsoLeft + torsoW, shMidX + torsoW * 0.5));
+    const boxTop = Math.max(0, headTop - 3);
+    const boxBottom = Math.min(vpH, Math.max(torsoBottom + 24, legMaxY));
 
     this.targetBox = {
-      left: Math.max(0, (minX - padX) * vpW),
-      top: Math.max(0, (minY - padY) * vpH),
-      width: Math.max(60, Math.min(vpW, (maxX - minX + padX * 2) * vpW)),
-      height: Math.max(120, Math.min(vpH, (maxY - minY + padY * 2) * vpH)),
-      distance: currentZ
+      left: boxLeft,
+      top: boxTop,
+      width: Math.max(64, boxRight - boxLeft),
+      height: Math.max(120, boxBottom - boxTop),
+      distance: currentZ,
+      headBox: {
+        left: headLeft,
+        top: headTop,
+        width: headW,
+        height: headH
+      },
+      torsoBox: {
+        left: torsoLeft,
+        top: torsoTop,
+        width: torsoW,
+        height: torsoH
+      }
     };
   }
 
@@ -668,20 +779,54 @@ export class TaserAIPose {
 
     el.style.display = 'block';
 
+    const lerpBox = (curr, target, alpha) => {
+      curr.left += (target.left - curr.left) * alpha;
+      curr.top += (target.top - curr.top) * alpha;
+      curr.width += (target.width - curr.width) * alpha;
+      curr.height += (target.height - curr.height) * alpha;
+    };
+
     if (!this._currBox) {
-      this._currBox = { ...this.targetBox };
+      this._currBox = {
+        ...this.targetBox,
+        headBox: this.targetBox.headBox ? { ...this.targetBox.headBox } : null,
+        torsoBox: this.targetBox.torsoBox ? { ...this.targetBox.torsoBox } : null
+      };
     } else {
       const alpha = 0.28;
-      this._currBox.left += (this.targetBox.left - this._currBox.left) * alpha;
-      this._currBox.top += (this.targetBox.top - this._currBox.top) * alpha;
-      this._currBox.width += (this.targetBox.width - this._currBox.width) * alpha;
-      this._currBox.height += (this.targetBox.height - this._currBox.height) * alpha;
+      lerpBox(this._currBox, this.targetBox, alpha);
       this._currBox.distance = this.estimatedDistance;
+      if (this.targetBox.headBox) {
+        if (!this._currBox.headBox) this._currBox.headBox = { ...this.targetBox.headBox };
+        else lerpBox(this._currBox.headBox, this.targetBox.headBox, alpha);
+      }
+      if (this.targetBox.torsoBox) {
+        if (!this._currBox.torsoBox) this._currBox.torsoBox = { ...this.targetBox.torsoBox };
+        else lerpBox(this._currBox.torsoBox, this.targetBox.torsoBox, alpha);
+      }
     }
 
     el.style.transform = `translate3d(${this._currBox.left.toFixed(1)}px, ${this._currBox.top.toFixed(1)}px, 0)`;
     el.style.width = `${this._currBox.width.toFixed(1)}px`;
     el.style.height = `${this._currBox.height.toFixed(1)}px`;
+
+    const headEl = el.querySelector('.hud-zone-head');
+    if (headEl && this._currBox.headBox) {
+      const hb = this._currBox.headBox;
+      headEl.style.left = `${(hb.left - this._currBox.left).toFixed(1)}px`;
+      headEl.style.top = `${(hb.top - this._currBox.top).toFixed(1)}px`;
+      headEl.style.width = `${hb.width.toFixed(1)}px`;
+      headEl.style.height = `${hb.height.toFixed(1)}px`;
+    }
+
+    const torsoEl = el.querySelector('.hud-zone-torso');
+    if (torsoEl && this._currBox.torsoBox) {
+      const tb = this._currBox.torsoBox;
+      torsoEl.style.left = `${(tb.left - this._currBox.left).toFixed(1)}px`;
+      torsoEl.style.top = `${(tb.top - this._currBox.top).toFixed(1)}px`;
+      torsoEl.style.width = `${tb.width.toFixed(1)}px`;
+      torsoEl.style.height = `${tb.height.toFixed(1)}px`;
+    }
 
     const distEl = document.getElementById('target-live-dist');
     if (distEl) distEl.textContent = `${this.estimatedDistance.toFixed(1)} M`;
@@ -707,49 +852,81 @@ export class TaserAIPose {
     const d2Y = d1Y + Math.cos(tiltRad) * dropPx;
 
     const b = this._currBox || this.targetBox;
+    const hb = b.headBox || {
+      left: b.left + b.width * 0.37,
+      top: b.top + b.height * 0.02,
+      width: b.width * 0.26,
+      height: b.height * 0.115
+    };
+    const tb = b.torsoBox || {
+      left: b.left + b.width * 0.06,
+      top: b.top + b.height * 0.145,
+      width: b.width * 0.88,
+      height: b.height * 0.47
+    };
+
+    const fovYRad = ((this.camera ? this.camera.fov : 60) * Math.PI) / 180;
+    const camMetersPerPx = (2 * Math.tan(fovYRad / 2) * this.estimatedDistance) / Math.max(1, vpH);
+    const torsoMetersPerPx = 0.65 / Math.max(40, tb.height);
+    const metersPerPx = Math.max(camMetersPerPx, torsoMetersPerPx);
+
+    const toHitPoint = (px, py) => new THREE.Vector3(
+      (px - vpW * 0.5) * metersPerPx,
+      -(py - vpH * 0.5) * metersPerPx,
+      -this.estimatedDistance
+    );
+
+    const insideRect = (px, py, r) => (
+      px >= r.left && px <= r.left + r.width &&
+      py >= r.top && py <= r.top + r.height
+    );
 
     const testDart = (px, py) => {
-      // Check bounding box intersection
-      if (px < b.left || px > b.left + b.width || py < b.top || py > b.top + b.height) {
-        return null; // Miss
-      }
-
-      // Calculate relative vertical coordinate [0 = top of head, 1 = feet]
-      const relY = (py - b.top) / b.height;
-
-      if (relY >= 0 && relY < 0.18) {
+      // 1. Generös grön målzon först (inkl. nyckelben, bröst, övre & breda bålen)
+      if (insideRect(px, py, tb)) {
         return {
-          point: new THREE.Vector3(0, 0.5, -this.estimatedDistance),
-          object: this.headMesh,
-          zoneType: 'Head',
-          name: 'Huvud / Hals',
-          isApproved: false
-        };
-      } else if (relY >= 0.18 && relY < 0.58) {
-        return {
-          point: new THREE.Vector3(0, 0, -this.estimatedDistance),
+          point: toHitPoint(px, py),
           object: this.torsoMesh,
           zoneType: 'Torso',
           name: 'Godkand_Zon',
           isApproved: true
         };
-      } else if (relY >= 0.58 && relY < 0.68) {
+      }
+
+      // 2. Snäv röd förbjuden zon (endast tätt runt ansikte/skalle)
+      if (insideRect(px, py, hb)) {
         return {
-          point: new THREE.Vector3(0, -0.3, -this.estimatedDistance),
-          object: this.pelvisMesh,
-          zoneType: 'Groin',
-          name: 'Ljumskar / Genitalier',
+          point: toHitPoint(px, py),
+          object: this.headMesh,
+          zoneType: 'Head',
+          name: 'Huvud / Hals',
           isApproved: false
         };
-      } else {
+      }
+
+      // 3. Nedre delen av personen (under bålen)
+      if (insideRect(px, py, b) && py > tb.top + tb.height) {
+        const groinBottom = tb.top + tb.height + Math.max(12, b.height * 0.06);
+        const hipCenterX = tb.left + tb.width * 0.5;
+        if (py <= groinBottom && Math.abs(px - hipCenterX) <= tb.width * 0.22) {
+          return {
+            point: toHitPoint(px, py),
+            object: this.pelvisMesh,
+            zoneType: 'Groin',
+            name: 'Ljumskar / Genitalier',
+            isApproved: false
+          };
+        }
         return {
-          point: new THREE.Vector3(0, -0.6, -this.estimatedDistance),
+          point: toHitPoint(px, py),
           object: this.leftLegMesh,
           zoneType: 'Ben',
           name: 'Godkand_Zon',
           isApproved: true
         };
       }
+
+      return null; // Miss
     };
 
     const hit1 = testDart(d1X, d1Y);

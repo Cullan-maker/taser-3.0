@@ -1103,13 +1103,13 @@
             pointer-events: none !important;
         }
 
-        /* Huvud: Diskreta röda hörn-markeringar (brackets) & subtilt kryss, ingen text */
+        /* Huvud: Diskreta röda hörn-markeringar (brackets) & subtilt kryss, snävt runt ansikte/skalle */
         .hud-zone-head {
             position: absolute;
-            top: 1.5%;
-            left: 33%;
-            width: 34%;
-            height: 15.5%;
+            top: 2%;
+            left: 37%;
+            width: 26%;
+            height: 11.5%;
             background: rgba(231, 76, 60, 0.08);
             border-radius: 3px;
             pointer-events: none;
@@ -1149,13 +1149,13 @@
         .hud-head-cross::before { transform: translateY(-50%) rotate(45deg); }
         .hud-head-cross::after { transform: translateY(-50%) rotate(-45deg); }
 
-        /* Kropp (Målzon): Tunna gröna hörn-markeringar & svagt transparent grön fyllning */
+        /* Kropp (Målzon): Bredare & högre upp mot hakans underkant (inkl. nyckelben) */
         .hud-zone-torso {
             position: absolute;
-            top: 19%;
-            left: 16%;
-            width: 68%;
-            height: 40%;
+            top: 14.5%;
+            left: 6%;
+            width: 88%;
+            height: 47%;
             background: rgba(46, 204, 113, 0.065);
             box-shadow: inset 0 0 18px rgba(46, 204, 113, 0.08);
             border-radius: 3px;
@@ -2250,12 +2250,227 @@
             background: transparent !important;
             background-color: transparent !important;
         }
+
+        /* LIVE AR MARKÖR-KOD BRICKA I TOPPEN */
+        #live-ar-room-badge {
+            display: none;
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 9998;
+            align-items: center;
+            gap: 5px;
+            background: rgba(10, 14, 18, 0.9);
+            color: #2ecc71;
+            border: 1.5px solid rgba(46, 204, 113, 0.85);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        #live-ar-room-badge.hit-sent {
+            background: rgba(192, 57, 43, 0.95);
+            color: #ffffff;
+            border-color: #ff7675;
+            box-shadow: 0 0 18px rgba(231, 76, 60, 0.85);
+        }
+
+        /* MARKÖR-KNAPP I HUVUDMENYN */
+        .main-menu-btn-marker {
+            background: linear-gradient(180deg, #1e3d2f 0%, #11241c 100%);
+            color: #2ecc71;
+            border: 1px solid rgba(46, 204, 113, 0.72);
+            box-shadow: 0 4px 0 #09150f, 0 8px 18px rgba(0, 0, 0, 0.75);
+        }
+
+        /* MARKÖR-VY (#marker-overlay) */
+        #marker-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10005;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background: radial-gradient(circle at center, #141920 0%, #050505 100%);
+            color: #ecf0f1;
+            text-align: center;
+        }
+        #marker-overlay.marker-hit-active {
+            animation: markerHitRedFlash 0.16s infinite alternate !important;
+        }
+        @keyframes markerHitRedFlash {
+            0% { background: #7f0000; box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.95); }
+            100% { background: #ff1e1e; box-shadow: inset 0 0 140px rgba(255, 255, 255, 0.65); }
+        }
+        .marker-card {
+            width: 100%;
+            max-width: 390px;
+            background: linear-gradient(180deg, #1a1d24 0%, #0d0f13 100%);
+            border: 2px solid #2c313a;
+            border-top: 4px solid #2ecc71;
+            border-radius: 14px;
+            padding: 26px 20px;
+            box-shadow: 0 20px 55px rgba(0, 0, 0, 0.95);
+        }
+        #marker-overlay.marker-hit-active .marker-card {
+            background: rgba(20, 0, 0, 0.88);
+            border-color: #ffffff;
+            border-top-color: #ffffff;
+            box-shadow: 0 0 45px rgba(255, 0, 0, 0.95);
+        }
+        .marker-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            color: #050505;
+            background: #2ecc71;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+        .marker-title {
+            color: #2ecc71;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            margin: 0 0 8px 0;
+        }
+        .marker-desc {
+            color: #bdc3c7;
+            font-size: 12px;
+            line-height: 1.45;
+            margin: 0 0 18px 0;
+        }
+        .marker-code-input {
+            width: 100%;
+            max-width: 240px;
+            margin: 0 auto 14px auto;
+            display: block;
+            background: #07090c;
+            color: #f1c40f;
+            border: 2px solid #2ecc71;
+            border-radius: 10px;
+            padding: 14px 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 36px;
+            font-weight: 900;
+            letter-spacing: 10px;
+            text-align: center;
+            outline: none;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        .marker-code-input:focus {
+            border-color: #f1c40f;
+            box-shadow: 0 0 18px rgba(241, 196, 15, 0.35);
+        }
+        .marker-error-msg {
+            display: none;
+            color: #ff6b6b;
+            font-size: 11px;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+        }
+        .marker-connect-btn {
+            width: 100%;
+            padding: 15px 14px;
+            border-radius: 8px;
+            border: 1px solid #82e0aa;
+            background: linear-gradient(180deg, #2ecc71 0%, #219653 100%);
+            color: #050505;
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #145a32, 0 8px 20px rgba(46, 204, 113, 0.3);
+            margin-bottom: 10px;
+            touch-action: manipulation;
+        }
+        .marker-connect-btn:active { transform: translateY(2px); }
+        .marker-secondary-btn {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid #3c434f;
+            background: linear-gradient(180deg, #262b34 0%, #171a20 100%);
+            color: #ecf0f1;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .marker-leave-btn {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid #e74c3c;
+            background: linear-gradient(180deg, #c0392b 0%, #922b21 100%);
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #5b1812;
+            margin-top: 18px;
+            touch-action: manipulation;
+        }
+        .marker-status-box {
+            background: rgba(46, 204, 113, 0.12);
+            border: 2px solid #2ecc71;
+            border-radius: 10px;
+            padding: 20px 14px;
+            margin: 12px 0;
+        }
+        #marker-overlay.marker-hit-active .marker-status-box {
+            background: rgba(255, 0, 0, 0.35);
+            border-color: #ffffff;
+        }
+        #marker-status-text {
+            font-size: 20px;
+            font-weight: 900;
+            color: #2ecc71;
+            letter-spacing: 1px;
+            line-height: 1.3;
+            text-transform: uppercase;
+        }
+        #marker-overlay.marker-hit-active #marker-status-text {
+            font-size: 30px;
+            color: #ffffff;
+            text-shadow: 0 0 18px rgba(255, 255, 255, 0.95);
+        }
+        .marker-substatus {
+            margin-top: 10px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            color: #cbd5e1;
+            line-height: 1.45;
+        }
     </style>
 </head>
 <body>
 
     <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
     <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
+    <!-- LIVE AR MARKÖR-KOD BRICKA -->
+    <div id="live-ar-room-badge" aria-live="polite">🔗 MARKÖR-KOD: ----</div>
     <!-- STATUSPILL FÖR FUNKTIONSKONTROLL -->
     <div id="funk-status-pill" aria-live="polite">⚡ FUNKTIONSKONTROLL AKTIV</div>
     <!-- WEBXR HIT-TEST PLACERINGSKNAPP -->
@@ -2533,7 +2748,7 @@
         <div class="main-menu-card">
             <div class="main-menu-badge">TAKTISK PROCEDURSIMULATOR</div>
             <h1 id="main-menu-title">TASER 7 ELITE - VÄLJ LÄGE</h1>
-            <p class="main-menu-desc">Välj hur du vill träna. Mobil/handhållen bevarar standardvyn, medan VR-headset aktiverar delad stereoskopisk 3D-skärm och Bluetooth-joystick.</p>
+            <p class="main-menu-desc">Välj hur du vill träna. Mobil/handhållen bevarar standardvyn, VR-headset aktiverar delad 3D-skärm och Markör kopplar ihop din mobil med skytten.</p>
             <div class="main-menu-buttons">
                 <button type="button" id="menu-btn-mobile" class="main-menu-btn main-menu-btn-mobile">
                     📱 MOBIL / HANDHÅLLEN
@@ -2543,6 +2758,45 @@
                     🥽 VR-HEADSET (3D PASS-THROUGH)
                     <span>Delad Side-by-Side 3D-vy i helskärm för VR-glasögon &amp; Bluetooth-joystick</span>
                 </button>
+                <button type="button" id="menu-btn-marker" class="main-menu-btn main-menu-btn-marker">
+                    🎭 AGERA MARKÖR (MÅL)
+                    <span>Anslut till skyttens Live AR för vibration &amp; Taser-ljud vid träff</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MARKÖR-VY (ÖVNINGSPERSON SOM TAR EMOT TRÄFFAR I REALTID VIA FIRESTORE) -->
+    <div id="marker-overlay" role="dialog" aria-modal="true" aria-labelledby="marker-view-title">
+        <div class="marker-card">
+            <div class="marker-badge">MARKÖR-LÄGE (MÅLPERSON)</div>
+
+            <div id="marker-setup-view">
+                <h2 id="marker-view-title" class="marker-title">🎭 AGERA MARKÖR</h2>
+                <p class="marker-desc">Skriv in den 4-siffriga koden från skyttens Live AR-skärm och tryck på anslut.</p>
+                <input
+                    type="tel"
+                    id="marker-code-input"
+                    class="marker-code-input"
+                    maxlength="4"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    autocomplete="one-time-code"
+                    placeholder="0000"
+                    aria-label="4-siffrig rumskod"
+                />
+                <div id="marker-error-msg" class="marker-error-msg">Ange en giltig 4-siffrig rumskod (4 siffror).</div>
+                <button type="button" id="btn-marker-connect" class="marker-connect-btn">ANSLUT TILL ÖVNING</button>
+                <button type="button" id="btn-marker-back-menu" class="marker-secondary-btn">⬅ TILLBAKA TILL HUVUDMENY</button>
+            </div>
+
+            <div id="marker-ready-view" style="display: none;">
+                <h2 class="marker-title">🔗 ANSLUTEN: <span id="marker-active-code">----</span></h2>
+                <div class="marker-status-box">
+                    <div id="marker-status-text">🟢 REDO - LÄGG TELEFONEN I FICKAN</div>
+                    <div id="marker-substatus" class="marker-substatus">Väntar på träffsignal från skytten...</div>
+                </div>
+                <button type="button" id="btn-marker-leave" class="marker-leave-btn">⛔ LÄMNA LÄGE</button>
             </div>
         </div>
     </div>
@@ -3170,6 +3424,14 @@
             if (stdEl) stdEl.style.display = 'block';
             const btnPlaceXr = document.getElementById('btn-place-xr');
             if (btnPlaceXr) btnPlaceXr.style.display = 'none';
+            const roomBadgeMenu = document.getElementById('live-ar-room-badge');
+            if (roomBadgeMenu) {
+              roomBadgeMenu.style.display = 'none';
+              roomBadgeMenu.classList.remove('hit-sent');
+            }
+            if (window.taserApp) {
+              window.taserApp.liveARRoomCode = null;
+            }
             const hint = document.getElementById('place-hint');
             if (hint) hint.classList.remove('visible');
 
@@ -3983,6 +4245,406 @@
         });
         if (document.readyState !== 'loading') {
           setTimeout(initTaser3DWeapon, 60);
+        }
+      })();
+    </script>
+
+    <!-- FIREBASE FIRESTORE REALTIDSKOPPLING (SKYTT <-> MARKÖR) -->
+    <script type="module">
+      import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js';
+      import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js';
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyAPFH0oFUQmRv-7Aniyk3Mis9M5uWC6vqg",
+        authDomain: "taser-2d020.firebaseapp.com",
+        projectId: "taser-2d020",
+        storageBucket: "taser-2d020.firebasestorage.app",
+        messagingSenderId: "282411053779",
+        appId: "1:282411053779:web:2614029af3a43caf67da26",
+        measurementId: "G-S8Z8SDRRR8"
+      };
+
+      const firebaseApp = initializeApp(firebaseConfig);
+      const db = getFirestore(firebaseApp);
+
+      // Exponera hjälpare till js/app.js för Live AR-skyttens sessionshantering
+      window.taserFirebase = {
+        db,
+        async createSession(roomCode) {
+          const code = String(roomCode || '').trim();
+          if (!code) return false;
+          try {
+            await setDoc(doc(db, 'sessions', code), {
+              createdAt: Date.now(),
+              hitTimestamp: 0
+            });
+            return true;
+          } catch (err) {
+            console.warn('[FIREBASE] Kunde inte skapa session:', err);
+            return false;
+          }
+        },
+        async reportLiveHit(roomCode) {
+          const code = String(roomCode || '').trim();
+          if (!code) return false;
+          const payload = {
+            hitTimestamp: Date.now(),
+            status: 'HIT'
+          };
+          try {
+            await updateDoc(doc(db, 'sessions', code), payload);
+            return true;
+          } catch (err) {
+            try {
+              await setDoc(doc(db, 'sessions', code), { createdAt: Date.now(), ...payload }, { merge: true });
+              return true;
+            } catch (err2) {
+              console.warn('[FIREBASE] Kunde inte skicka träff:', err2);
+              return false;
+            }
+          }
+        }
+      };
+
+      // Markör-läge (Målperson) logik
+      (function initMarkerMode() {
+        const mainMenu = document.getElementById('main-menu');
+        const btnOpenMarker = document.getElementById('menu-btn-marker');
+        const markerOverlay = document.getElementById('marker-overlay');
+        const setupView = document.getElementById('marker-setup-view');
+        const readyView = document.getElementById('marker-ready-view');
+        const codeInput = document.getElementById('marker-code-input');
+        const errorMsg = document.getElementById('marker-error-msg');
+        const btnConnect = document.getElementById('btn-marker-connect');
+        const btnBackMenu = document.getElementById('btn-marker-back-menu');
+        const btnLeave = document.getElementById('btn-marker-leave');
+        const activeCodeEl = document.getElementById('marker-active-code');
+        const statusTextEl = document.getElementById('marker-status-text');
+        const subStatusEl = document.getElementById('marker-substatus');
+
+        let unsubscribeSession = null;
+        let wakeLockSentinel = null;
+        let markerAudioCtx = null;
+        let silentKeepAliveAudio = null;
+        let hitResetTimer = null;
+        let markerPulseInterval = null;
+        let markerBuzzOsc = null;
+        let markerBuzzGain = null;
+        let isMarkerConnected = false;
+
+        function unlockMarkerAudioAndHaptics() {
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              if (!markerAudioCtx) {
+                markerAudioCtx = new AudioCtx();
+              }
+              if (markerAudioCtx.state === 'suspended') {
+                markerAudioCtx.resume().catch(() => {});
+              }
+              // Tyst 1-sample-puls så webbläsaren låser upp ljud vid användarklicket
+              const buf = markerAudioCtx.createBuffer(1, 1, markerAudioCtx.sampleRate);
+              const src = markerAudioCtx.createBufferSource();
+              src.buffer = buf;
+              src.connect(markerAudioCtx.destination);
+              src.start(0);
+            }
+          } catch (_) {}
+
+          try {
+            if (!silentKeepAliveAudio) {
+              const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+              silentKeepAliveAudio = new Audio(silentWav);
+              silentKeepAliveAudio.loop = true;
+              silentKeepAliveAudio.volume = 0.01;
+            }
+            silentKeepAliveAudio.play().catch(() => {});
+          } catch (_) {}
+
+          try {
+            if (navigator.vibrate) {
+              navigator.vibrate(20);
+            }
+          } catch (_) {}
+        }
+
+        function stopMarkerTaserAudio() {
+          if (markerPulseInterval) {
+            clearInterval(markerPulseInterval);
+            markerPulseInterval = null;
+          }
+          if (markerBuzzOsc && markerBuzzGain && markerAudioCtx) {
+            try {
+              markerBuzzGain.gain.setTargetAtTime(0.0001, markerAudioCtx.currentTime, 0.02);
+              markerBuzzOsc.stop(markerAudioCtx.currentTime + 0.05);
+            } catch (_) {}
+          }
+          markerBuzzOsc = null;
+          markerBuzzGain = null;
+        }
+
+        function playMarkerTaserSound5Seconds() {
+          stopMarkerTaserAudio();
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!markerAudioCtx && AudioCtx) {
+              markerAudioCtx = new AudioCtx();
+            }
+            if (!markerAudioCtx) return;
+            if (markerAudioCtx.state === 'suspended') {
+              markerAudioCtx.resume().catch(() => {});
+            }
+
+            const ctx = markerAudioCtx;
+            const now = ctx.currentTime;
+
+            // Bas-brum (sågstand 60 Hz för Taser-transformator)
+            markerBuzzOsc = ctx.createOscillator();
+            markerBuzzGain = ctx.createGain();
+            markerBuzzOsc.type = 'sawtooth';
+            markerBuzzOsc.frequency.setValueAtTime(62, now);
+            markerBuzzGain.gain.setValueAtTime(0.45, now);
+            markerBuzzOsc.connect(markerBuzzGain);
+            markerBuzzGain.connect(ctx.destination);
+            markerBuzzOsc.start(now);
+
+            // Förgenerera kort smatter-brusbuffert för tydliga elektriska pulser (~20 Hz)
+            const burstLen = Math.max(1, Math.floor(ctx.sampleRate * 0.032));
+            const noiseBuffer = ctx.createBuffer(1, burstLen, ctx.sampleRate);
+            const chData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < burstLen; i++) {
+              chData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (burstLen * 0.3));
+            }
+
+            const firePulse = () => {
+              if (!markerAudioCtx || markerAudioCtx.state === 'closed') return;
+              try {
+                const t = markerAudioCtx.currentTime;
+
+                // Smattrande högspänningsgnista via noise + bandpass
+                const noiseSrc = markerAudioCtx.createBufferSource();
+                noiseSrc.buffer = noiseBuffer;
+                const bp = markerAudioCtx.createBiquadFilter();
+                bp.type = 'bandpass';
+                bp.frequency.setValueAtTime(2400 + Math.random() * 1400, t);
+                bp.Q.setValueAtTime(2.2, t);
+                const ng = markerAudioCtx.createGain();
+                ng.gain.setValueAtTime(0.95, t);
+                ng.gain.exponentialRampToValueAtTime(0.01, t + 0.03);
+                noiseSrc.connect(bp);
+                bp.connect(ng);
+                ng.connect(markerAudioCtx.destination);
+                noiseSrc.start(t);
+                noiseSrc.stop(t + 0.032);
+
+                // Tydlig oscillator-knäpp (square) som hörs klart även ur ficka
+                const clickOsc = markerAudioCtx.createOscillator();
+                const clickGain = markerAudioCtx.createGain();
+                clickOsc.type = 'square';
+                clickOsc.frequency.setValueAtTime(1400 + Math.random() * 900, t);
+                clickOsc.frequency.exponentialRampToValueAtTime(180, t + 0.025);
+                clickGain.gain.setValueAtTime(0.55, t);
+                clickGain.gain.exponentialRampToValueAtTime(0.005, t + 0.026);
+                clickOsc.connect(clickGain);
+                clickGain.connect(markerAudioCtx.destination);
+                clickOsc.start(t);
+                clickOsc.stop(t + 0.028);
+
+                if (markerBuzzOsc && markerBuzzGain) {
+                  markerBuzzOsc.frequency.setValueAtTime(55 + Math.random() * 55, t);
+                  markerBuzzGain.gain.setValueAtTime(0.35 + Math.random() * 0.25, t);
+                }
+              } catch (_) {}
+            };
+
+            firePulse();
+            markerPulseInterval = setInterval(firePulse, 50);
+
+            setTimeout(() => {
+              stopMarkerTaserAudio();
+            }, 5000);
+          } catch (err) {
+            console.warn('[MARKÖR LJUD] Kunde inte spela upp Taser-ljud:', err);
+          }
+        }
+
+        function triggerMarkerHitEffect() {
+          if (hitResetTimer) {
+            clearTimeout(hitResetTimer);
+            hitResetTimer = null;
+          }
+
+          // 1. Vibration i 5 sekunder
+          if (navigator.vibrate) {
+            try {
+              navigator.vibrate([5000]);
+            } catch (_) {}
+          }
+
+          // 2. Elektriskt Taser-ljud (smattrande pulser) i 5 sekunder
+          playMarkerTaserSound5Seconds();
+
+          // 3. Röd blinkande skärm + stor text
+          if (markerOverlay) markerOverlay.classList.add('marker-hit-active');
+          if (statusTextEl) statusTextEl.textContent = '⚡ TRÄFFAD (KMI)!';
+          if (subStatusEl) subStatusEl.textContent = '5 sekunders NMI-cykel aktiv — vibration och ljudeffekt körs!';
+
+          hitResetTimer = setTimeout(() => {
+            if (markerOverlay) markerOverlay.classList.remove('marker-hit-active');
+            if (isMarkerConnected) {
+              if (statusTextEl) statusTextEl.textContent = '🟢 REDO - LÄGG TELEFONEN I FICKAN';
+              if (subStatusEl) subStatusEl.textContent = 'Väntar på nästa träffsignal från skytten...';
+            }
+          }, 5000);
+        }
+
+        async function requestScreenWakeLock() {
+          if (!('wakeLock' in navigator) || typeof navigator.wakeLock.request !== 'function') {
+            return false;
+          }
+          try {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', () => {
+              wakeLockSentinel = null;
+            });
+            return true;
+          } catch (err) {
+            console.warn('[WAKE LOCK] Kunde inte aktivera wakeLock:', err);
+            return false;
+          }
+        }
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && isMarkerConnected && !wakeLockSentinel) {
+            requestScreenWakeLock();
+          }
+        });
+
+        function cleanupMarkerMode() {
+          isMarkerConnected = false;
+          if (unsubscribeSession) {
+            try { unsubscribeSession(); } catch (_) {}
+            unsubscribeSession = null;
+          }
+          if (hitResetTimer) {
+            clearTimeout(hitResetTimer);
+            hitResetTimer = null;
+          }
+          stopMarkerTaserAudio();
+          if (navigator.vibrate) {
+            try { navigator.vibrate(0); } catch (_) {}
+          }
+          if (silentKeepAliveAudio) {
+            try { silentKeepAliveAudio.pause(); } catch (_) {}
+          }
+          if (wakeLockSentinel) {
+            try { wakeLockSentinel.release(); } catch (_) {}
+            wakeLockSentinel = null;
+          }
+          if (markerOverlay) markerOverlay.classList.remove('marker-hit-active');
+          if (setupView) setupView.style.display = 'block';
+          if (readyView) readyView.style.display = 'none';
+          if (errorMsg) errorMsg.style.display = 'none';
+        }
+
+        if (codeInput) {
+          codeInput.addEventListener('input', () => {
+            codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 4);
+            if (errorMsg) errorMsg.style.display = 'none';
+          });
+        }
+
+        if (btnOpenMarker) {
+          btnOpenMarker.addEventListener('click', () => {
+            cleanupMarkerMode();
+            if (mainMenu) mainMenu.style.display = 'none';
+            if (markerOverlay) markerOverlay.style.display = 'flex';
+            if (codeInput) {
+              codeInput.value = '';
+              setTimeout(() => codeInput.focus(), 80);
+            }
+          });
+        }
+
+        if (btnBackMenu) {
+          btnBackMenu.addEventListener('click', () => {
+            cleanupMarkerMode();
+            if (markerOverlay) markerOverlay.style.display = 'none';
+            if (mainMenu) mainMenu.style.display = 'flex';
+          });
+        }
+
+        if (btnLeave) {
+          btnLeave.addEventListener('click', () => {
+            cleanupMarkerMode();
+            if (markerOverlay) markerOverlay.style.display = 'none';
+            if (mainMenu) mainMenu.style.display = 'flex';
+          });
+        }
+
+        if (btnConnect) {
+          btnConnect.addEventListener('click', async () => {
+            const code = codeInput ? codeInput.value.replace(/\D/g, '').trim() : '';
+            if (!/^\d{4}$/.test(code)) {
+              if (errorMsg) errorMsg.style.display = 'block';
+              return;
+            }
+            if (errorMsg) errorMsg.style.display = 'none';
+
+            // Lås upp Web Audio & vibration direkt vid användarklick
+            unlockMarkerAudioAndHaptics();
+
+            // Förhindra att skärmen slocknar i fickan
+            const wakeOk = await requestScreenWakeLock();
+
+            isMarkerConnected = true;
+            if (activeCodeEl) activeCodeEl.textContent = code;
+            if (setupView) setupView.style.display = 'none';
+            if (readyView) readyView.style.display = 'block';
+            if (statusTextEl) statusTextEl.textContent = '🟢 REDO - LÄGG TELEFONEN I FICKAN';
+            if (subStatusEl) {
+              subStatusEl.textContent = wakeOk
+                ? 'Skärmlås (Wake Lock) & ljud aktivt. Lyssnar i realtid...'
+                : 'Ljud & realtidslyssning aktivt. Väntar på träffsignal...';
+            }
+
+            if (unsubscribeSession) {
+              try { unsubscribeSession(); } catch (_) {}
+              unsubscribeSession = null;
+            }
+
+            const connectTime = Date.now();
+            let initialSnapshotHandled = false;
+            let lastHandledHitTs = 0;
+
+            const sessionDocRef = doc(db, 'sessions', code);
+            unsubscribeSession = onSnapshot(sessionDocRef, (snap) => {
+              if (!isMarkerConnected) return;
+              const data = snap.exists() ? snap.data() : null;
+              const hitTs = data && typeof data.hitTimestamp === 'number' ? data.hitTimestamp : 0;
+
+              if (!initialSnapshotHandled) {
+                initialSnapshotHandled = true;
+                if (hitTs > 0 && hitTs >= connectTime) {
+                  lastHandledHitTs = hitTs;
+                  triggerMarkerHitEffect();
+                } else {
+                  lastHandledHitTs = hitTs;
+                }
+                return;
+              }
+
+              if (hitTs > 0 && hitTs > lastHandledHitTs) {
+                lastHandledHitTs = hitTs;
+                triggerMarkerHitEffect();
+              }
+            }, (err) => {
+              console.warn('[FIRESTORE MARKÖR] Lyssningsfel:', err);
+              if (subStatusEl) {
+                subStatusEl.textContent = 'Anslutningsvarning — kontrollerar nätverk...';
+              }
+            });
+          });
         }
       })();
     </script>
