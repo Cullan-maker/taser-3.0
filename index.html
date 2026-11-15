@@ -171,7 +171,8 @@
 
         body.vr-active #camera-container,
         body.vr-headset-mode #camera-container,
-        body.live-ai-active #camera-container {
+        body.live-ai-active #camera-container,
+        body.live-ar-active #camera-container {
             display: flex !important;
         }
 
@@ -222,6 +223,18 @@
         @keyframes redStrobe { 0% { filter: sepia(1) hue-rotate(-50deg) saturate(5) brightness(1.2); } 100% { filter: none; } }
 
         /* ----- SIKTE OCH PROJEKTIONER ----- */
+        #hud-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none !important;
+            z-index: 9999 !important;
+            background: transparent !important;
+            display: block;
+        }
+
         .fixed-aim-layer {
             position: absolute;
             top: 0;
@@ -229,7 +242,7 @@
             width: 100%;
             height: 100%;
             pointer-events: none !important;
-            z-index: 20;
+            z-index: 9999;
         }
 
         .flashlight-beam {
@@ -1059,7 +1072,8 @@
             box-shadow: 0 1px 0 #3b0d09, inset 0 2px 4px rgba(0,0,0,0.8) !important;
         }
 
-        #webxr-grip-row {
+        #webxr-grip-row,
+        #live-ar-grip-row {
             display: none !important;
             grid-template-columns: 1fr 1fr;
             gap: 6px;
@@ -1077,6 +1091,16 @@
             transition: opacity 0.2s ease;
             box-sizing: border-box;
             will-change: transform, width, height;
+        }
+
+        body:not(.live-ar-active):not(.live-ai-active) #live-target-overlay,
+        body.webxr-mode #live-target-overlay,
+        body.ar-combat-mode #live-target-overlay,
+        body.xr-placing #live-target-overlay {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         .target-svg {
@@ -1172,16 +1196,19 @@
         html.ar-active,
         html.webxr-mode,
         html.live-ai-active,
+        html.live-ar-active,
         body.ar-active,
         body.webxr-mode,
-        body.live-ai-active {
+        body.live-ai-active,
+        body.live-ar-active {
             background: transparent !important;
             background-color: transparent !important;
         }
 
         body.ar-active .simulator-wrapper,
         body.webxr-mode .simulator-wrapper,
-        body.live-ai-active .simulator-wrapper {
+        body.live-ai-active .simulator-wrapper,
+        body.live-ar-active .simulator-wrapper {
             background: transparent !important;
             background-color: transparent !important;
             box-shadow: none !important;
@@ -1194,7 +1221,8 @@
 
         body.ar-active .header-bar,
         body.webxr-mode .header-bar,
-        body.live-ai-active .header-bar {
+        body.live-ai-active .header-bar,
+        body.live-ar-active .header-bar {
             display: none !important;
         }
 
@@ -1202,9 +1230,11 @@
         body.ar-active #landscape-guard,
         body.webxr-mode #landscape-guard,
         body.live-ai-active #landscape-guard,
+        body.live-ar-active #landscape-guard,
         html.ar-active #landscape-guard,
         html.webxr-mode #landscape-guard,
-        html.live-ai-active #landscape-guard {
+        html.live-ai-active #landscape-guard,
+        html.live-ar-active #landscape-guard {
             display: none !important;
             visibility: hidden !important;
             pointer-events: none !important;
@@ -1214,9 +1244,11 @@
         body.ar-active .viewport,
         body.webxr-mode .viewport,
         body.live-ai-active .viewport,
+        body.live-ar-active .viewport,
         body.ar-active #viewport,
         body.webxr-mode #viewport,
-        body.live-ai-active #viewport {
+        body.live-ai-active #viewport,
+        body.live-ar-active #viewport {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
@@ -1265,12 +1297,15 @@
         body.ar-active #three-canvas,
         body.webxr-mode #three-canvas,
         body.live-ai-active #three-canvas,
+        body.live-ar-active #three-canvas,
         body.ar-active #three-canvas canvas,
         body.webxr-mode #three-canvas canvas,
         body.live-ai-active #three-canvas canvas,
+        body.live-ar-active #three-canvas canvas,
         body.ar-active .viewport canvas,
         body.webxr-mode .viewport canvas,
-        body.live-ai-active .viewport canvas {
+        body.live-ai-active .viewport canvas,
+        body.live-ar-active .viewport canvas {
             background: transparent !important;
             background-color: transparent !important;
             box-shadow: none !important;
@@ -1283,28 +1318,37 @@
 
         body.ar-active .camera-feed,
         body.live-ai-active .camera-feed,
+        body.live-ar-active .camera-feed,
         body.ar-active #camera-feed,
-        body.live-ai-active #camera-feed {
+        body.live-ai-active #camera-feed,
+        body.live-ar-active #camera-feed {
             display: block !important;
         }
 
         body.ar-active .fixed-aim-layer,
         body.webxr-mode .fixed-aim-layer,
-        body.live-ai-active .fixed-aim-layer {
+        body.live-ai-active .fixed-aim-layer,
+        body.live-ar-active .fixed-aim-layer,
+        body.ar-active #hud-canvas,
+        body.webxr-mode #hud-canvas,
+        body.live-ai-active #hud-canvas,
+        body.live-ar-active #hud-canvas {
             pointer-events: none !important;
-            z-index: 10 !important;
+            z-index: 9999 !important;
         }
 
         body.ar-active .hud-overlay,
         body.webxr-mode .hud-overlay,
-        body.live-ai-active .hud-overlay {
+        body.live-ai-active .hud-overlay,
+        body.live-ar-active .hud-overlay {
             pointer-events: none !important;
             z-index: 15 !important;
         }
 
         body.ar-active .main-container,
         body.webxr-mode .main-container,
-        body.live-ai-active .main-container {
+        body.live-ai-active .main-container,
+        body.live-ar-active .main-container {
             position: fixed !important;
             bottom: 0 !important;
             left: 50% !important;
@@ -1318,7 +1362,8 @@
 
         body.ar-active .sim-controls,
         body.webxr-mode .sim-controls,
-        body.live-ai-active .sim-controls {
+        body.live-ai-active .sim-controls,
+        body.live-ar-active .sim-controls {
             background-color: rgba(44, 62, 80, 0.92) !important;
             box-shadow: 0 -4px 20px rgba(0,0,0,0.6) !important;
             border: 1px solid rgba(241, 196, 15, 0.4) !important;
@@ -1328,7 +1373,8 @@
 
         body.ar-active .log-box,
         body.webxr-mode .log-box,
-        body.live-ai-active .log-box {
+        body.live-ai-active .log-box,
+        body.live-ar-active .log-box {
             display: none !important;
         }
 
@@ -1517,6 +1563,165 @@
             background: linear-gradient(180deg, rgba(229, 57, 53, 0.94) 0%, rgba(183, 28, 28, 0.94) 55%, rgba(142, 21, 21, 0.96) 100%) !important;
             border: 1px solid #ff6b6b !important;
             box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55), inset 0 1px 0 rgba(255,255,255,0.32) !important;
+        }
+
+        /* COMPACT LIVE-AR UI (.live-ar-active): Behåll endast Taser-chassi (säkring), Avfyra, Kassett, Batteri, Vinkla, Återställ och Avsluta */
+        body.live-ar-active .main-container,
+        .main-container.live-ar-active {
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 50% !important;
+            transform: translateX(-50%) scale(0.86) !important;
+            transform-origin: bottom center !important;
+            width: 100% !important;
+            max-width: 340px !important;
+            padding: 0 0 env(safe-area-inset-bottom, 6px) 0 !important;
+            overflow: visible !important;
+            z-index: 100 !important;
+            pointer-events: auto !important;
+        }
+
+        body.live-ar-active .taser-device,
+        .main-container.live-ar-active .taser-device {
+            width: min(280px, 88vw) !important;
+            padding-bottom: 6px !important;
+            background-color: rgba(252, 190, 0, 0.78) !important;
+            background-image:
+                linear-gradient(to bottom, rgba(28, 30, 36, 0.88) 0%, rgba(18, 20, 24, 0.88) 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
+                radial-gradient(rgba(17, 17, 17, 0.28) 1.3px, transparent 1.3px),
+                radial-gradient(rgba(17, 17, 17, 0.28) 1.3px, transparent 1.3px) !important;
+            background-position: 0 0, 0 0, 6px 6px !important;
+            background-size: 100% 100%, 12px 12px, 12px 12px !important;
+            background-repeat: no-repeat, repeat, repeat !important;
+            border: 2px solid rgba(252, 190, 0, 0.82) !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.55), inset 0 2px 8px rgba(255,255,255,0.16) !important;
+            backdrop-filter: blur(3px) !important;
+            -webkit-backdrop-filter: blur(3px) !important;
+        }
+
+        body.live-ar-active .display-bezel,
+        .main-container.live-ar-active .display-bezel {
+            margin: 5px auto 6px auto !important;
+            width: 158px !important;
+            height: 54px !important;
+            background-color: rgba(16, 18, 22, 0.84) !important;
+            border-color: rgba(0, 0, 0, 0.85) !important;
+        }
+
+        body.live-ar-active .display-screen,
+        .main-container.live-ar-active .display-screen {
+            width: 142px !important;
+            height: 40px !important;
+            background-color: rgba(12, 14, 18, 0.88) !important;
+        }
+
+        body.live-ar-active .safety-container,
+        .main-container.live-ar-active .safety-container {
+            margin-top: 4px !important;
+        }
+
+        body.live-ar-active .sim-controls,
+        .main-container.live-ar-active .sim-controls,
+        .sim-controls.live-ar-active {
+            width: min(295px, 92vw) !important;
+            background: linear-gradient(180deg, rgba(24, 27, 33, 0.86) 0%, rgba(13, 15, 19, 0.92) 100%) !important;
+            backdrop-filter: blur(4px) !important;
+            -webkit-backdrop-filter: blur(4px) !important;
+            border: 1.5px solid rgba(252, 190, 0, 0.52) !important;
+            border-bottom: none !important;
+            border-radius: 16px 16px 0 0 !important;
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255,255,255,0.12) !important;
+            padding: 14px 8px 10px 8px !important;
+            margin-top: -12px !important;
+        }
+
+        body.live-ar-active .status-grid,
+        body.live-ar-active #btn-scenario,
+        body.live-ar-active .btn-scenario,
+        body.live-ar-active #btn-kontaktstot,
+        body.live-ar-active .btn-kontaktstot,
+        body.live-ar-active #btn-stealth,
+        body.live-ar-active .btn-stealth,
+        body.live-ar-active #btn-warn,
+        body.live-ar-active .btn-warn,
+        body.live-ar-active #normal-xr-row,
+        body.live-ar-active #webxr-grip-row,
+        body.live-ar-active #btn-clothing,
+        body.live-ar-active .btn-clothing,
+        body.live-ar-active #btn-voice,
+        body.live-ar-active .btn-voice,
+        body.live-ar-active #btn-gyro,
+        body.live-ar-active .btn-gyro,
+        body.live-ar-active #btn-info,
+        body.live-ar-active .btn-info,
+        body.live-ar-active .btn-grid-compact:has(#btn-clothing),
+        body.live-ar-active div:has(> #btn-info),
+        body.live-ar-active .log-box,
+        body.live-ar-active #log,
+        body.live-ar-active .header-bar,
+        .main-container.live-ar-active .status-grid,
+        .main-container.live-ar-active #btn-scenario,
+        .main-container.live-ar-active #btn-kontaktstot,
+        .main-container.live-ar-active #btn-stealth,
+        .main-container.live-ar-active #btn-warn,
+        .main-container.live-ar-active #normal-xr-row,
+        .main-container.live-ar-active #webxr-grip-row,
+        .main-container.live-ar-active #btn-clothing,
+        .main-container.live-ar-active #btn-voice,
+        .main-container.live-ar-active #btn-gyro,
+        .main-container.live-ar-active #btn-info,
+        .main-container.live-ar-active .btn-grid-compact:has(#btn-clothing),
+        .main-container.live-ar-active div:has(> #btn-info),
+        .main-container.live-ar-active .log-box {
+            display: none !important;
+        }
+
+        body.live-ar-active .btn-grid-compact:has(#btn-cassette),
+        body.live-ar-active .btn-grid-compact:has(#btn-tilt),
+        .main-container.live-ar-active .btn-grid-compact:has(#btn-cassette),
+        .main-container.live-ar-active .btn-grid-compact:has(#btn-tilt) {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 5px !important;
+            margin-bottom: 5px !important;
+        }
+
+        body.live-ar-active #live-ar-grip-row,
+        .main-container.live-ar-active #live-ar-grip-row {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 5px !important;
+            margin-top: 2px !important;
+            margin-bottom: 0 !important;
+            visibility: visible !important;
+        }
+
+        body.live-ar-active .btn-trigger,
+        .main-container.live-ar-active .btn-trigger {
+            background: linear-gradient(180deg, rgba(229, 57, 53, 0.94) 0%, rgba(183, 28, 28, 0.94) 55%, rgba(142, 21, 21, 0.96) 100%) !important;
+            border: 1px solid #ff6b6b !important;
+            box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55), inset 0 1px 0 rgba(255,255,255,0.32) !important;
+            min-height: 42px !important;
+            padding: 9px 8px !important;
+            margin-top: 2px !important;
+            margin-bottom: 5px !important;
+        }
+
+        body.live-ar-active #btn-cassette,
+        body.live-ar-active #btn-battery,
+        body.live-ar-active #btn-tilt,
+        body.live-ar-active #btn-reset,
+        body.live-ar-active #btn-live-ar-exit,
+        .main-container.live-ar-active #btn-cassette,
+        .main-container.live-ar-active #btn-battery,
+        .main-container.live-ar-active #btn-tilt,
+        .main-container.live-ar-active #btn-reset,
+        .main-container.live-ar-active #btn-live-ar-exit {
+            display: inline-flex !important;
+            visibility: visible !important;
+            min-height: 36px !important;
+            padding: 6px 4px !important;
+            font-size: 9.5px !important;
+            font-weight: 800 !important;
         }
 
         /* FUNKTIONSKONTROLL-LÄGE: TYDLIG TASER-GUL BAKGRUND (#FCBE00) I BÅDE STANDARD- OCH WEBXR-LÄGE */
@@ -1920,10 +2125,12 @@
         body.vr-active .header-bar,
         body.vr-active .main-container,
         body.vr-active #landscape-guard,
+        body.vr-active #hud-canvas,
         body.vr-active .fixed-aim-layer,
         body.vr-headset-mode .header-bar,
         body.vr-headset-mode .main-container,
         body.vr-headset-mode #landscape-guard,
+        body.vr-headset-mode #hud-canvas,
         body.vr-headset-mode .fixed-aim-layer {
             display: none !important;
             visibility: hidden !important;
@@ -2080,6 +2287,7 @@
                 </div>
             </div>
 
+            <canvas id="hud-canvas"></canvas>
             <div class="fixed-aim-layer">
                 <div id="flashlight" class="flashlight-beam"></div>
                 <div id="laser-green" class="laser-green"></div>
@@ -2167,6 +2375,11 @@
                     <div id="webxr-grip-row" class="btn-grid-compact">
                         <button type="button" class="action-btn btn btn-xr-move" id="btn-xr-move-target" aria-label="Flytta mål">🔄 FLYTTA MÅL</button>
                         <button type="button" class="action-btn btn btn-xr-exit" id="btn-xr-exit" aria-label="Avsluta WebXR">⛔ AVSLUTA WEBXR</button>
+                    </div>
+
+                    <!-- Live-AR-specifik avsluta-knapp integrerad i handgreppet -->
+                    <div id="live-ar-grip-row" class="btn-grid-compact">
+                        <button type="button" class="action-btn btn btn-xr-exit" id="btn-live-ar-exit" aria-label="Avsluta Live AR">⛔ AVSLUTA LIVE AR</button>
                     </div>
 
                     <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr 1fr;">
@@ -2363,8 +2576,14 @@
           if (cameraContainerEl) {
             cameraContainerEl.style.display = 'none';
           }
-          document.documentElement.classList.remove('camera-active', 'live-ai-active');
-          document.body.classList.remove('camera-active', 'live-ai-active');
+          document.documentElement.classList.remove('camera-active', 'live-ai-active', 'live-ar-active');
+          document.body.classList.remove('camera-active', 'live-ai-active', 'live-ar-active');
+          const mcEl = document.getElementById('main-container');
+          if (mcEl) mcEl.classList.remove('live-ar-active');
+          const scEl = document.querySelector('.sim-controls');
+          if (scEl) scEl.classList.remove('live-ar-active');
+          const liveTargetEl = document.getElementById('live-target-overlay');
+          if (liveTargetEl) liveTargetEl.style.display = 'none';
         }
         window.stopCameraPassThrough = stopCameraPassThrough;
 
@@ -2765,8 +2984,12 @@
             window.appMode = appMode;
             window.currentMode = currentMode;
 
-            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
-            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
+            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
+            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
+            const mcMobile = document.getElementById('main-container');
+            if (mcMobile) mcMobile.classList.remove('ar-combat-mode', 'live-ar-active');
+            const scMobile = document.querySelector('.sim-controls');
+            if (scMobile) scMobile.classList.remove('ar-combat-mode', 'live-ar-active');
 
             if (typeof window.stopHandTracking === 'function') {
               window.stopHandTracking();
@@ -2883,13 +3106,13 @@
             window.appMode = appMode;
             window.currentMode = currentMode;
 
-            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing', 'function-check-active');
-            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing', 'function-check-active');
+            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing', 'function-check-active');
+            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing', 'function-check-active');
 
             const mainContainer = document.getElementById('main-container');
-            if (mainContainer) mainContainer.classList.remove('ar-combat-mode');
+            if (mainContainer) mainContainer.classList.remove('ar-combat-mode', 'live-ar-active');
             const simControls = document.querySelector('.sim-controls');
-            if (simControls) simControls.classList.remove('ar-combat-mode');
+            if (simControls) simControls.classList.remove('ar-combat-mode', 'live-ar-active');
 
             const stdEl = document.getElementById('standard-controls');
             if (stdEl) stdEl.style.display = 'block';
@@ -2934,6 +3157,12 @@
                 window.taserApp.scene.disableARMode();
                 window.taserApp.scene.clearWiresAndDarts();
                 window.taserApp.scene.resetTarget();
+                window.taserApp.scene.set3DVisibility(true);
+              }
+              const tLabelMenu = document.getElementById('target-label');
+              if (tLabelMenu) {
+                tLabelMenu.textContent = 'PERSON (3D)';
+                tLabelMenu.classList.remove('armed');
               }
               window.taserApp.stopScenario();
               window.taserApp.updateDisplay();

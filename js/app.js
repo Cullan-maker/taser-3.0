@@ -438,6 +438,7 @@ export class TaserApp {
         this.onXRSessionEnd();
       }
     }, { useClick: true });
+    this.setupTactileButton('btn-live-ar-exit', () => this.stopRealPersonAI(), { useClick: true });
     this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'));
     this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'));
 
@@ -621,8 +622,8 @@ export class TaserApp {
       // Perform 3D raycast on mannequin or Live Target
       let hitResult = this.scene.fireDarts({ ndc1, ndc2, chamber: firedChamber });
 
-      // Live AI-Targeting (Personspårning): Kontrollera om skotten överlappar med måltavlans zoner
-      if (this.aiPose && this.aiPose.isActive && this.aiPose.isPersonDetected) {
+      // Live AI-Targeting (Personspårning): Kontrollera endast om Live-AR mot riktig människa är aktivt
+      if (this.aiPose && (typeof this.aiPose.isLiveARModeActive === 'function' ? this.aiPose.isLiveARModeActive() : this.aiPose.isActive) && this.aiPose.isPersonDetected) {
         const liveHits = this.aiPose.checkScreenHit(this.aimX, this.aimY, spreadInfo.visualDropPx);
         if (liveHits) {
           hitResult = liveHits;
@@ -798,19 +799,129 @@ export class TaserApp {
 
     const isVRMode = (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
     const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
+    const isLiveAR = typeof document !== 'undefined' && (
+      document.body.classList.contains('live-ar-active') ||
+      document.body.classList.contains('live-ai-active')
+    );
     const hasCartridge = (this.fsm.chamber1 === ChamberState.LOADED || this.fsm.chamber2 === ChamberState.LOADED);
-    const shouldShow = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode && hasCartridge;
-
-    if (flashlight) flashlight.style.display = (!this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode) ? 'block' : 'none';
+    const flashlightOn = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
+    const shouldShow = flashlightOn && hasCartridge;
 
     if (isVRMode || isXRPresenting) {
       // VR & WebXR: 3D-laserpunkterna projiceras direkt i Three.js-scenen
+      if (flashlight) flashlight.style.display = flashlightOn ? 'block' : 'none';
+      if (laserGreen) laserGreen.style.display = 'none';
+      if (laserRed) laserRed.style.display = 'none';
+    } else if (isLiveAR) {
+      // Live-AR: #hud-canvas (z-index: 9999) ritar skarp ficklampa samt grön och röd laser ovanpå kamera och AI-spårning
+      if (flashlight) flashlight.style.display = 'none';
       if (laserGreen) laserGreen.style.display = 'none';
       if (laserRed) laserRed.style.display = 'none';
     } else {
-      // Mobil/Handhållet läge: visa siktespunkterna i 2D-HUD när vapnet är osäkrat och kassett är i
+      // Mobil/Handhållet standardläge: visa ficklampa och siktespunkter i 2D-HUD när vapnet är osäkrat och kassett är i
+      if (flashlight) flashlight.style.display = flashlightOn ? 'block' : 'none';
       if (laserGreen) laserGreen.style.display = shouldShow ? 'block' : 'none';
       if (laserRed) laserRed.style.display = shouldShow ? 'block' : 'none';
+    }
+
+    this.drawHudCanvas(flashlightOn, shouldShow);
+  }
+
+  drawHudCanvas(flashlightOn, lasersOn) {
+    const hudCanvas = document.getElementById('hud-canvas');
+    if (!hudCanvas) return;
+    const ctx = hudCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const isLiveAR = typeof document !== 'undefined' && (
+      document.body.classList.contains('live-ar-active') ||
+      document.body.classList.contains('live-ai-active')
+    );
+    const isVRMode = (typeof window !== 'undefined') && (
+      window.appMode === 'vr' ||
+      document.body.classList.contains('vr-active') ||
+      document.body.classList.contains('vr-headset-mode')
+    );
+    const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
+
+    const w = hudCanvas.clientWidth || window.innerWidth || 0;
+    const h = hudCanvas.clientHeight || window.innerHeight || 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const targetW = Math.max(1, Math.round(w * dpr));
+    const targetH = Math.max(1, Math.round(h * dpr));
+
+    if (hudCanvas.width !== targetW || hudCanvas.height !== targetH) {
+      hudCanvas.width = targetW;
+      hudCanvas.height = targetH;
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+
+    if (!isLiveAR || isVRMode || isXRPresenting || (!flashlightOn && !lasersOn)) {
+      return;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+
+    if (flashlightOn) {
+      const beamRadius = Math.max(150, Math.min(w, h) * 0.42);
+      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, beamRadius);
+      grad.addColorStop(0.0, 'rgba(255, 255, 240, 0.34)');
+      grad.addColorStop(0.45, 'rgba(255, 255, 255, 0.10)');
+      grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+      ctx.save();
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, beamRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (lasersOn) {
+      const activeCh = this.fsm.activeChamber || 1;
+      const spreadData = this.ballistics.calculateSpread(this.currentDistance || 3.0, activeCh);
+      const tiltDeg = typeof this.tilt === 'number' ? this.tilt : 0;
+      const tiltRad = (tiltDeg * Math.PI) / 180;
+      const drop = spreadData.visualDropPx;
+      const dx = -Math.sin(tiltRad) * drop;
+      const dy = Math.cos(tiltRad) * drop;
+
+      // Övre grön laserpunkt (#00ff00)
+      ctx.save();
+      ctx.shadowColor = '#00ff00';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.38)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#00ff00';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Undre röd laserpunkt (#ff0000) med pulsering och tilt-rotation
+      const pulse = 0.65 + 0.35 * Math.sin(performance.now() * 0.025);
+      const rx = cx + dx;
+      const ry = cy + dy;
+
+      ctx.save();
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = `rgba(255, 0, 0, ${(0.38 * pulse).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(rx, ry, 9 * (0.9 + 0.15 * pulse), 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = `rgba(255, 24, 24, ${pulse.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -1187,20 +1298,30 @@ export class TaserApp {
     this.warningGiven = false;
     this.updateWarningUI();
 
-    // Ensure 3D figure remains visible in procedural phase (never disappear)
-    this.scene.set3DVisibility(true);
-    if (this.scene.taserGroup) this.scene.taserGroup.visible = true;
+    const isLiveARRunning = !!(
+      (this.aiPose && this.aiPose.isActive) ||
+      document.body.classList.contains('live-ar-active') ||
+      document.body.classList.contains('live-ai-active')
+    );
 
-    // Smoothly ensure figure is strictly in Idle animation
-    if (!this.scene.figureFallen) {
-      this.scene.setAnimation('Idle', 0.5);
-    }
+    if (isLiveARRunning) {
+      this.scene.set3DVisibility(false);
+    } else {
+      // Ensure 3D figure remains visible in procedural phase (never disappear)
+      this.scene.set3DVisibility(true);
+      if (this.scene.taserGroup) this.scene.taserGroup.visible = true;
 
-    // Reset Z position to initial standoff
-    if (this.scene.taserGroup && this.scene.taserGroup.userData.startPos) {
-      this.scene.taserGroup.position.copy(this.scene.taserGroup.userData.startPos);
-      this.currentDistance = 3.0;
-      this.updateAimVisuals();
+      // Smoothly ensure figure is strictly in Idle animation
+      if (!this.scene.figureFallen) {
+        this.scene.setAnimation('Idle', 0.5);
+      }
+
+      // Reset Z position to initial standoff
+      if (this.scene.taserGroup && this.scene.taserGroup.userData.startPos) {
+        this.scene.taserGroup.position.copy(this.scene.taserGroup.userData.startPos);
+        this.currentDistance = 3.0;
+        this.updateAimVisuals();
+      }
     }
 
     const btn = document.getElementById('btn-scenario');
@@ -1210,7 +1331,7 @@ export class TaserApp {
     }
 
     const tLabel = document.getElementById('target-label');
-    if (tLabel) {
+    if (tLabel && !isLiveARRunning) {
       tLabel.textContent = 'PERSON (3D): PROCEDURFAS';
       tLabel.classList.remove('armed');
     }
@@ -1468,6 +1589,79 @@ export class TaserApp {
     }
   }
 
+  stopRealPersonAI(silent = false) {
+    const cameraFeed = document.getElementById('camera-feed-left') || document.getElementById('camera-feed');
+    const cameraFeedRight = document.getElementById('camera-feed-right');
+    const btnCamera = document.getElementById('btn-camera');
+    const tLabel = document.getElementById('target-label');
+
+    const stopVideoTracks = (el) => {
+      if (!el) return;
+      const stream = el.srcObject;
+      if (stream && typeof stream.getTracks === 'function') {
+        stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+      }
+      if (stream && typeof stream._cleanup === 'function') {
+        try { stream._cleanup(); } catch (_) {}
+      }
+      try { el.pause(); } catch (_) {}
+      el.srcObject = null;
+    };
+    stopVideoTracks(cameraFeed);
+    stopVideoTracks(cameraFeedRight);
+
+    if (this.xr) {
+      if (this.xr.videoStream && typeof this.xr.videoStream.getTracks === 'function') {
+        this.xr.videoStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+      }
+      if (this.xr.videoStream && typeof this.xr.videoStream._cleanup === 'function') {
+        try { this.xr.videoStream._cleanup(); } catch (_) {}
+      }
+      this.xr.videoStream = null;
+      this.xr.useCamera = false;
+      this.xr.isSimulatedCamera = false;
+    }
+
+    const camContainer = document.getElementById('camera-container');
+    if (camContainer) camContainer.style.display = 'none';
+
+    document.body.classList.remove('ar-active', 'live-ai-active', 'live-ar-active', 'camera-active');
+    document.documentElement.classList.remove('ar-active', 'live-ai-active', 'live-ar-active', 'camera-active');
+    const mainContainer = document.getElementById('main-container');
+    if (mainContainer) mainContainer.classList.remove('live-ar-active');
+    const simControls = document.querySelector('.sim-controls');
+    if (simControls) simControls.classList.remove('live-ar-active');
+
+    if (this.aiPose) this.aiPose.stop();
+    if (this.scene) {
+      this.scene.disableARMode();
+      this.scene.clearWiresAndDarts();
+      this.scene.resetTarget();
+      this.scene.set3DVisibility(true);
+    }
+
+    if (btnCamera) {
+      btnCamera.innerHTML = '🤖 Live AI (Kamera)';
+      btnCamera.classList.remove('active-cam');
+    }
+    if (tLabel) {
+      tLabel.textContent = 'PERSON (3D)';
+      tLabel.classList.remove('armed');
+    }
+
+    this.currentDistance = 3.0;
+    this.aimX = 50;
+    this.aimY = 50;
+    this.stopScenario();
+    this.updateAimVisuals();
+    this.updateDisplay();
+    this.updateProjectors();
+    window.dispatchEvent(new Event('resize'));
+    if (!silent) {
+      this.log('Live AR avslutad. Återgått till 3D-mål.');
+    }
+  }
+
   async startRealPersonAI() {
     this.closeModal('scenario-modal');
     const cameraFeed = document.getElementById('camera-feed-left') || document.getElementById('camera-feed');
@@ -1475,6 +1669,17 @@ export class TaserApp {
     const btnCamera = document.getElementById('btn-camera');
     const viewport = document.getElementById('viewport');
     const tLabel = document.getElementById('target-label');
+
+    const activateLiveARClasses = () => {
+      document.body.classList.add('ar-active', 'live-ai-active', 'live-ar-active');
+      document.documentElement.classList.add('ar-active', 'live-ai-active', 'live-ar-active');
+      const mainContainer = document.getElementById('main-container');
+      if (mainContainer) mainContainer.classList.add('live-ar-active');
+      const simControls = document.querySelector('.sim-controls');
+      if (simControls) simControls.classList.add('live-ar-active');
+      this.aimX = 50;
+      this.aimY = 50;
+    };
 
     // Immediate user feedback
     if (tLabel) tLabel.textContent = 'INITIERAR AI & KAMERA...';
@@ -1491,25 +1696,12 @@ export class TaserApp {
 
       if (!isActive) {
         // Om användaren klickade för att stänga av kameran
-        document.body.classList.remove('ar-active', 'live-ai-active');
-        document.documentElement.classList.remove('ar-active', 'live-ai-active');
-        this.scene.disableARMode();
-        if (btnCamera) {
-          btnCamera.innerHTML = '🤖 Live AI (Kamera)';
-          btnCamera.classList.remove('active-cam');
-        }
-        if (tLabel) tLabel.textContent = 'PERSON (3D)';
-        this.aiPose.stop();
-        this.currentDistance = 3.0;
-        this.updateAimVisuals();
-        this.log('Kamera avstängd. Återgått till 3D-mål.');
-        this.stopScenario();
+        this.stopRealPersonAI();
         return;
       }
 
-      // Aktivera helskärms-AR och Live-AI klasser samt Three.js transparent bakgrund
-      document.body.classList.add('ar-active', 'live-ai-active');
-      document.documentElement.classList.add('ar-active', 'live-ai-active');
+      // Aktivera helskärms-AR, Live-AI och kompakt .live-ar-active grepp-UI samt Three.js transparent bakgrund
+      activateLiveARClasses();
       this.scene.enableARMode();
 
       const isSimulated = !!this.xr.isSimulatedCamera;
@@ -1535,6 +1727,11 @@ export class TaserApp {
         tLabel.textContent = isSimulated ? 'MÄNNISKA (AI SIMULERAD)' : 'MÄNNISKA (AI SÖKER...)';
       }
 
+      this.updateAimVisuals();
+      this.updateDisplay();
+      this.updateProjectors();
+      window.dispatchEvent(new Event('resize'));
+
       if (isSimulated) {
         this.log("<span style='color:#f1c40f; font-weight:bold;'>ℹ️ SIMULERAD AI-KAMERA:</span> Fysisk kamera är blockerad av webbläsarens iframe-säkerhet. Kör med simulerad person för full AI- och ballistikträning!");
       } else {
@@ -1542,8 +1739,7 @@ export class TaserApp {
       }
     } catch (err) {
       console.warn('[STARTUP SEQUENCE NOTICE] Faller tillbaka till simulerad AI-person:', err);
-      document.body.classList.add('ar-active', 'live-ai-active');
-      document.documentElement.classList.add('ar-active', 'live-ai-active');
+      activateLiveARClasses();
       this.scene.enableARMode();
       this.aiPose.isSimulated = true;
       this.aiPose.start(cameraFeed);
@@ -1554,6 +1750,10 @@ export class TaserApp {
       if (tLabel) {
         tLabel.textContent = 'MÄNNISKA (AI SIMULERAD)';
       }
+      this.updateAimVisuals();
+      this.updateDisplay();
+      this.updateProjectors();
+      window.dispatchEvent(new Event('resize'));
       this.log("<span style='color:#f1c40f;'>Kamera ej tillgänglig. Startat i simulerat AI-läge för test och verifiering.</span>");
     }
   }
@@ -1576,6 +1776,12 @@ export class TaserApp {
   }
 
   startVirtualScenario(type = 'static') {
+    if (this.aiPose && this.aiPose.isActive) {
+      this.stopRealPersonAI(true);
+    }
+    const liveOverlayVirt = document.getElementById('live-target-overlay');
+    if (liveOverlayVirt) liveOverlayVirt.style.display = 'none';
+
     this.selectedScenario = type;
     const tLabel = document.getElementById('target-label');
 
@@ -1611,12 +1817,25 @@ export class TaserApp {
   }
 
   onXRSessionStart(session, scenario) {
+    if (this.aiPose && this.aiPose.isActive) {
+      this.aiPose.stop();
+    }
+    const liveOverlayXR = document.getElementById('live-target-overlay');
+    if (liveOverlayXR) liveOverlayXR.style.display = 'none';
+    document.body.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
+    document.documentElement.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
     document.body.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');
     document.documentElement.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');
     const mainContainer = document.getElementById('main-container');
-    if (mainContainer) mainContainer.classList.add('ar-combat-mode');
+    if (mainContainer) {
+      mainContainer.classList.remove('live-ar-active');
+      mainContainer.classList.add('ar-combat-mode');
+    }
     const simControls = document.querySelector('.sim-controls');
-    if (simControls) simControls.classList.add('ar-combat-mode');
+    if (simControls) {
+      simControls.classList.remove('live-ar-active');
+      simControls.classList.add('ar-combat-mode');
+    }
     this.scene.clearWiresAndDarts();
     this.scene.enableARMode();
 
@@ -1819,8 +2038,13 @@ export class TaserApp {
     this.audio.init();
     this.xr.initGyro(
       (aimX, aimY) => {
-        this.aimX = aimX;
-        this.aimY = aimY;
+        if (document.body.classList.contains('live-ar-active') || document.body.classList.contains('live-ai-active')) {
+          this.aimX = 50;
+          this.aimY = 50;
+        } else {
+          this.aimX = aimX;
+          this.aimY = aimY;
+        }
         this.updateAimVisuals();
       },
       (direction, gamma) => this.handlePhysicalTilt(direction, gamma)
@@ -1893,7 +2117,9 @@ export class TaserApp {
     }
 
     this.scene.resetTarget();
-    if (this.xr && this.xr.xrSession) {
+    if (this.aiPose && this.aiPose.isActive) {
+      this.scene.set3DVisibility(false);
+    } else if (this.xr && this.xr.xrSession) {
       if (!this.fsm.hasBattery) this.fsm.hasBattery = true;
       this.scene.set3DVisibility(true);
     }
@@ -2037,6 +2263,7 @@ export class TaserApp {
         document.body.classList.contains('ar-active') ||
         document.body.classList.contains('webxr-mode') ||
         document.body.classList.contains('live-ai-active') ||
+        document.body.classList.contains('live-ar-active') ||
         document.body.classList.contains('camera-active');
 
       if (isTransparentPassThrough) {
@@ -2108,11 +2335,13 @@ export class TaserApp {
       const currentAppMode = (typeof window !== 'undefined' && window.appMode)
         ? window.appMode
         : (isVRMode ? 'vr' : 'mobile');
-      const lasersOn = !isSafeState &&
-        this.fsm.hasBattery &&
-        !this.fsm.stealthMode &&
+      const flashlightOn = !isSafeState && this.fsm.hasBattery && !this.fsm.stealthMode;
+      const lasersOn = flashlightOn &&
         currentCartridge > 0 &&
         (currentAppMode === 'mobile' || (isHandDetected && weaponVisible));
+
+      // Rita skarpa 2D-lasrar och ficklampa på #hud-canvas (z-index: 9999) i Live-AR
+      this.drawHudCanvas(flashlightOn, lasersOn);
 
       const aimNDC = this.scene._v3.set(0, 0, 0);
       let customNdcBottom = null;

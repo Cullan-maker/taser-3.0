@@ -1175,8 +1175,13 @@ export class TaserScene {
       ? this.renderer.xr.getCamera(this.camera)
       : this.camera;
 
-    // Determine active target group: Live AI Human Hitboxes (Camera AR) or 3D Target
-    const activeTargetGroup = (this.aiPose && this.aiPose.isActive && this.aiPose.isPersonDetected)
+    // Determine active target group: Live AI Human Hitboxes (Live-AR only) or 3D Target
+    const isLiveAIHitboxActive = !this.renderer.xr.isPresenting &&
+      !this.show3DModel &&
+      this.aiPose &&
+      (typeof this.aiPose.isLiveARModeActive === 'function' ? this.aiPose.isLiveARModeActive() : this.aiPose.isActive) &&
+      this.aiPose.isPersonDetected;
+    const activeTargetGroup = isLiveAIHitboxActive
       ? this.aiPose.hitboxGroup
       : this.taserGroup;
 
@@ -1900,7 +1905,12 @@ export class TaserScene {
       return null;
     }
 
-    const activeTargetGroup = (this.aiPose && this.aiPose.isActive && this.aiPose.isPersonDetected)
+    const isLiveAIHitboxActive = !this.renderer.xr.isPresenting &&
+      !this.show3DModel &&
+      this.aiPose &&
+      (typeof this.aiPose.isLiveARModeActive === 'function' ? this.aiPose.isLiveARModeActive() : this.aiPose.isActive) &&
+      this.aiPose.isPersonDetected;
+    const activeTargetGroup = isLiveAIHitboxActive
       ? this.aiPose.hitboxGroup
       : (this.taserGroup && this.taserGroup.visible ? this.taserGroup : null);
 

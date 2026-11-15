@@ -271,6 +271,30 @@ export class TaserAIPose {
     }
   }
 
+  isLiveARModeActive() {
+    if (!this.isActive) return false;
+    if (typeof document !== 'undefined') {
+      if (
+        document.body.classList.contains('webxr-mode') ||
+        document.body.classList.contains('ar-combat-mode') ||
+        document.body.classList.contains('xr-placing')
+      ) {
+        return false;
+      }
+      const inLiveAR =
+        document.body.classList.contains('live-ar-active') ||
+        document.body.classList.contains('live-ai-active');
+      if (!inLiveAR) return false;
+    }
+    if (this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting) {
+      return false;
+    }
+    if (this.scene && this.scene.show3DModel) {
+      return false;
+    }
+    return true;
+  }
+
   generateSyntheticLandmarks() {
     this._syntheticTime = (this._syntheticTime || 0) + 0.04;
     const t = this._syntheticTime;
@@ -417,7 +441,12 @@ export class TaserAIPose {
    * Callback fired by MediaPipe Pose when inference finishes.
    */
   onPoseResults(results) {
-    if (!this.isActive) return;
+    if (!this.isLiveARModeActive()) {
+      this.isPersonDetected = false;
+      const el = document.getElementById('live-target-overlay');
+      if (el) el.style.display = 'none';
+      return;
+    }
 
     if (!results || !results.poseLandmarks || results.poseLandmarks.length < 33) {
       if (this.isPersonDetected) {
@@ -564,7 +593,13 @@ export class TaserAIPose {
    * Frame-rate independent exponential smoothing: alpha = 1 - exp(-lambda * delta).
    */
   update(delta) {
-    if (!this.isActive) return;
+    if (!this.isLiveARModeActive()) {
+      this.isPersonDetected = false;
+      if (this.hitboxGroup) this.hitboxGroup.visible = false;
+      const el = document.getElementById('live-target-overlay');
+      if (el) el.style.display = 'none';
+      return;
+    }
 
     // Process asynchronous detection frame if due
     this.processVideoFrame();
@@ -621,7 +656,7 @@ export class TaserAIPose {
     const el = document.getElementById('live-target-overlay');
     if (!el) return;
 
-    if (!this.isActive || !this.isPersonDetected || !this.targetBox) {
+    if (!this.isLiveARModeActive() || !this.isPersonDetected || !this.targetBox) {
       el.style.display = 'none';
       return;
     }
@@ -650,7 +685,7 @@ export class TaserAIPose {
    * Screen-space 2D raycasting against the Live Target bounding box and anatomical zones.
    */
   checkScreenHit(aimXPct, aimYPct, dropPx) {
-    if (!this.isActive || !this.isPersonDetected || !this.targetBox) return null;
+    if (!this.isLiveARModeActive() || !this.isPersonDetected || !this.targetBox) return null;
 
     const vp = document.getElementById('viewport');
     const vpW = vp ? vp.clientWidth : window.innerWidth;

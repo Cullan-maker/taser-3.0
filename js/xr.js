@@ -70,6 +70,23 @@ export class TaserXR {
       return { success: false, fallback: true, scenario, reason: 'not-supported' };
     }
 
+    // Stop Live AI pose tracking and clear Live-AR classes when starting WebXR 3D-dummy mode
+    if (this.taserScene && this.taserScene.aiPose && this.taserScene.aiPose.isActive) {
+      try {
+        this.taserScene.aiPose.stop();
+      } catch (e) {}
+    }
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
+      document.documentElement.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
+      const mc = document.getElementById('main-container');
+      if (mc) mc.classList.remove('live-ar-active');
+      const sc = document.querySelector('.sim-controls');
+      if (sc) sc.classList.remove('live-ar-active');
+      const liveTargetEl = document.getElementById('live-target-overlay');
+      if (liveTargetEl) liveTargetEl.style.display = 'none';
+    }
+
     // Release camera stream synchronously if held by WebRTC to prevent camera HAL hardware conflict
     if (typeof window !== 'undefined' && typeof window.stopCameraPassThrough === 'function') {
       try {
