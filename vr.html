@@ -1235,8 +1235,11 @@
             display: none;
         }
 
-        /* Placering i WebXR */
-        body.xr-placing .main-container {
+        /* Placering & 3D-Meny i VR */
+        body.xr-placing .main-container,
+        body.vr-menu-open .main-container,
+        body.vr-menu-open #btn-place-xr,
+        body.vr-menu-open #place-hint {
             display: none !important;
             pointer-events: none !important;
         }
@@ -1462,6 +1465,7 @@
     <!-- TOP VR QUICK BAR -->
     <div id="vr-top-bar" role="toolbar" aria-label="VR-kontroller">
         <a href="./index.html?menu=1" id="vr-btn-exit-mode" class="vr-top-btn vr-back-link" aria-label="Avsluta VR och byt läge">⬅ AVSLUTA VR</a>
+        <button type="button" id="vr-btn-menu" class="vr-top-btn">📋 Meny</button>
         <span id="vr-cam-status">📷 Initierar...</span>
         <span id="vr-bt-status" title="Bluetooth-joystickstatus">🎮 BT: AV</span>
         <button type="button" id="vr-btn-gamepad" class="vr-top-btn">🕹️ Mappa BT</button>

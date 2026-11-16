@@ -101,6 +101,52 @@ function formatMappingLabel(mappingValue) {
   return Number.isInteger(Number(mappingValue)) ? `KNAPP ${mappingValue}` : 'EJ MAPPAD';
 }
 
+/**
+ * Spegling av samtliga övningar / scenarier från mobilversionen för VR-huvudmenyn.
+ */
+export const VR_SCENARIOS = Object.freeze([
+  {
+    id: 'static',
+    type: 'static',
+    title: '1. FRI ÖVNING / 3D-MÅL',
+    badge: 'STATISK PROCEDURFAS',
+    accent: '#2ecc71',
+    threatLevel: 1,
+    isScenarioActive: false,
+    description: 'Statisk 3D-figur på golvet • C1 (12°) / C2 (3.5°), funktionskontroll & pricksäkerhet'
+  },
+  {
+    id: 'charging',
+    type: 'charging',
+    title: '2. KNIVANGREPP / AKUT NÖDVÄRN',
+    badge: 'FRAMSTORMANDE HOT',
+    accent: '#e74c3c',
+    threatLevel: 4,
+    isScenarioActive: true,
+    description: 'Aggressivt framstormande mål • Fäll med NMI innan < 0.8 m • "El, el, el!"'
+  },
+  {
+    id: 'moving',
+    type: 'moving',
+    title: '3. VERBALT MOTSTÅND / BETVINGANDE',
+    badge: 'RÖRLIGT MÅL & RÖST',
+    accent: '#3498db',
+    threatLevel: 3,
+    isScenarioActive: true,
+    description: 'Rörligt mål & eskalering • "Släpp kniven!", "Lägg dig ner!", "Backa!" • NMI >= 10 cm'
+  },
+  {
+    id: 'live-ai',
+    type: 'live-ai',
+    title: '4. MARKÖR-SYNKAT LÄGE (LIVE AI)',
+    badge: 'VERKLIG PERSON',
+    accent: '#FCBE00',
+    threatLevel: 0,
+    isScenarioActive: false,
+    description: 'BlazePose-kamera mot verklig person • Synkar träffar i realtid till Markör-mobil'
+  }
+]);
+
 export class TaserVRApp {
   constructor() {
     if (typeof window !== 'undefined') {
@@ -176,6 +222,7 @@ export class TaserVRApp {
       },
       onLog: (msg) => this.log(msg)
     });
+    this.setupMenuVoiceBridge();
 
     // Display & Stereo VR state
     this.isStereoVR = true;
@@ -299,8 +346,43 @@ export class TaserVRApp {
     this._fbBack = new THREE.Vector3();
     this._fbBasis = new THREE.Matrix4();
 
+    // 3D Curved Stereoscopic VR Start & Pause Menu + Gaze-Dwell state
+    this.vrMenuState = 'closed'; // 'start' | 'pause' | 'closed'
+    this.vrMenuSelectedIndex = 0;
+    this.vrMenuGazeHoverIndex = -1;
+    this.vrMenuGazeDwellSec = 0;
+    this.VR_GAZE_DWELL_DURATION = 1.5;
+    this.vrMenuGroup = null;
+    this.vrGazeReticleGroup = null;
+    this.vrGazeReticleMat = null;
+    this.vrGazeReticleCanvas = null;
+    this.vrGazeReticleCtx = null;
+    this.vrGazeReticleTexture = null;
+    this._vrGazeLastKey = '';
+    this.vrMenuInteractiveMeshes = [];
+    this.vrMenuCardRefs = [];
+    this.vrMenuHeaderRef = null;
+    this._vrMenuStatusKey = '';
+    this._vrMenuStatusCheckAt = 0;
+    this._menuActionCooldownUntil = 0;
+    this._stickMenuRepeatAt = 0;
+    this._resetBtnDownSince = 0;
+    this._resetHoldOpenedMenu = false;
+    this._escDownSince = 0;
+    this._escHoldOpenedMenu = false;
+    this._escHoldTimer = null;
+    this._menuRaycaster = new THREE.Raycaster();
+    this._menuOrigin = new THREE.Vector3();
+    this._menuDir = new THREE.Vector3();
+    this._menuCamPos = new THREE.Vector3();
+    this._menuFlatFwd = new THREE.Vector3();
+    this._menuSpawnPos = new THREE.Vector3();
+    this._reticlePos = new THREE.Vector3();
+    this._reticleFwd = new THREE.Vector3();
+
     // Ready weapon hardware state for immediate VR operation
     this.ensureReadyHardware();
+    this.ensureLiveARRoomCode();
 
     this.initDOM();
     this.initFSMSubscriptions();
@@ -515,7 +597,13 @@ export class TaserVRApp {
     document.body.classList.add('vr-headset-session', 'vr-ar-passthrough');
     this.enableStereoVR();
     this.scene.enableARMode();
-    this.togglePlaceMode(true);
+    if (this.xr) {
+      this.xr.isPlacing = false;
+      this.xr.placeMode = false;
+      this.xr.figureLocked = true;
+    }
+    this.scene.set3DVisibility(false);
+    this.openVRStartMenu();
     this.updateDisplay();
     this.updateAimVisuals();
   }
@@ -651,6 +739,9 @@ export class TaserVRApp {
     window.onChamberFired = (ch, fsm) => this.onChamberFired(ch, fsm);
     window.resetWeaponPhase4 = (fsm) => this.resetWeaponPhase4(fsm);
     window.updateWeaponPose = () => this.updateWeaponPose();
+    window.openVRStartMenu = () => this.openVRStartMenu();
+    window.openVRPauseMenu = () => this.openVRPauseMenu();
+    window.closeVRMenu = () => this.closeVRMenu();
   }
 
   initFSMSubscriptions() {
@@ -853,14 +944,14 @@ export class TaserVRApp {
     };
     window.addEventListener('pointerdown', unlockSensorsAndAudio, { once: true });
 
-    // Touch aiming when gyro isn't driving orientation
+    // Touch aiming when gyro isn't driving orientation (plus pointer gaze fallback while 3D menu is open on desktop)
     const viewport = document.getElementById('viewport');
     if (viewport) {
       const handleTouchAim = (touch) => {
-        if (this.xr.gyroEnabled || this.xr.placeMode || this.xr.xrSession || this.isStereoVR) return;
+        if (this.xr.gyroEnabled || this.xr.placeMode || this.xr.xrSession || (this.isStereoVR && this.vrMenuState === 'closed')) return;
         const rect = viewport.getBoundingClientRect();
-        this.aimX = Math.max(0, Math.min(100, ((touch.clientX - rect.left) / rect.width) * 100));
-        this.aimY = Math.max(0, Math.min(100, ((touch.clientY - rect.top) / rect.height) * 100));
+        this.aimX = Math.max(5, Math.min(95, ((touch.clientX - rect.left) / rect.width) * 100));
+        this.aimY = Math.max(5, Math.min(95, ((touch.clientY - rect.top) / rect.height) * 100));
         this.updateAimVisuals();
       };
       viewport.addEventListener('touchmove', (e) => {
@@ -868,6 +959,15 @@ export class TaserVRApp {
       }, { passive: true });
       viewport.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches[0]) handleTouchAim(e.touches[0]);
+      }, { passive: true });
+      viewport.addEventListener('pointermove', (e) => {
+        if (this.vrMenuState !== 'closed' && !this.xr.gyroEnabled && !this.xr.xrSession && e.pointerType === 'mouse') {
+          const rect = viewport.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            this.aimX = Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100));
+            this.aimY = Math.max(5, Math.min(95, ((e.clientY - rect.top) / rect.height) * 100));
+          }
+        }
       }, { passive: true });
     }
 
@@ -885,6 +985,15 @@ export class TaserVRApp {
     this.setupTactileButton('safety-switch', () => window.toggleSafety(), { preventDefaultOnDown: true });
 
     // Top VR quick-bar controls
+    this.setupTactileButton('vr-btn-menu', () => {
+      if (this.vrMenuState === 'closed') {
+        this.openVRPauseMenu();
+      } else if (this.vrMenuState === 'pause') {
+        this.closeVRMenu();
+      } else {
+        this.openVRStartMenu();
+      }
+    }, { preventDefaultOnDown: true });
     this.setupTactileButton('vr-btn-gamepad', () => this.openGamepadCalibration(), { preventDefaultOnDown: true });
     this.setupTactileButton('vr-btn-place', () => {
       if (this.isLiveAIRunning()) {
@@ -1182,6 +1291,7 @@ export class TaserVRApp {
   // 3. VR CONTROLLER, BLUETOOTH GAMEPAD & KEYBOARD INPUTS
   // =========================================================================
   triggerFireInput() {
+    if (this.vrMenuState !== 'closed' || performance.now() < (this._menuActionCooldownUntil || 0)) return;
     if (this.isFiring || this.fsm.isFiring) return;
     if (!this.fsm.hasBattery) {
       this.fsm.hasBattery = true;
@@ -1513,8 +1623,47 @@ export class TaserVRApp {
       const code = e.code || '';
       const kl = key.toLowerCase();
       const now = performance.now();
+      const menuOpen = this.vrMenuState !== 'closed';
 
-      // 1. RETURNKEY (ENTER) -> Aktivera 5-sekunders ljusbågscykel (ALDRIG klicka fokuserad knapp)
+      // 0. ESCAPE: stäng modal -> eller stäng pausmeny -> eller håll inne 1.0s för Pausmeny -> kort tryck säkring
+      if (key === 'Escape' || code === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        const gpModal = document.getElementById('gamepad-modal');
+        const scModal = document.getElementById('scenario-modal');
+        if (gpModal && gpModal.style.display === 'flex') {
+          this.closeModal('gamepad-modal');
+          return;
+        }
+        if (scModal && scModal.style.display === 'flex') {
+          this.closeModal('scenario-modal');
+          return;
+        }
+        if (e.repeat) return;
+        this._heldKeys.add('Escape');
+        if (this.vrMenuState === 'pause') {
+          this._escHoldOpenedMenu = true;
+          this.markBtActive('BT: ESC -> STÄNG MENY');
+          this.closeVRMenu();
+          return;
+        }
+        if (this.vrMenuState === 'closed') {
+          this._escDownSince = now;
+          this._escHoldOpenedMenu = false;
+          if (this._escHoldTimer) clearTimeout(this._escHoldTimer);
+          this._escHoldTimer = setTimeout(() => {
+            this._escHoldTimer = null;
+            if (this._heldKeys.has('Escape') && this.vrMenuState === 'closed' && !this._escHoldOpenedMenu) {
+              this._escHoldOpenedMenu = true;
+              this.markBtActive('BT: ESC (1s) -> PAUSMENY');
+              this.openVRPauseMenu();
+            }
+          }, 1000);
+        }
+        return;
+      }
+
+      // 1. RETURNKEY (ENTER) -> Välj i 3D-menyn, eller aktivera 5s ljusbåge i skarpt läge
       if (key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
         e.preventDefault();
         e.stopPropagation();
@@ -1522,12 +1671,17 @@ export class TaserVRApp {
           document.activeElement.blur();
         }
         if (e.repeat) return;
+        if (menuOpen) {
+          this.markBtActive(`BT: KEY ${code === 'NumpadEnter' ? 'NumpadEnter' : 'Enter'} -> VÄLJ I MENY`);
+          this.activateVRMenuSelection();
+          return;
+        }
         this.markBtActive(`BT: KEY ${code === 'NumpadEnter' ? 'NumpadEnter' : 'Enter'} -> LJUSBÅGE`);
         this.triggerArcInput();
         return;
       }
 
-      // 2. SPACE -> Fastställ målposition i placeringsläge (eller Avfyra i skarpt läge)
+      // 2. SPACE -> Välj i 3D-menyn, eller fastställ målposition i placeringsläge, eller Avfyra i skarpt läge
       if (key === ' ' || key === 'Spacebar' || code === 'Space') {
         e.preventDefault();
         e.stopPropagation();
@@ -1535,6 +1689,11 @@ export class TaserVRApp {
           document.activeElement.blur();
         }
         if (e.repeat) return;
+        if (menuOpen) {
+          this.markBtActive('BT: KEY Space -> VÄLJ I MENY');
+          this.activateVRMenuSelection();
+          return;
+        }
         if (this.isPlacementActive()) {
           this.markBtActive('BT: KEY Space -> MÅL LÅST');
           this.confirmPlacement();
@@ -1546,12 +1705,22 @@ export class TaserVRApp {
         return;
       }
 
-      // 3. PILTANGENTER (HID) -> Styr dummyn på golvet i placeringsläge
+      // 3. PILTANGENTER (HID) -> Bläddra i 3D-menyn, eller styr dummyn i placeringsläge
       if (isArrowKey(key, code)) {
         e.preventDefault();
         e.stopPropagation();
         const arrowCode = code.startsWith('Arrow') ? code : key;
         this._heldKeys.add(arrowCode);
+        if (menuOpen) {
+          if (!e.repeat && (arrowCode === 'ArrowUp' || arrowCode === 'ArrowLeft')) {
+            this.markBtActive(`BT: KEY ${arrowCode} -> MENY UPP`);
+            this.navigateVRMenu(-1);
+          } else if (!e.repeat && (arrowCode === 'ArrowDown' || arrowCode === 'ArrowRight')) {
+            this.markBtActive(`BT: KEY ${arrowCode} -> MENY NER`);
+            this.navigateVRMenu(1);
+          }
+          return;
+        }
         if (this.isPlacementActive()) {
           if (!e.repeat) {
             this.markBtActive(`BT: KEY ${arrowCode} -> FLYTTA MÅL`);
@@ -1568,6 +1737,15 @@ export class TaserVRApp {
         return;
       }
 
+      if (menuOpen) {
+        if ((kl === 'b' || key === 'Backspace' || key === 'BrowserBack' || key === 'GoBack') && this.vrMenuState === 'pause' && !e.repeat) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeVRMenu();
+        }
+        return;
+      }
+
       // 4. ÖVRIGA HID-KNAPPAR (Game mode / Bluetooth remote)
       if (kl === 'a' || key === 'AudioVolumeUp' || key === 'VolumeUp' || code === 'AudioVolumeUp' || code === 'VolumeUp') {
         e.preventDefault();
@@ -1578,20 +1756,10 @@ export class TaserVRApp {
           this.markBtActive(`BT: KEY ${key === ' ' ? 'Space' : key} -> AVFYRA`);
           this.handleGamepadFireEdge();
         }
-      } else if (kl === 'b' || key === 'Escape' || key === 'Backspace' || key === 'BrowserBack' || key === 'GoBack') {
+      } else if (kl === 'b' || key === 'Backspace' || key === 'BrowserBack' || key === 'GoBack') {
         e.preventDefault();
         e.stopPropagation();
         if (e.repeat) return;
-        const gpModal = document.getElementById('gamepad-modal');
-        const scModal = document.getElementById('scenario-modal');
-        if (key === 'Escape' && gpModal && gpModal.style.display === 'flex') {
-          this.closeModal('gamepad-modal');
-          return;
-        }
-        if (key === 'Escape' && scModal && scModal.style.display === 'flex') {
-          this.closeModal('scenario-modal');
-          return;
-        }
         if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
           this._lastControllerActionTs = now;
           this.markBtActive(`BT: KEY ${key} -> SÄKRING`);
@@ -1627,13 +1795,38 @@ export class TaserVRApp {
     window.addEventListener('keyup', (e) => {
       if (e.code) this._heldKeys.delete(e.code);
       if (e.key) this._heldKeys.delete(e.key);
+      if (e.key === 'Escape' || e.code === 'Escape') {
+        if (this._escHoldTimer) {
+          clearTimeout(this._escHoldTimer);
+          this._escHoldTimer = null;
+        }
+        if (!this._escHoldOpenedMenu && this.vrMenuState === 'closed' && this._escDownSince > 0) {
+          const heldMs = performance.now() - this._escDownSince;
+          if (heldMs < 1000) {
+            this.markBtActive('BT: KEY Escape -> SÄKRING');
+            this.triggerSafetyInput();
+          }
+        }
+        this._escDownSince = 0;
+        this._escHoldOpenedMenu = false;
+      }
     }, { capture: true });
 
     window.addEventListener('blur', () => {
       this._heldKeys.clear();
+      if (this._escHoldTimer) {
+        clearTimeout(this._escHoldTimer);
+        this._escHoldTimer = null;
+      }
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this._heldKeys.clear();
+      if (document.hidden) {
+        this._heldKeys.clear();
+        if (this._escHoldTimer) {
+          clearTimeout(this._escHoldTimer);
+          this._escHoldTimer = null;
+        }
+      }
     });
   }
 
@@ -1662,6 +1855,7 @@ export class TaserVRApp {
 
     const now = performance.now();
     const isPlacing = this.isPlacementActive();
+    const menuOpen = this.vrMenuState !== 'closed';
 
     for (const gp of activeList) {
       const buttons = gp.buttons || [];
@@ -1700,8 +1894,31 @@ export class TaserVRApp {
             return;
           }
 
-          // Edge-detection på mappade knappar + L3/R3 spakklick
-          if (isButtonMapped(i, GAMEPAD_MAP.confirm)) {
+          // Om 3D VR-menyn är öppen: styr menyval med D-pad + L3/Enter/Trigger
+          if (menuOpen) {
+            if (i === 12) {
+              this.markBtActive('BT: D-PAD UPP -> MENY', gp);
+              this.navigateVRMenu(-1);
+            } else if (i === 13) {
+              this.markBtActive('BT: D-PAD NER -> MENY', gp);
+              this.navigateVRMenu(1);
+            } else if (isButtonMapped(i, GAMEPAD_MAP.confirm) || isButtonMapped(i, GAMEPAD_MAP.fire) || isButtonMapped(i, GAMEPAD_MAP.arc)) {
+              this.markBtActive(`BT: KNAPP ${i} -> VÄLJ I MENY`, gp);
+              this.activateVRMenuSelection();
+            } else if ((isButtonMapped(i, GAMEPAD_MAP.safety) || isButtonMapped(i, GAMEPAD_MAP.reset)) && this.vrMenuState === 'pause') {
+              this.markBtActive(`BT: KNAPP ${i} -> STÄNG MENY`, gp);
+              this.closeVRMenu();
+            }
+            prev[i] = true;
+            continue;
+          }
+
+          // Edge-detection på mappade knappar + L3/R3 spakklick + Start-håll 1s för Pausmeny
+          if (isButtonMapped(i, GAMEPAD_MAP.reset)) {
+            this._resetBtnDownSince = now;
+            this._resetHoldOpenedMenu = false;
+            this.markBtActive(`BT: KNAPP ${i} -> START/ÅTERSTÄLL`, gp);
+          } else if (isButtonMapped(i, GAMEPAD_MAP.confirm)) {
             if (isPlacing) {
               this.markBtActive('BT: SPAKKLICK -> MÅL LÅST', gp);
               this.confirmPlacement();
@@ -1721,9 +1938,6 @@ export class TaserVRApp {
           } else if (isButtonMapped(i, GAMEPAD_MAP.arc)) {
             this.markBtActive(`BT: KNAPP ${i} -> LJUSBÅGE`, gp);
             this.triggerArcInput();
-          } else if (isButtonMapped(i, GAMEPAD_MAP.reset)) {
-            this.markBtActive(`BT: KNAPP ${i} -> ÅTERSTÄLL`, gp);
-            this.resetSimulator();
           } else if (i >= 12 && i <= 15 && isPlacing) {
             const dirLabel = i === 12 ? 'UPP' : (i === 13 ? 'NER' : (i === 14 ? 'VÄNSTER' : 'HÖGER'));
             this.markBtActive(`BT: D-PAD ${dirLabel} -> FLYTTA MÅL`, gp);
@@ -1731,10 +1945,24 @@ export class TaserVRApp {
             this.markBtActive(`BT: KNAPP ${i}`, gp);
           }
         } else if (isPressed && wasPressed && !this._calibratingAction) {
-          if (isButtonMapped(i, GAMEPAD_MAP.fire)) {
+          if (!menuOpen && isButtonMapped(i, GAMEPAD_MAP.reset)) {
+            if (!this._resetHoldOpenedMenu && this._resetBtnDownSince > 0 && (now - this._resetBtnDownSince) >= 1000) {
+              this._resetHoldOpenedMenu = true;
+              this.markBtActive('BT: START (1s) -> PAUSMENY', gp);
+              this.openVRPauseMenu();
+            }
+          } else if (!menuOpen && isButtonMapped(i, GAMEPAD_MAP.fire)) {
             this.handleGamepadFireHold(now);
           }
         } else if (!isPressed && wasPressed) {
+          if (isButtonMapped(i, GAMEPAD_MAP.reset)) {
+            if (!this._resetHoldOpenedMenu && !menuOpen && this._resetBtnDownSince > 0) {
+              this.markBtActive(`BT: KNAPP ${i} -> ÅTERSTÄLL`, gp);
+              this.resetSimulator();
+            }
+            this._resetBtnDownSince = 0;
+            this._resetHoldOpenedMenu = false;
+          }
           if (isButtonMapped(i, GAMEPAD_MAP.fire)) {
             this._fireBtnHeldSince = 0;
           }
@@ -1755,6 +1983,18 @@ export class TaserVRApp {
     const axes = primaryGp.axes || [];
     const stickX = applyDeadzone(axes[0]);
     const stickY = applyDeadzone(axes[1]);
+
+    if (menuOpen) {
+      this._gpMoveX = 0;
+      this._gpMoveY = 0;
+      if (Math.abs(stickY) > 0.55 && now >= (this._stickMenuRepeatAt || 0)) {
+        this._stickMenuRepeatAt = now + 240;
+        this.navigateVRMenu(stickY < 0 ? -1 : 1);
+      } else if (Math.abs(stickY) <= 0.35) {
+        this._stickMenuRepeatAt = 0;
+      }
+      return;
+    }
 
     const isDpadSpecial = (idx) =>
       isButtonMapped(idx, GAMEPAD_MAP.fire) ||
@@ -1923,7 +2163,13 @@ export class TaserVRApp {
         const pressed = !!(b && (b.pressed || b.value > 0.55));
         if (pressed && !prev[i] && (now - this._lastControllerActionTs >= DEBOUNCE_MS)) {
           this._lastControllerActionTs = now;
-          if (i === 0 || i === 10 || i === 11) {
+          if (this.vrMenuState !== 'closed') {
+            if (i === 0 || i === 10 || i === 11) {
+              this.activateVRMenuSelection();
+            } else if ((i === 1 || i === 4 || i === 5) && this.vrMenuState === 'pause') {
+              this.closeVRMenu();
+            }
+          } else if (i === 0 || i === 10 || i === 11) {
             if (this.isPlacementActive()) {
               this.confirmPlacement();
             } else if (i === 0) {
@@ -2156,7 +2402,7 @@ export class TaserVRApp {
     const hasWires = Array.isArray(this.liveWires) && this.liveWires.length > 0;
 
     // Outside WebXR: draw reticle / flashlight / Live AI HUD onto #hud-canvas
-    if (isXRPresenting) return;
+    if (isXRPresenting || this.vrMenuState !== 'closed') return;
     if (!isLiveAR && !isStereo && !flashlightOn && !lasersOn) return;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2933,8 +3179,21 @@ export class TaserVRApp {
   // =========================================================================
   // 8. LIVE AI REAL PERSON + FIRESTORE MARKER SYNC
   // =========================================================================
-  async startRealPersonAI() {
+  ensureLiveARRoomCode() {
+    if (!this.liveARRoomCode || !/^\d{4}$/.test(String(this.liveARRoomCode))) {
+      this.liveARRoomCode = String(Math.floor(1000 + Math.random() * 9000));
+    }
+    return this.liveARRoomCode;
+  }
+
+  async startRealPersonAI(options = {}) {
     this.closeModal('scenario-modal');
+    if (this.vrMenuState !== 'closed') {
+      this.closeVRMenu();
+    }
+    if (this.xr && this.xr.xrSession) {
+      try { await this.xr.endXRSession(); } catch (_) {}
+    }
     this.stopHandTracking(); // Free MediaPipe WASM / CPU for BlazePose person tracking
 
     // Avsluta eventuell aktiv 3D-placering så pistol-HUD visas direkt i Live AI
@@ -2964,14 +3223,17 @@ export class TaserVRApp {
     const cameraFeedRight = document.getElementById('camera-feed-right');
     const tLabel = document.getElementById('target-label');
 
+    this.selectedScenario = 'live-ai';
     this.liveWires = [];
     this.aimX = 50;
     this.aimY = 50;
     document.body.classList.add('ar-active', 'live-ai-active', 'live-ar-active');
     document.documentElement.classList.add('ar-active', 'live-ai-active', 'live-ar-active');
 
-    // Generate 4-digit Firestore room code for Marker sync
-    const roomCode = String(Math.floor(1000 + Math.random() * 9000));
+    // Reuse pre-generated 4-digit Firestore room code when launched from VR start menu, else generate fresh
+    const roomCode = (options.reuseExistingCode && this.liveARRoomCode && /^\d{4}$/.test(String(this.liveARRoomCode)))
+      ? String(this.liveARRoomCode)
+      : String(Math.floor(1000 + Math.random() * 9000));
     this.liveARRoomCode = roomCode;
     const roomBadge = document.getElementById('live-ar-room-badge');
     if (roomBadge) {
@@ -3000,6 +3262,7 @@ export class TaserVRApp {
       }
       if (this.xr) this.xr.useCamera = true;
       this.scene.enableARMode();
+      this.scene.set3DVisibility(false);
       this.aiPose.isSimulated = !!this.isSyntheticPassthrough;
 
       if (!this.aiPose.isSimulated) {
@@ -3028,7 +3291,6 @@ export class TaserVRApp {
     document.body.classList.remove('ar-active', 'live-ai-active', 'live-ar-active');
     document.documentElement.classList.remove('ar-active', 'live-ai-active', 'live-ar-active');
     this.liveWires = [];
-    this.liveARRoomCode = null;
     if (this.xr) this.xr.useCamera = false;
 
     const roomBadge = document.getElementById('live-ar-room-badge');
@@ -3046,7 +3308,7 @@ export class TaserVRApp {
     if (this.scene) {
       this.scene.clearWiresAndDarts();
       this.scene.resetTarget();
-      this.scene.set3DVisibility(true);
+      this.scene.set3DVisibility(this.vrMenuState === 'closed');
       this.scene.enableARMode(); // Keep transparent VR passthrough active!
     }
 
@@ -3078,38 +3340,75 @@ export class TaserVRApp {
     }
   }
 
-  startVirtualScenario(type = 'static') {
+  startVirtualScenario(type = 'static', options = {}) {
     if (this.aiPose && this.aiPose.isActive) this.stopRealPersonAI(true);
     this.selectedScenario = type;
+    if (this.xr) {
+      this.xr.scenario = type;
+      this.xr.resetScenarioState();
+    }
+
+    let savedPos = null;
+    let savedRotY = null;
+    if (options.preservePosition && this.scene.taserGroup) {
+      savedPos = this.scene.taserGroup.position.clone();
+      savedRotY = this.scene.taserGroup.rotation.y;
+    }
+
     this.scene.resetTarget();
     this.scene.set3DVisibility(true);
     this.scene.enableARMode();
 
+    if (savedPos && this.scene.taserGroup) {
+      this.scene.taserGroup.position.copy(savedPos);
+      this.scene.taserGroup.rotation.y = savedRotY;
+      this.scene.taserGroup.userData.startPos = savedPos.clone();
+      if (this.scene.taserGroup.userData.preFallPos) {
+        this.scene.taserGroup.userData.preFallPos.copy(savedPos);
+      }
+    }
+
     const tLabel = document.getElementById('target-label');
     if (type === 'charging') {
-      if (tLabel) tLabel.textContent = 'MÅL: FRAMSTORMANDE';
+      this.startScenario();
       this.threatLevel = 4;
       window.threatLevel = 4;
-      this.startScenario();
+      this.scene.setThreatWeapon('KNIFE');
+      this.threatWeapon = 'KNIFE';
+      if (tLabel) {
+        tLabel.textContent = 'KNIVANGREPP: AKUT NÖDVÄRN';
+        tLabel.classList.add('armed');
+      }
     } else if (type === 'moving') {
-      if (tLabel) tLabel.textContent = 'MÅL: RÖRLIGT';
+      this.startScenario();
       this.threatLevel = 3;
       window.threatLevel = 3;
-      this.startScenario();
+      if (tLabel) {
+        tLabel.textContent = 'VERBALT MOTSTÅND: RÖRLIGT MÅL';
+        tLabel.classList.add('armed');
+      }
     } else {
-      if (tLabel) tLabel.textContent = 'MÅL: STATISKT';
+      this.stopScenario();
       this.threatLevel = 1;
       window.threatLevel = 1;
-      this.isScenarioActive = false;
-      this.fsm.isScenarioActive = false;
+      if (tLabel) {
+        tLabel.textContent = 'FRI ÖVNING: STATISKT 3D-MÅL';
+        tLabel.classList.remove('armed');
+      }
     }
-    this.currentDistance = 3.0;
+    this.syncDistanceFromTarget();
     this.updateAimVisuals();
     this.updateDisplay();
-    this.showHudToast(`🎯 Scenario: ${type.toUpperCase()}`, '#2ecc71');
+    const toastNames = {
+      static: 'FRI ÖVNING / 3D-MÅL',
+      charging: 'KNIVANGREPP / AKUT NÖDVÄRN',
+      moving: 'VERBALT MOTSTÅND / BETVINGANDE'
+    };
+    this.showHudToast(`🎯 ${toastNames[type] || type.toUpperCase()}`, type === 'charging' ? '#e74c3c' : '#2ecc71');
   }
 
   onXRSessionStart(session, scenario) {
+    if (this.vrMenuState !== 'closed') this.closeVRMenu();
     if (this.aiPose && this.aiPose.isActive) this.aiPose.stop();
     this.liveARRoomCode = null;
     const roomBadgeXR = document.getElementById('live-ar-room-badge');
@@ -3119,19 +3418,28 @@ export class TaserVRApp {
     document.body.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');
     document.documentElement.classList.add('ar-active', 'webxr-mode', 'ar-combat-mode');
 
+    this.selectedScenario = scenario || 'static';
     this.liveWires = [];
     this.scene.clearWiresAndDarts();
     this.scene.enableARMode();
 
     // Bind WebXR controller trigger/grip events
     this._xrSelectStartBound = () => {
-      if (this.xr.isPlacing && this.xr.placeMode) {
+      if (this.vrMenuState !== 'closed') {
+        this.activateVRMenuSelection();
+      } else if (this.xr.isPlacing && this.xr.placeMode) {
         this.confirmPlacement();
       } else {
         this.triggerFireInput();
       }
     };
-    this._xrSqueezeStartBound = () => this.triggerArcInput();
+    this._xrSqueezeStartBound = () => {
+      if (this.vrMenuState === 'pause') {
+        this.closeVRMenu();
+      } else if (this.vrMenuState === 'closed') {
+        this.triggerArcInput();
+      }
+    };
     session.addEventListener('selectstart', this._xrSelectStartBound);
     session.addEventListener('squeezestart', this._xrSqueezeStartBound);
 
@@ -3307,8 +3615,9 @@ export class TaserVRApp {
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
 
-    if (isXR && (this.xr.scenario === 'moving' || this.xr.scenario === 'charging')) {
-      this.startScenario();
+    const activeScen = (isXR ? this.xr.scenario : null) || this.selectedScenario || 'static';
+    if (activeScen === 'moving' || activeScen === 'charging') {
+      this.startVirtualScenario(activeScen, { preservePosition: true });
     } else {
       this.stopScenario();
     }
@@ -4222,7 +4531,7 @@ export class TaserVRApp {
     if (!this.weaponGroup || !this.weaponMesh) return;
 
     const isLiveAR = this.isLiveAIRunning();
-    const isVisible = !isLiveAR;
+    const isVisible = !isLiveAR && this.vrMenuState === 'closed';
     this.weaponGroup.visible = isVisible;
     this.handDetected = isVisible;
     window.handDetected = isVisible;
@@ -4340,7 +4649,814 @@ export class TaserVRApp {
   }
 
   // =========================================================================
-  // 12. MAIN VR / STEREO / WEBXR RENDER LOOP
+  // 12. STEREOSCOPIC 3D EYE-LEVEL START & PAUSE MENU (JOYSTICK + GAZE + VOICE)
+  // =========================================================================
+  setupMenuVoiceBridge() {
+    if (!this.voice || typeof this.voice.processTranscript !== 'function') return;
+    const origProcess = this.voice.processTranscript.bind(this.voice);
+    this.voice.processTranscript = (transcript) => {
+      if (!transcript) return;
+      const raw = String(transcript).trim();
+      const lower = raw.toLowerCase();
+
+      if (/(?:öppna|visa)\s+(?:meny|pausmeny|startmeny|huvudmeny)|^paus\s*meny$/i.test(lower)) {
+        this.log(`🗣️ Röst (VR-Meny): <i>"${raw}"</i>`);
+        if (lower.includes('start') || lower.includes('huvud')) {
+          this.openVRStartMenu();
+        } else {
+          this.openVRPauseMenu();
+        }
+        return;
+      }
+
+      if (this.vrMenuState !== 'closed') {
+        if (/^(?:stäng|stang)\s+meny|^(?:fortsätt|fortsatt)(?:\s+(?:övning|ovning))?$|^(?:återuppta|ateruppta)$/i.test(lower)) {
+          this.log(`🗣️ Röst (VR-Meny): <i>"${raw}"</i>`);
+          if (this.vrMenuState === 'pause') {
+            this.closeVRMenu();
+          } else {
+            this.activateVRMenuSelection();
+          }
+          return;
+        }
+        if (/^(?:starta|välj|valj|kör|kor|bekräfta|bekrafta)(?:\s+(?:övning|ovning|detta))?$/i.test(lower)) {
+          this.log(`🗣️ Röst (VR-Meny): <i>"${raw}"</i>`);
+          this.activateVRMenuSelection();
+          return;
+        }
+      }
+
+      if (/fri\s*[öo]vning|statiskt\s*m[åa]l|3d[\s-]*m[åa]l|[öo]vning\s*(?:1|ett)/i.test(lower)) {
+        this.log(`🗣️ Röst (Scenario): <i>"${raw}"</i>`);
+        this.selectVRScenario('static');
+        return;
+      }
+      if (/kniv\s*angrepp|akut\s*n[öo]dv[äa]rn|anstormning|framstormande|[öo]vning\s*(?:2|tv[åa])/i.test(lower)) {
+        this.log(`🗣️ Röst (Scenario): <i>"${raw}"</i>`);
+        this.selectVRScenario('charging');
+        return;
+      }
+      if (/verbalt\s*motst[åa]nd|betvingande|r[öo]rligt\s*m[åa]l|[öo]vning\s*(?:3|tre)/i.test(lower)) {
+        this.log(`🗣️ Röst (Scenario): <i>"${raw}"</i>`);
+        this.selectVRScenario('moving');
+        return;
+      }
+      if (/mark[öo]r|live\s*ai|verklig\s*person|[öo]vning\s*(?:4|fyra)/i.test(lower)) {
+        this.log(`🗣️ Röst (Scenario): <i>"${raw}"</i>`);
+        this.selectVRScenario('live-ai');
+        return;
+      }
+
+      if (this.vrMenuState === 'pause') {
+        if (/byt\s*[öo]vning|tillbaka\s+till\s+(?:start|meny)/i.test(lower)) {
+          this.log(`🗣️ Röst (Pausmeny): <i>"${raw}"</i>`);
+          this.openVRStartMenu();
+          return;
+        }
+        if (/avsluta\s*vr/i.test(lower)) {
+          this.log(`🗣️ Röst (Pausmeny): <i>"${raw}"</i>`);
+          window.location.href = './index.html?menu=1';
+          return;
+        }
+        if (/flytta\s*(?:3d[\s-]*)?m[åa]l/i.test(lower)) {
+          this.log(`🗣️ Röst (Pausmeny): <i>"${raw}"</i>`);
+          this.closeVRMenu();
+          if (!this.isLiveAIRunning()) this.togglePlaceMode();
+          return;
+        }
+        if (/byt\s*hand|vapenl[äa]ge/i.test(lower)) {
+          this.log(`🗣️ Röst (Pausmeny): <i>"${raw}"</i>`);
+          this.cyclePauseHandOrWeaponMode();
+          return;
+        }
+        if (/[åa]terst[äa]ll/i.test(lower)) {
+          this.log(`🗣️ Röst (Pausmeny): <i>"${raw}"</i>`);
+          this.closeVRMenu();
+          this.resetSimulator();
+          return;
+        }
+      }
+
+      origProcess(transcript);
+    };
+  }
+
+  ensureVRMenuObjects() {
+    if (!this.scene || !this.scene.scene) return;
+    if (!this.vrMenuGroup) {
+      this.vrMenuGroup = new THREE.Group();
+      this.vrMenuGroup.name = 'VR_Curved3DMenu';
+      this.vrMenuGroup.visible = false;
+      this.scene.scene.add(this.vrMenuGroup);
+    }
+
+    if (!this.vrGazeReticleGroup) {
+      this.vrGazeReticleGroup = new THREE.Group();
+      this.vrGazeReticleGroup.name = 'VR_GazeDwellReticle';
+      this.vrGazeReticleGroup.visible = false;
+
+      this.vrGazeReticleCanvas = document.createElement('canvas');
+      this.vrGazeReticleCanvas.width = 128;
+      this.vrGazeReticleCanvas.height = 128;
+      this.vrGazeReticleCtx = this.vrGazeReticleCanvas.getContext('2d');
+      this.vrGazeReticleTexture = new THREE.CanvasTexture(this.vrGazeReticleCanvas);
+      this.vrGazeReticleTexture.colorSpace = THREE.SRGBColorSpace;
+      this.vrGazeReticleTexture.minFilter = THREE.LinearFilter;
+      this.vrGazeReticleTexture.magFilter = THREE.LinearFilter;
+
+      this.vrGazeReticleMat = new THREE.MeshBasicMaterial({
+        map: this.vrGazeReticleTexture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false
+      });
+      const reticleMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.085, 0.085), this.vrGazeReticleMat);
+      reticleMesh.renderOrder = 1000;
+      this.vrGazeReticleGroup.add(reticleMesh);
+      this.scene.scene.add(this.vrGazeReticleGroup);
+      this.drawGazeReticleCanvas(0, false);
+    }
+  }
+
+  drawGazeReticleCanvas(progress = 0, hovering = false) {
+    if (!this.vrGazeReticleCtx || !this.vrGazeReticleCanvas) return;
+    const p = Math.max(0, Math.min(1, Number(progress) || 0));
+    const stepKey = `${hovering ? 1 : 0}|${Math.round(p * 72)}`;
+    if (this._vrGazeLastKey === stepKey) return;
+    this._vrGazeLastKey = stepKey;
+
+    const ctx = this.vrGazeReticleCtx;
+    const S = 128;
+    const cx = S / 2;
+    const cy = S / 2;
+    ctx.clearRect(0, 0, S, S);
+
+    // Subtil basring
+    ctx.strokeStyle = hovering ? 'rgba(252, 190, 0, 0.35)' : 'rgba(255, 255, 255, 0.32)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Progressring under 1.5s gaze-dwell
+    if (hovering && p > 0.01) {
+      ctx.save();
+      ctx.strokeStyle = '#FCBE00';
+      ctx.shadowColor = '#FCBE00';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Mittpunkt
+    ctx.fillStyle = hovering ? '#FCBE00' : '#2ecc71';
+    ctx.beginPath();
+    ctx.arc(cx, cy, hovering ? 8 : 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#05070a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (this.vrGazeReticleTexture) this.vrGazeReticleTexture.needsUpdate = true;
+  }
+
+  createCurvedMenuPlaneGeometry(width, height, radius = 2.0, segX = 24, segY = 2) {
+    const geo = new THREE.PlaneGeometry(width, height, segX, segY);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const theta = vx / radius;
+      const phi = vy / (radius * 1.5);
+      const curvedX = radius * Math.sin(theta);
+      const curvedZ = (radius - radius * Math.cos(theta)) + (radius * 0.25 * (1 - Math.cos(phi)));
+      pos.setXYZ(i, curvedX, vy, curvedZ);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  disposeVRMenuMeshes() {
+    if (!this.vrMenuGroup) return;
+    while (this.vrMenuGroup.children.length > 0) {
+      const child = this.vrMenuGroup.children[0];
+      this.vrMenuGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    }
+    this.vrMenuInteractiveMeshes = [];
+    this.vrMenuCardRefs = [];
+    this.vrMenuHeaderRef = null;
+  }
+
+  getVRMenuStatusText() {
+    const btTxt = this._btConnected
+      ? '🎮 BT-KONTROLL: ANSLUTEN'
+      : (this._btInputDetected ? '🎮 BT/HID: REDO' : '🎮 BT: VÄNTAR / TANGENTBORD');
+    const trackTxt = this.weaponLockMode === 'locked_fallback'
+      ? '✋ HANDSPÅRNING: LÅST FALLBACK'
+      : (this.weaponTrackState === 'HAND_TRACKED' ? '✋ HANDSPÅRNING: AKTIV' : '✋ HANDSPÅRNING: AUTO+FALLBACK');
+    const code = this.ensureLiveARRoomCode();
+    return {
+      btTxt,
+      trackTxt,
+      codeTxt: `🔗 MARKÖRKOD: ${code}`,
+      key: `${btTxt}|${trackTxt}|${code}`
+    };
+  }
+
+  drawVRHeaderPanel(ref) {
+    if (!ref || !ref.ctx || !ref.canvas) return;
+    const { ctx, canvas, title, subtitle, isPause, texture } = ref;
+    const W = canvas.width;
+    const H = canvas.height;
+    const status = this.getVRMenuStatusText();
+    this._vrMenuStatusKey = status.key;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(8, 12, 18, 0.94)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = '#FCBE00';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(4, 4, W - 8, H - 8);
+
+    // Taktisk gul toppremsa
+    ctx.fillStyle = '#FCBE00';
+    ctx.fillRect(10, 10, W - 20, 8);
+
+    ctx.fillStyle = '#FCBE00';
+    ctx.font = '900 44px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title, W / 2, isPause ? 58 : 48);
+
+    if (isPause) {
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '700 22px system-ui, sans-serif';
+      ctx.fillText(subtitle, W / 2, 104);
+    } else {
+      // Statusrad längst upp på startmenyn
+      const pillW = (W - 64) / 3;
+      const pills = [
+        { text: status.btTxt, color: this._btConnected || this._btInputDetected ? '#2ecc71' : '#94a3b8' },
+        { text: status.trackTxt, color: this.weaponTrackState === 'HAND_TRACKED' ? '#4ade80' : '#38bdf8' },
+        { text: status.codeTxt, color: '#FCBE00' }
+      ];
+      pills.forEach((p, idx) => {
+        const px = 22 + idx * (pillW + 10);
+        ctx.fillStyle = 'rgba(15, 23, 34, 0.96)';
+        ctx.fillRect(px, 86, pillW, 50);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(px, 86, pillW, 50);
+        ctx.fillStyle = p.color;
+        ctx.font = '800 18px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.text, px + pillW / 2, 111);
+      });
+    }
+
+    if (texture) texture.needsUpdate = true;
+  }
+
+  drawVRCardPanel(ref, selected, gazeProgress = 0) {
+    if (!ref || !ref.ctx || !ref.canvas) return;
+    const { ctx, canvas, item, texture, isCompact } = ref;
+    const W = canvas.width;
+    const H = canvas.height;
+    const qProg = Math.round(Math.max(0, Math.min(1, gazeProgress)) * 20);
+    const labelKey = `${selected ? 1 : 0}|${qProg}|${item.title}|${item.description || ''}`;
+    if (ref.lastDrawKey === labelKey) return;
+    ref.lastDrawKey = labelKey;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = selected ? 'rgba(34, 30, 12, 0.96)' : 'rgba(11, 16, 24, 0.92)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Vänster taktisk accentlinje
+    ctx.fillStyle = selected ? '#FCBE00' : (item.accent || '#38bdf8');
+    ctx.fillRect(8, 8, 12, H - 16);
+
+    // Markeringsram (tydlig gul när vald / hovrad)
+    ctx.strokeStyle = selected ? '#FCBE00' : 'rgba(148, 163, 184, 0.42)';
+    ctx.lineWidth = selected ? 8 : 3;
+    ctx.strokeRect(4, 4, W - 8, H - 8);
+
+    // Gaze dwell fyllningslinje i botten av kortet
+    if (qProg > 0) {
+      ctx.fillStyle = '#FCBE00';
+      ctx.fillRect(10, H - 12, (W - 20) * (qProg / 20), 6);
+    }
+
+    if (isCompact) {
+      ctx.fillStyle = selected ? '#FCBE00' : '#f8fafc';
+      ctx.font = '900 32px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.title, 36, H * 0.5);
+
+      if (selected) {
+        ctx.fillStyle = '#FCBE00';
+        ctx.font = '900 22px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('▶ VÄLJ [L3/ENTER]', W - 28, H * 0.5);
+      }
+    } else {
+      ctx.fillStyle = selected ? '#FCBE00' : '#ffffff';
+      ctx.font = '900 33px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.title, 34, 46);
+
+      // Badge uppe till höger
+      if (item.badge) {
+        ctx.fillStyle = selected ? '#FCBE00' : 'rgba(30, 41, 59, 0.95)';
+        ctx.fillRect(W - 292, 18, 268, 38);
+        ctx.strokeStyle = item.accent || '#FCBE00';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(W - 292, 18, 268, 38);
+        ctx.fillStyle = selected ? '#050505' : (item.accent || '#f8fafc');
+        ctx.font = '900 18px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.badge, W - 158, 37);
+      }
+
+      // Beskrivning / regler
+      let descText = item.description || '';
+      if (item.id === 'live-ai') {
+        descText = `BlazePose-kamera mot verklig person • Markörkod: ${this.ensureLiveARRoomCode()}`;
+      }
+      ctx.fillStyle = selected ? '#fef08a' : '#cbd5e1';
+      ctx.font = '600 21px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(descText, 34, 102);
+    }
+
+    if (texture) texture.needsUpdate = true;
+  }
+
+  positionVRMenuInFrontOfCamera(activeCamera) {
+    if (!this.vrMenuGroup) return;
+    const cam = activeCamera || this.scene?.camera;
+    if (!cam) return;
+
+    const renderer = this.scene?.renderer;
+    const isXRPresenting = !!(renderer && renderer.xr && renderer.xr.isPresenting);
+    if (!isXRPresenting) {
+      cam.position.set(0, 1.35, 3.0);
+      const aimSpanDist = Math.max(1.5, this.currentDistance || 3.0);
+      const lookTarget = this.scene._v2.set(
+        (this.aimX - 50) * 0.022 * aimSpanDist,
+        1.35 + (this.aimY - 50) * 0.022 * aimSpanDist,
+        3.0 - aimSpanDist
+      );
+      cam.lookAt(lookTarget);
+      cam.updateMatrixWorld(true);
+    }
+
+    cam.getWorldPosition(this._menuCamPos);
+    this._menuFlatFwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    this._menuFlatFwd.y = 0;
+    if (this._menuFlatFwd.lengthSq() < 0.001) this._menuFlatFwd.set(0, 0, -1);
+    this._menuFlatFwd.normalize();
+
+    this._menuSpawnPos.copy(this._menuCamPos).addScaledVector(this._menuFlatFwd, 2.0);
+    this._menuSpawnPos.y = this._menuCamPos.y;
+    this.vrMenuGroup.position.copy(this._menuSpawnPos);
+    this.vrMenuGroup.lookAt(this._menuCamPos.x, this._menuCamPos.y, this._menuCamPos.z);
+    this.vrMenuGroup.updateMatrixWorld(true);
+  }
+
+  openVRStartMenu() {
+    this.ensureVRMenuObjects();
+    this.disposeVRMenuMeshes();
+
+    this.vrMenuState = 'start';
+    this.vrMenuSelectedIndex = Math.max(0, VR_SCENARIOS.findIndex((s) => s.id === this.selectedScenario));
+    if (this.vrMenuSelectedIndex < 0) this.vrMenuSelectedIndex = 0;
+    this.vrMenuGazeHoverIndex = -1;
+    this.vrMenuGazeDwellSec = 0;
+
+    if (this.xr) {
+      this.xr.isPlacing = false;
+      this.xr.placeMode = false;
+    }
+    document.body.classList.remove('xr-placing');
+    document.documentElement.classList.remove('xr-placing');
+    document.body.classList.add('vr-menu-open');
+    document.documentElement.classList.add('vr-menu-open');
+
+    if (this.scene) {
+      if (this.scene.placementMarker) this.scene.placementMarker.visible = false;
+      this.scene.set3DVisibility(false);
+    }
+
+    // Header + statuspanel högst upp
+    const headerCanvas = document.createElement('canvas');
+    headerCanvas.width = 1024;
+    headerCanvas.height = 152;
+    const headerCtx = headerCanvas.getContext('2d');
+    const headerTex = new THREE.CanvasTexture(headerCanvas);
+    headerTex.colorSpace = THREE.SRGBColorSpace;
+    const headerMat = new THREE.MeshBasicMaterial({ map: headerTex, transparent: true, side: THREE.DoubleSide, toneMapped: false });
+    const headerMesh = new THREE.Mesh(this.createCurvedMenuPlaneGeometry(1.62, 0.24, 2.0), headerMat);
+    headerMesh.position.set(0, 0.56, 0);
+    headerMesh.renderOrder = 950;
+    this.vrMenuGroup.add(headerMesh);
+    this.vrMenuHeaderRef = {
+      canvas: headerCanvas,
+      ctx: headerCtx,
+      texture: headerTex,
+      title: 'VÄLJ ÖVNING – VR',
+      subtitle: '',
+      isPause: false
+    };
+    this.drawVRHeaderPanel(this.vrMenuHeaderRef);
+
+    // 4 övningskort i böjd båge i ögonhöjd
+    const cardYPositions = [0.27, 0.03, -0.21, -0.45];
+    VR_SCENARIOS.forEach((scen, idx) => {
+      const cCanvas = document.createElement('canvas');
+      cCanvas.width = 1024;
+      cCanvas.height = 136;
+      const cCtx = cCanvas.getContext('2d');
+      const cTex = new THREE.CanvasTexture(cCanvas);
+      cTex.colorSpace = THREE.SRGBColorSpace;
+      const cMat = new THREE.MeshBasicMaterial({ map: cTex, transparent: true, side: THREE.DoubleSide, toneMapped: false });
+      const mesh = new THREE.Mesh(this.createCurvedMenuPlaneGeometry(1.58, 0.21, 2.0), cMat);
+      mesh.position.set(0, cardYPositions[idx], 0);
+      mesh.renderOrder = 950;
+      mesh.userData = { menuIndex: idx, scenarioId: scen.id };
+
+      const cardRef = {
+        mesh,
+        canvas: cCanvas,
+        ctx: cCtx,
+        texture: cTex,
+        item: scen,
+        isCompact: false,
+        lastDrawKey: '',
+        onSelect: () => this.selectVRScenario(scen.id)
+      };
+      this.drawVRCardPanel(cardRef, idx === this.vrMenuSelectedIndex, 0);
+      this.vrMenuGroup.add(mesh);
+      this.vrMenuInteractiveMeshes.push(mesh);
+      this.vrMenuCardRefs.push(cardRef);
+    });
+
+    // Fotlist med styrguide
+    const footCanvas = document.createElement('canvas');
+    footCanvas.width = 1024;
+    footCanvas.height = 68;
+    const fCtx = footCanvas.getContext('2d');
+    fCtx.fillStyle = 'rgba(8, 12, 18, 0.88)';
+    fCtx.fillRect(0, 0, 1024, 68);
+    fCtx.strokeStyle = 'rgba(252, 190, 0, 0.55)';
+    fCtx.lineWidth = 3;
+    fCtx.strokeRect(3, 3, 1018, 62);
+    fCtx.fillStyle = '#e2e8f0';
+    fCtx.font = '800 22px monospace';
+    fCtx.textAlign = 'center';
+    fCtx.textBaseline = 'middle';
+    fCtx.fillText('🎮 D-PAD UPP/NER + L3/ENTER  •  👁️ FÄST BLICKEN 1.5s  •  🎙️ SÄG ÖVNING', 512, 34);
+    const footTex = new THREE.CanvasTexture(footCanvas);
+    footTex.colorSpace = THREE.SRGBColorSpace;
+    const footMesh = new THREE.Mesh(
+      this.createCurvedMenuPlaneGeometry(1.58, 0.10, 2.0),
+      new THREE.MeshBasicMaterial({ map: footTex, transparent: true, side: THREE.DoubleSide, toneMapped: false })
+    );
+    footMesh.position.set(0, -0.64, 0);
+    footMesh.renderOrder = 950;
+    this.vrMenuGroup.add(footMesh);
+
+    const activeCam = (this.scene?.renderer?.xr?.isPresenting)
+      ? this.scene.renderer.xr.getCamera(this.scene.camera)
+      : this.scene?.camera;
+    this.positionVRMenuInFrontOfCamera(activeCam);
+    this.vrMenuGroup.visible = true;
+    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = true;
+    this.drawGazeReticleCanvas(0, false);
+    this.updateProjectors();
+  }
+
+  getPauseHandModeLabel() {
+    if (this.weaponLockMode === 'locked_fallback') return 'Låst i höft/siktläge';
+    if (this.handPreference === 'right') return 'Höger hand (Auto)';
+    if (this.handPreference === 'left') return 'Vänster hand (Auto)';
+    return 'Auto (Hand + Fallback)';
+  }
+
+  cyclePauseHandOrWeaponMode() {
+    if (this.weaponLockMode === 'locked_fallback') {
+      this.weaponLockMode = 'auto';
+      this.handPreference = 'auto';
+    } else if (this.handPreference === 'auto') {
+      this.handPreference = 'right';
+    } else if (this.handPreference === 'right') {
+      this.handPreference = 'left';
+    } else {
+      this.handPreference = 'auto';
+      this.weaponLockMode = 'locked_fallback';
+      this._consecutiveHandFrames = 0;
+      this.lastHandSeenTime = 0;
+      this.weaponTrackState = 'FALLBACK_READY';
+    }
+    this.saveWeaponLockMode(this.weaponLockMode);
+    this.updateHandPreferenceUI();
+    this.updateWeaponModeUI();
+    this.updateWeaponTrackBadge();
+    this.showHudToast(`🤚 ${this.getPauseHandModeLabel()}`, '#38bdf8');
+    if (this.vrMenuState === 'pause' && this.vrMenuCardRefs[3]) {
+      this.vrMenuCardRefs[3].item.title = `4. BYT HAND / VAPENLÄGE: ${this.getPauseHandModeLabel().toUpperCase()}`;
+      this.vrMenuCardRefs[3].lastDrawKey = '';
+      this.drawVRCardPanel(this.vrMenuCardRefs[3], this.vrMenuSelectedIndex === 3, 0);
+    }
+  }
+
+  openVRPauseMenu() {
+    this.ensureVRMenuObjects();
+    this.disposeVRMenuMeshes();
+
+    this.vrMenuState = 'pause';
+    this.vrMenuSelectedIndex = 0;
+    this.vrMenuGazeHoverIndex = -1;
+    this.vrMenuGazeDwellSec = 0;
+
+    document.body.classList.add('vr-menu-open');
+    document.documentElement.classList.add('vr-menu-open');
+
+    const headerCanvas = document.createElement('canvas');
+    headerCanvas.width = 1024;
+    headerCanvas.height = 132;
+    const headerCtx = headerCanvas.getContext('2d');
+    const headerTex = new THREE.CanvasTexture(headerCanvas);
+    headerTex.colorSpace = THREE.SRGBColorSpace;
+    const headerMesh = new THREE.Mesh(
+      this.createCurvedMenuPlaneGeometry(1.48, 0.19, 2.0),
+      new THREE.MeshBasicMaterial({ map: headerTex, transparent: true, side: THREE.DoubleSide, toneMapped: false })
+    );
+    headerMesh.position.set(0, 0.59, 0);
+    headerMesh.renderOrder = 950;
+    this.vrMenuGroup.add(headerMesh);
+    this.vrMenuHeaderRef = {
+      canvas: headerCanvas,
+      ctx: headerCtx,
+      texture: headerTex,
+      title: 'PAUSMENY – VR',
+      subtitle: 'D-PAD / BLICK 1.5s / RÖST • HÅLL START 1s ELLER SÄG "FORTSÄTT"',
+      isPause: true
+    };
+    this.drawVRHeaderPanel(this.vrMenuHeaderRef);
+
+    const pauseOptions = [
+      {
+        title: '1. FORTSÄTT ÖVNING',
+        accent: '#2ecc71',
+        onSelect: () => this.closeVRMenu()
+      },
+      {
+        title: '2. ÅTERSTÄLL SKOTT & TRÅDAR',
+        accent: '#3498db',
+        onSelect: () => {
+          this.closeVRMenu();
+          this.resetSimulator();
+        }
+      },
+      {
+        title: this.isLiveAIRunning() ? '3. FLYTTA 3D-MÅL (EJ LIVE AI)' : '3. FLYTTA 3D-MÅL',
+        accent: '#f1c40f',
+        onSelect: () => {
+          this.closeVRMenu();
+          if (this.isLiveAIRunning()) {
+            this.showHudToast('Avsluta Live AI (Byt övning) för att placera 3D-mål', '#f1c40f');
+          } else {
+            this.togglePlaceMode();
+          }
+        }
+      },
+      {
+        title: `4. BYT HAND / VAPENLÄGE: ${this.getPauseHandModeLabel().toUpperCase()}`,
+        accent: '#38bdf8',
+        onSelect: () => this.cyclePauseHandOrWeaponMode()
+      },
+      {
+        title: '5. BYT ÖVNING (TILL VR-STARTMENYN)',
+        accent: '#FCBE00',
+        onSelect: () => {
+          if (this.isLiveAIRunning()) this.stopRealPersonAI(true);
+          this.stopScenario();
+          this.scene.clearWiresAndDarts();
+          this.openVRStartMenu();
+        }
+      },
+      {
+        title: '6. AVSLUTA VR (TILLBAKA TILL HUVUDMENY)',
+        accent: '#e74c3c',
+        onSelect: () => {
+          window.location.href = './index.html?menu=1';
+        }
+      }
+    ];
+
+    pauseOptions.forEach((opt, idx) => {
+      const cCanvas = document.createElement('canvas');
+      cCanvas.width = 1024;
+      cCanvas.height = 96;
+      const cCtx = cCanvas.getContext('2d');
+      const cTex = new THREE.CanvasTexture(cCanvas);
+      cTex.colorSpace = THREE.SRGBColorSpace;
+      const mesh = new THREE.Mesh(
+        this.createCurvedMenuPlaneGeometry(1.44, 0.142, 2.0),
+        new THREE.MeshBasicMaterial({ map: cTex, transparent: true, side: THREE.DoubleSide, toneMapped: false })
+      );
+      mesh.position.set(0, 0.37 - idx * 0.172, 0);
+      mesh.renderOrder = 950;
+      mesh.userData = { menuIndex: idx };
+
+      const cardRef = {
+        mesh,
+        canvas: cCanvas,
+        ctx: cCtx,
+        texture: cTex,
+        item: { title: opt.title, accent: opt.accent },
+        isCompact: true,
+        lastDrawKey: '',
+        onSelect: opt.onSelect
+      };
+      this.drawVRCardPanel(cardRef, idx === this.vrMenuSelectedIndex, 0);
+      this.vrMenuGroup.add(mesh);
+      this.vrMenuInteractiveMeshes.push(mesh);
+      this.vrMenuCardRefs.push(cardRef);
+    });
+
+    const activeCam = (this.scene?.renderer?.xr?.isPresenting)
+      ? this.scene.renderer.xr.getCamera(this.scene.camera)
+      : this.scene?.camera;
+    this.positionVRMenuInFrontOfCamera(activeCam);
+    this.vrMenuGroup.visible = true;
+    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = true;
+    this.drawGazeReticleCanvas(0, false);
+    this.updateProjectors();
+  }
+
+  closeVRMenu() {
+    this.vrMenuState = 'closed';
+    this.vrMenuGazeHoverIndex = -1;
+    this.vrMenuGazeDwellSec = 0;
+    this._menuActionCooldownUntil = performance.now() + 340;
+    document.body.classList.remove('vr-menu-open');
+    document.documentElement.classList.remove('vr-menu-open');
+    if (this.vrMenuGroup) this.vrMenuGroup.visible = false;
+    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = false;
+    if (this.scene && !this.isLiveAIRunning()) {
+      this.scene.set3DVisibility(true);
+    }
+    this.updateProjectors();
+  }
+
+  navigateVRMenu(delta) {
+    if (this.vrMenuState === 'closed' || !this.vrMenuCardRefs.length) return;
+    const count = this.vrMenuCardRefs.length;
+    const prevIdx = this.vrMenuSelectedIndex;
+    this.vrMenuSelectedIndex = ((prevIdx + delta) % count + count) % count;
+    this.vrMenuGazeDwellSec = 0;
+    if (prevIdx !== this.vrMenuSelectedIndex) {
+      if (this.vrMenuCardRefs[prevIdx]) this.drawVRCardPanel(this.vrMenuCardRefs[prevIdx], false, 0);
+      if (this.vrMenuCardRefs[this.vrMenuSelectedIndex]) this.drawVRCardPanel(this.vrMenuCardRefs[this.vrMenuSelectedIndex], true, 0);
+      if (navigator.vibrate) {
+        try { navigator.vibrate(10); } catch (_) {}
+      }
+    }
+  }
+
+  activateVRMenuSelection(explicitIdx = null) {
+    if (this.vrMenuState === 'closed' || !this.vrMenuCardRefs.length) return;
+    const idx = (typeof explicitIdx === 'number' && explicitIdx >= 0 && explicitIdx < this.vrMenuCardRefs.length)
+      ? explicitIdx
+      : (this.vrMenuGazeHoverIndex >= 0 ? this.vrMenuGazeHoverIndex : this.vrMenuSelectedIndex);
+    const ref = this.vrMenuCardRefs[idx];
+    if (!ref || typeof ref.onSelect !== 'function') return;
+
+    this.playPlacementConfirmSound();
+    if (navigator.vibrate) {
+      try { navigator.vibrate(24); } catch (_) {}
+    }
+    this.vrMenuGazeDwellSec = 0;
+    this._menuActionCooldownUntil = performance.now() + 360;
+    ref.onSelect();
+  }
+
+  async selectVRScenario(scenarioId) {
+    const id = String(scenarioId || 'static');
+    if (id === 'live-ai') {
+      await this.startRealPersonAI({ reuseExistingCode: true });
+      return;
+    }
+
+    if (this.isLiveAIRunning()) {
+      this.stopRealPersonAI(true);
+    }
+    this.selectedScenario = id;
+    if (this.xr) {
+      this.xr.scenario = id;
+      this.xr.resetScenarioState();
+    }
+    this.liveWires = [];
+    this.scene.clearWiresAndDarts();
+    this.scene.resetTarget();
+    this.stopScenario();
+    this.closeVRMenu();
+    this.togglePlaceMode();
+
+    const scenObj = VR_SCENARIOS.find((s) => s.id === id);
+    if (scenObj) {
+      this.showHudToast(`${scenObj.title} — Placera mål & tryck L3 / Space`, scenObj.accent || '#2ecc71');
+    }
+  }
+
+  updateVRMenu(dt, activeCamera) {
+    if (this.vrMenuState === 'closed' || !this.vrMenuGroup || !this.vrMenuGroup.visible || !activeCamera) {
+      if (this.vrGazeReticleGroup && this.vrGazeReticleGroup.visible) {
+        this.vrGazeReticleGroup.visible = false;
+      }
+      return;
+    }
+
+    // Uppdatera centrerad 3D-siktespunkt / Gaze-Reticle framför kameran i världskoordinater (syns i båda ögonen)
+    activeCamera.getWorldPosition(this._reticlePos);
+    this._reticleFwd.set(0, 0, -1).applyQuaternion(activeCamera.quaternion).normalize();
+    if (this.vrGazeReticleGroup) {
+      this.vrGazeReticleGroup.visible = true;
+      this.vrGazeReticleGroup.position.copy(this._reticlePos).addScaledVector(this._reticleFwd, 1.85);
+      this.vrGazeReticleGroup.quaternion.copy(activeCamera.quaternion);
+    }
+
+    // Uppdatera toppstatus i startmenyn när BT / Handspårning / Kod ändras
+    const now = performance.now();
+    if (this.vrMenuState === 'start' && this.vrMenuHeaderRef && now - (this._vrMenuStatusCheckAt || 0) > 250) {
+      this._vrMenuStatusCheckAt = now;
+      const st = this.getVRMenuStatusText();
+      if (st.key !== this._vrMenuStatusKey) {
+        this.drawVRHeaderPanel(this.vrMenuHeaderRef);
+      }
+    }
+
+    // Raycast längs blickriktningen mot de böjda 3D-korten (1.5s dwell)
+    this._menuOrigin.copy(this._reticlePos);
+    this._menuDir.copy(this._reticleFwd);
+    this._menuRaycaster.set(this._menuOrigin, this._menuDir);
+    const hits = this._menuRaycaster.intersectObjects(this.vrMenuInteractiveMeshes, false);
+
+    if (hits.length > 0 && typeof hits[0].object?.userData?.menuIndex === 'number') {
+      const hitIdx = hits[0].object.userData.menuIndex;
+      if (hitIdx !== this.vrMenuGazeHoverIndex) {
+        const oldSelected = this.vrMenuSelectedIndex;
+        this.vrMenuGazeHoverIndex = hitIdx;
+        this.vrMenuSelectedIndex = hitIdx;
+        this.vrMenuGazeDwellSec = 0;
+        if (oldSelected !== hitIdx && this.vrMenuCardRefs[oldSelected]) {
+          this.drawVRCardPanel(this.vrMenuCardRefs[oldSelected], false, 0);
+        }
+      } else {
+        this.vrMenuGazeDwellSec += dt;
+      }
+
+      const progress = Math.min(1, this.vrMenuGazeDwellSec / this.VR_GAZE_DWELL_DURATION);
+      this.drawGazeReticleCanvas(progress, true);
+      if (this.vrMenuCardRefs[hitIdx]) {
+        this.drawVRCardPanel(this.vrMenuCardRefs[hitIdx], true, progress);
+      }
+
+      if (this.vrMenuGazeDwellSec >= this.VR_GAZE_DWELL_DURATION) {
+        this.activateVRMenuSelection(hitIdx);
+      }
+    } else {
+      if (this.vrMenuGazeHoverIndex !== -1) {
+        const oldHover = this.vrMenuGazeHoverIndex;
+        this.vrMenuGazeHoverIndex = -1;
+        this.vrMenuGazeDwellSec = 0;
+        if (this.vrMenuCardRefs[oldHover]) {
+          this.drawVRCardPanel(this.vrMenuCardRefs[oldHover], oldHover === this.vrMenuSelectedIndex, 0);
+        }
+      } else {
+        this.vrMenuGazeDwellSec = 0;
+      }
+      this.drawGazeReticleCanvas(0, false);
+    }
+  }
+
+  // =========================================================================
+  // 13. MAIN VR / STEREO / WEBXR RENDER LOOP
   // =========================================================================
   startRenderLoop() {
     const renderer = this.scene.renderer;
@@ -4360,6 +5476,7 @@ export class TaserVRApp {
       const delta = Math.min(this.scene.clock.getDelta(), 0.1);
       const isScenarioActive = this.fsm.isScenarioActive || this.isScenarioActive;
       const currentThreat = typeof window.threatLevel === 'number' ? window.threatLevel : this.threatLevel;
+      const menuClosed = this.vrMenuState === 'closed';
 
       this.scene.update(delta, {
         isScenarioActive,
@@ -4367,29 +5484,43 @@ export class TaserVRApp {
         threatWeapon: this.threatWeapon
       });
 
-      if (isScenarioActive && currentThreat >= 3 && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver && this.scene.taserGroup && this.scene.taserGroup.visible) {
-        if (this.scene.activeAction !== this.scene.actions['Walk']) {
-          this.scene.setAnimation('Walk', 0.8);
-        }
+      const isPausedByVoice = !!(this.xr && nowPerf < (this.xr.targetPausedUntil || 0));
+      const isSurrendered = !!(this.xr && this.xr.targetSurrendered);
+
+      if (menuClosed && isScenarioActive && !isPausedByVoice && !isSurrendered && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver && this.scene.taserGroup && this.scene.taserGroup.visible) {
         if (!renderer.xr.isPresenting) {
-          const toShooter = this.scene._v1.set(0 - this.scene.taserGroup.position.x, 0, 3.0 - this.scene.taserGroup.position.z);
-          const distNow = toShooter.length();
-          if (distNow > 0.4) {
-            toShooter.normalize();
-            const walkWeight = (this.scene.actions && this.scene.actions['Walk']) ? this.scene.actions['Walk'].getEffectiveWeight() : 0;
-            this.scene.taserGroup.position.addScaledVector(toShooter, this.scene.walkSpeed * walkWeight * delta);
+          if (this.selectedScenario === 'moving') {
+            if (this.scene.activeAction !== this.scene.actions['Walk']) {
+              this.scene.setAnimation('Walk', 0.8);
+            }
+            const startPos = this.scene.taserGroup.userData.startPos || { x: 0 };
+            this.scene.taserGroup.position.x = startPos.x + Math.sin(nowPerf * 0.001) * 1.2;
+            this.scene.taserGroup.lookAt(0, this.scene.taserGroup.position.y, 3.0);
             this.currentDistance = Math.max(0.4, Math.hypot(this.scene.taserGroup.position.x, this.scene.taserGroup.position.z - 3.0));
             this.updateAimVisuals();
+          } else if (currentThreat >= 3) {
+            if (this.scene.activeAction !== this.scene.actions['Walk']) {
+              this.scene.setAnimation('Walk', 0.8);
+            }
+            const toShooter = this.scene._v1.set(0 - this.scene.taserGroup.position.x, 0, 3.0 - this.scene.taserGroup.position.z);
+            const distNow = toShooter.length();
+            if (distNow > 0.4) {
+              toShooter.normalize();
+              const walkWeight = (this.scene.actions && this.scene.actions['Walk']) ? this.scene.actions['Walk'].getEffectiveWeight() : 0;
+              this.scene.taserGroup.position.addScaledVector(toShooter, this.scene.walkSpeed * walkWeight * delta);
+              this.currentDistance = Math.max(0.4, Math.hypot(this.scene.taserGroup.position.x, this.scene.taserGroup.position.z - 3.0));
+              this.updateAimVisuals();
+            }
           }
         }
-      } else if ((!isScenarioActive || currentThreat < 3) && !this.scene.figureFallen && !this.isGameOver) {
+      } else if ((!isScenarioActive || isPausedByVoice || isSurrendered || currentThreat < 3) && !this.scene.figureFallen && !this.isGameOver) {
         if (this.scene.activeAction === this.scene.actions['Walk']) {
           this.scene.setAnimation('Idle', 0.8);
         }
       }
 
       // Fail check (< 0.8m)
-      if (!this.isPlacementActive() && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver) {
+      if (menuClosed && !this.isPlacementActive() && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver) {
         if (!renderer.xr.isPresenting) {
           if (this.currentDistance <= 0.8) this.triggerFailState();
         } else if (this.xr.figureLocked && this.scene.taserGroup && this.scene.taserGroup.visible) {
@@ -4411,7 +5542,7 @@ export class TaserVRApp {
       }
 
       // Styr 3D-dummyn & golvmarkören med D-pad / styrspak / piltangenter i placeringsläge
-      if (this.isPlacementActive()) {
+      if (menuClosed && this.isPlacementActive()) {
         this.updatePlacementMovement(moveDt, activeCamera);
       } else if (this.scene.placementMarker && this.scene.placementMarker.visible) {
         this.scene.placementMarker.visible = false;
@@ -4435,6 +5566,7 @@ export class TaserVRApp {
           3.0 - aimSpanDist
         );
         camera.lookAt(lookTarget);
+        camera.updateMatrixWorld();
       }
 
       this.scene.updateWarningArc(activeCamera);
@@ -4465,7 +5597,7 @@ export class TaserVRApp {
       this.drawHudCanvas(flashlightOn, lasersOn);
 
       const isPlacingNow = this.isPlacementActive();
-      const shouldShow3DLasers = lasersOn && !isLiveARLoop && !isPlacingNow;
+      const shouldShow3DLasers = menuClosed && lasersOn && !isLiveARLoop && !isPlacingNow;
       const aimNDC = this.scene._v3.set(0, 0, 0);
 
       const laserHit = this.scene.updateDynamicLaserRaycast(
@@ -4478,10 +5610,13 @@ export class TaserVRApp {
         null
       );
 
-      if (laserHit && laserHit.hit && !isPlacingNow && !isLiveARLoop && (renderer.xr.isPresenting || (this.weaponGroup && this.weaponGroup.visible)) && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
+      if (menuClosed && laserHit && laserHit.hit && !isPlacingNow && !isLiveARLoop && (renderer.xr.isPresenting || (this.weaponGroup && this.weaponGroup.visible)) && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
         this.currentDistance = Math.max(0.4, laserHit.distance);
         this.updateAimVisuals();
       }
+
+      // Uppdatera böjd 3D-meny & blickstyrning (1.5s dwell)
+      this.updateVRMenu(moveDt, activeCamera);
 
       if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
         this.renderStereo(this.scene.scene, activeCamera);
