@@ -29,5 +29,28 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mobil – Live AI (Skytt)",
+      "short_name": "Mobil",
+      "description": "Starta stående mobilläge med Live AI och skjutbana",
+      "url": "./",
+      "icons": [{ "src": "icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "VR / AR-Headset (Skytt)",
+      "short_name": "VR-läge",
+      "description": "Starta stereoskopiskt VR/headset-läge direkt",
+      "url": "./vr.html",
+      "icons": [{ "src": "icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Byt Läge / Roll",
+      "short_name": "Startmeny",
+      "description": "Öppna taktisk rollväljare vid start",
+      "url": "./index.html?menu=1",
+      "icons": [{ "src": "icons/icon-192x192.png", "sizes": "192x192" }]
+    }
   ]
 }

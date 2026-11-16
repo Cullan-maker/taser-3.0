@@ -1,9 +1,10 @@
-const CACHE_NAME = 'taser7-tactical-v15';
+const CACHE_NAME = 'taser7-tactical-v17';
 
 // Relativa resurser för full kompatibilitet med GitHub Pages undermappar
 const PRECACHE_ASSETS = [
   './',
   './index.html',
+  './vr.html',
   './manifest.json',
   './sw.js',
   './service-worker.js',
@@ -17,6 +18,7 @@ const PRECACHE_ASSETS = [
   './js/pwa.js',
   './js/voice.js',
   './js/pose.js',
+  './js/vr.js',
   './icons/icon-192x192.png',
   './icons/icon-512x512.png',
   './icons/icon-maskable-512x512.png',
@@ -70,7 +72,8 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          return caches.match('./index.html').then((cached) => cached || caches.match('./'));
+          return caches.match(req, { ignoreSearch: true })
+            .then((cached) => cached || caches.match('./index.html').then((fallback) => fallback || caches.match('./')));
         })
     );
     return;

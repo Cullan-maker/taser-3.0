@@ -9,14 +9,14 @@ if (typeof window !== 'undefined') {
   window.THREE = THREE;
   window.StereoEffect = StereoEffect;
 }
-import { TaserFSM, ChamberState } from './fsm.js?v=9';
-import { TaserAudio } from './audio.js?v=9';
-import { TaserBallistics } from './ballistics.js?v=9';
-import { TaserScene } from './scene.js?v=9';
-import { TaserXR } from './xr.js?v=9';
-import { TaserPWA } from './pwa.js?v=9';
-import { TaserVoice } from './voice.js?v=9';
-import { TaserAIPose } from './pose.js?v=9';
+import { TaserFSM, ChamberState } from './fsm.js?v=10';
+import { TaserAudio } from './audio.js?v=10';
+import { TaserBallistics } from './ballistics.js?v=10';
+import { TaserScene } from './scene.js?v=10';
+import { TaserXR } from './xr.js?v=10';
+import { TaserPWA } from './pwa.js?v=10';
+import { TaserVoice } from './voice.js?v=10';
+import { TaserAIPose } from './pose.js?v=10';
 
 export class TaserApp {
   constructor() {
@@ -35,6 +35,7 @@ export class TaserApp {
       onSessionStart: this.onXRSessionStart.bind(this),
       onSessionEnd: this.onXRSessionEnd.bind(this)
     });
+    this.scene.xrManager = this.xr;
 
     this.pwa = new TaserPWA();
 
@@ -75,9 +76,6 @@ export class TaserApp {
     this.aimX = 50; // percentage
     this.aimY = 50; // percentage
     this.tilt = 0; // degrees (-90 to +90)
-    this._tiltTarget = 0;
-    this._lastNonZeroTilt = -90;
-    this._tiltTweenRaf = null;
     this._gyroContinuousRoll = 0;
     this._hasGyroRoll = false;
     this._hudVisualDropPx = null;
@@ -144,7 +142,6 @@ export class TaserApp {
       return res;
     };
     window.toggleFunctionCheck = () => this.toggleFunctionCheck();
-    window.tiltWeapon = () => this.cycleTilt();
     window.activateStealth = () => this.fsm.activateStealth();
     window.toggleClothing = () => this.fsm.toggleClothing();
     window.toggleScenario = () => this.toggleScenario();
@@ -348,8 +345,8 @@ export class TaserApp {
         this.currentDistance = 3.0;
         this.aimX = 50;
         this.aimY = 50;
-        this._lastNonZeroTilt = -90;
-        this.setTilt(0);
+        this.tilt = 0;
+        if (typeof window !== 'undefined' && window.state) window.state.tilt = 0;
         this.warningGiven = false;
         this.updateWarningUI();
         this.scene.resetTarget();
@@ -431,7 +428,6 @@ export class TaserApp {
     this.setupTactileButton('btn-cassette', () => window.toggleCassette());
     this.setupTactileButton('btn-battery', () => window.toggleBattery());
     this.setupTactileButton('btn-stealth', () => this.fsm.activateStealth());
-    this.setupTactileButton('btn-tilt', () => this.cycleTilt());
     this.setupTactileButton('btn-warn', () => this.toggleFunctionCheck());
     this.setupTactileButton('btn-reset', () => this.resetSimulator());
     this.setupTactileButton('btn-fail-reset', () => this.resetSimulator());
@@ -773,8 +769,14 @@ export class TaserApp {
         hitResult = liveHits || { hit1: null, hit2: null, hitWall1: true, hitWall2: true };
         this.spawnLiveARWires(firedChamber, hitResult, liveDropPx);
       } else {
-        // Perform 3D raycast on mannequin or WebXR target
-        hitResult = this.scene.fireDarts({ ndc1, ndc2, chamber: firedChamber });
+        // Perform 3D raycast on mannequin or WebXR room surface (wall/floor/furniture)
+        hitResult = this.scene.fireDarts({
+          ndc1,
+          ndc2,
+          chamber: firedChamber,
+          distance: this.currentDistance,
+          tiltDeg: this.getEffectiveTiltDeg()
+        });
       }
 
       // Evaluate NMI success
@@ -835,77 +837,7 @@ export class TaserApp {
 
     this.isFiring = !!this.fsm.isFiring;
     this.updateDisplay();
-  }
-
-  setTilt(deg, fromTween = false) {
-    if (!fromTween && this._tiltTweenRaf) {
-      cancelAnimationFrame(this._tiltTweenRaf);
-      this._tiltTweenRaf = null;
-    }
-    const clamped = Math.max(-90, Math.min(90, Number(deg) || 0));
-    this.tilt = clamped;
-    if (!fromTween) {
-      this._tiltTarget = clamped;
-      if (Math.abs(clamped) >= 45) {
-        this._lastNonZeroTilt = clamped > 0 ? 90 : -90;
-      }
-    }
-    if (typeof window !== 'undefined') {
-      window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe, functionCheckMode: !!this.fsm.functionCheckMode };
-      window.state.tilt = clamped;
-      if (window.weaponGroup && window.THREE) {
-        window.weaponGroup.rotation.order = 'YXZ';
-        window.weaponGroup.rotation.z = window.THREE.MathUtils.degToRad(-clamped);
-      }
-    }
-    const tiltBtn = document.getElementById('btn-tilt');
-    if (tiltBtn) {
-      const rounded = Math.round(clamped);
-      tiltBtn.textContent = rounded === 0 ? '🔄 Vinkla (Tilt)' : `🔄 Vinkla (${rounded}°)`;
-    }
     this.updateAimVisuals();
-    return clamped;
-  }
-
-  cycleTilt() {
-    if (this._tiltTweenRaf) {
-      cancelAnimationFrame(this._tiltTweenRaf);
-      this._tiltTweenRaf = null;
-    }
-    const current = typeof this._tiltTarget === 'number' ? this._tiltTarget : (this.tilt || 0);
-    // Tvåvägs cykel: 0° -> 90° -> 0° -> -90° -> 0°
-    let next = 0;
-    if (Math.abs(current) < 45) {
-      next = (this._lastNonZeroTilt > 0) ? -90 : 90;
-      this._lastNonZeroTilt = next;
-    } else {
-      this._lastNonZeroTilt = current > 0 ? 90 : -90;
-      next = 0;
-    }
-    this._tiltTarget = next;
-
-    const startVal = this.tilt || 0;
-    const duration = 180;
-    const startTime = performance.now();
-
-    const step = (now) => {
-      const progress = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const val = startVal + (next - startVal) * eased;
-      this.setTilt(val, true);
-      if (progress < 1) {
-        this._tiltTweenRaf = requestAnimationFrame(step);
-      } else {
-        this._tiltTweenRaf = null;
-        this.setTilt(next, true);
-        this._tiltTarget = next;
-      }
-    };
-    this._tiltTweenRaf = requestAnimationFrame(step);
-
-    const desc = next === 0 ? 'Vertikal spridning' : `Horisontell spridning (${next}°)`;
-    this.log(`🔄 Vapen vinklat: <b>${next}°</b> (${desc})`);
-    return next;
   }
 
   toggleFunctionCheck() {
@@ -2659,7 +2591,7 @@ export class TaserApp {
         this.log("<span style='color:#e74c3c; font-weight:bold;'>Rörelsesensor nekades.</span> Tillåt rörelse och riktning i Safari/webbläsarinställningar.");
       } else if (res && res.permission === 'unsupported' && !silent) {
         if (btn) btn.innerHTML = '📱 Gyro: EJ STÖD';
-        this.log("<span style='color:#bdc3c7'>Enheten saknar hårdvarugyroskop. Använd '🔄 Vinkla (Tilt)' knappen.</span>");
+        this.log("<span style='color:#bdc3c7'>Enheten saknar hårdvarugyroskop. Använd '⏏️ Kassett' för att växla kammare.</span>");
       }
     });
   }
@@ -2724,8 +2656,8 @@ export class TaserApp {
     this.currentDistance = 3.0;
     this.aimX = 50;
     this.aimY = 50;
-    this._lastNonZeroTilt = -90;
-    this.setTilt(0);
+    this.tilt = 0;
+    if (typeof window !== 'undefined' && window.state) window.state.tilt = 0;
 
     if (typeof window !== 'undefined') {
       window.state = window.state || { tilt: 0, isSafe: !!this.fsm.isSafe, functionCheckMode: false };
@@ -2928,8 +2860,8 @@ export class TaserApp {
         window.updateWeaponPose(this);
       }
 
-      // Dynamic Copper Wire updates anchored to muzzlePoint
-      this.scene.updateWireDynamics(activeCamera);
+      // Dynamic Copper Wire updates anchored to muzzlePoint & probe world positions with gravity/sway physics
+      this.scene.updateWireDynamics(activeCamera, delta);
 
       // 4. Dynamisk Raycasting för två laserpunkter (grön + röd) utan strålar genom luften
       const isHandDetected = (typeof window !== 'undefined') ? !!window.handDetected : false;

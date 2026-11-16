@@ -36,6 +36,10 @@ export class TaserXR {
     this.onContinuousTilt = null;
     this._hasMotionAccel = false;
     this._xrRightVec = new THREE.Vector3();
+    this.latestEnvHit = null;
+    this._envHitPos = new THREE.Vector3();
+    this._envHitNormal = new THREE.Vector3();
+    this._envHitQuat = new THREE.Quaternion();
 
     // Pre-cache WebXR immersive-ar support asynchronously to avoid blocking gesture turn
     this.xrSupported = null;
@@ -124,6 +128,7 @@ export class TaserXR {
 
       this.xrSession = session;
       this.hitTestSourceRequested = false;
+      this.latestEnvHit = null;
 
       // Ensure Three.js WebGL context is transparent and clearColor is 0x000000 with alpha 0
       if (this.taserScene) {
@@ -170,6 +175,7 @@ export class TaserXR {
     this.hitTestSourceRequested = false;
     this.xrHitTestSource = null;
     this.xrRefSpace = null;
+    this.latestEnvHit = null;
     this.isPlacing = false;
     this.placeMode = false;
 
@@ -199,57 +205,70 @@ export class TaserXR {
 
     const referenceSpace = this.taserScene.renderer.xr.getReferenceSpace();
 
-    // Hit-testing & reticle ENDAST aktivt när användaren aktivt placerar/flyttar figuren (isPlacing === true)
-    if (this.isPlacing && this.placeMode) {
-      if (!this.hitTestSourceRequested) {
-        this.hitTestSourceRequested = true;
-        this.hasHitTestPose = false;
-        this.xrSession.requestReferenceSpace('viewer').then((viewerSpace) => {
-          return this.xrSession.requestHitTestSource({ space: viewerSpace });
-        }).then((source) => {
-          this.xrHitTestSource = source;
-        }).catch((err) => {
-          console.warn('[WEBXR HIT-TEST] Kunde inte begära hit-test source:', err);
-          this.hitTestSourceRequested = false;
-        });
-      }
+    // Begär WebXR hit-test source en gång per session så att både placering och verkliga rumsytor (vägg/golv/möbler) kan träffas
+    if (!this.hitTestSourceRequested) {
+      this.hitTestSourceRequested = true;
+      this.hasHitTestPose = false;
+      this.xrSession.requestReferenceSpace('viewer').then((viewerSpace) => {
+        return this.xrSession.requestHitTestSource({ space: viewerSpace });
+      }).then((source) => {
+        this.xrHitTestSource = source;
+      }).catch((err) => {
+        console.warn('[WEBXR HIT-TEST] Kunde inte begära hit-test source:', err);
+        this.hitTestSourceRequested = false;
+      });
+    }
 
-      if (this.xrHitTestSource) {
-        const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
-        if (hitTestResults.length > 0) {
-          const hit = hitTestResults[0];
-          const pose = hit.getPose(referenceSpace);
-          if (pose && this.taserScene.placementMarker) {
-            this.hasHitTestPose = true;
-            this.taserScene.placementMarker.visible = true;
-            this.taserScene.placementMarker.position.set(
-              pose.transform.position.x,
-              pose.transform.position.y + 0.01,
-              pose.transform.position.z
-            );
-            this.taserScene.placementMarker.rotation.set(0, 0, 0);
-            this.taserScene.placementMarker.quaternion.identity();
-            this.taserScene.placementMarker.updateMatrix();
-            this.taserScene.placementMarker.updateMatrixWorld(true);
-          }
-        } else if (this.taserScene.placementMarker && !this.hasHitTestPose && activeCamera) {
-          // Visa preliminär markör på golvnivå framför kameran tills golvplan detekterats
-          const fwd = this.taserScene._v1.set(0, 0, -1).applyQuaternion(activeCamera.quaternion);
-          fwd.y = 0;
-          if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
-          fwd.normalize().multiplyScalar(2.5);
-          this.taserScene.placementMarker.visible = true;
-          this.taserScene.placementMarker.position.set(
-            activeCamera.position.x + fwd.x,
-            0.01,
-            activeCamera.position.z + fwd.z
+    let hitPose = null;
+    if (this.xrHitTestSource && referenceSpace) {
+      const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+      if (hitTestResults.length > 0) {
+        hitPose = hitTestResults[0].getPose(referenceSpace);
+        if (hitPose) {
+          this.hasHitTestPose = true;
+          this._envHitPos.set(
+            hitPose.transform.position.x,
+            hitPose.transform.position.y,
+            hitPose.transform.position.z
           );
-          this.taserScene.placementMarker.rotation.set(0, 0, 0);
-          this.taserScene.placementMarker.quaternion.identity();
-          this.taserScene.placementMarker.updateMatrix();
-          this.taserScene.placementMarker.updateMatrixWorld(true);
+          this._envHitQuat.set(
+            hitPose.transform.orientation.x,
+            hitPose.transform.orientation.y,
+            hitPose.transform.orientation.z,
+            hitPose.transform.orientation.w
+          );
+          this._envHitNormal.set(0, 1, 0).applyQuaternion(this._envHitQuat).normalize();
+          const hitDist = activeCamera ? activeCamera.position.distanceTo(this._envHitPos) : 3.0;
+          this.latestEnvHit = {
+            point: this._envHitPos,
+            normal: this._envHitNormal,
+            distance: hitDist,
+            timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now()
+          };
         }
-      } else if (this.taserScene.placementMarker && activeCamera) {
+      } else if (this.latestEnvHit) {
+        const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (nowMs - this.latestEnvHit.timestamp > 350) {
+          this.latestEnvHit = null;
+        }
+      }
+    }
+
+    // Placement reticle visas ENDAST när användaren aktivt placerar/flyttar figuren (isPlacing === true)
+    if (this.isPlacing && this.placeMode) {
+      if (hitPose && this.taserScene.placementMarker) {
+        this.taserScene.placementMarker.visible = true;
+        this.taserScene.placementMarker.position.set(
+          hitPose.transform.position.x,
+          hitPose.transform.position.y + 0.01,
+          hitPose.transform.position.z
+        );
+        this.taserScene.placementMarker.rotation.set(0, 0, 0);
+        this.taserScene.placementMarker.quaternion.identity();
+        this.taserScene.placementMarker.updateMatrix();
+        this.taserScene.placementMarker.updateMatrixWorld(true);
+      } else if (this.taserScene.placementMarker && (!this.xrHitTestSource || !this.hasHitTestPose) && activeCamera) {
+        // Visa preliminär markör på golvnivå framför kameran tills golvplan detekterats
         const fwd = this.taserScene._v1.set(0, 0, -1).applyQuaternion(activeCamera.quaternion);
         fwd.y = 0;
         if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
@@ -266,7 +285,7 @@ export class TaserXR {
         this.taserScene.placementMarker.updateMatrixWorld(true);
       }
     } else {
-      // Pausar/ignorerar hit-test och döljer alltid reticle helt efter placering
+      // Dölj alltid placement reticle helt efter placering
       if (this.taserScene && this.taserScene.placementMarker && this.taserScene.placementMarker.visible) {
         this.taserScene.placementMarker.visible = false;
       }

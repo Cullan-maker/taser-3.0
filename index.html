@@ -925,6 +925,11 @@
             border-color: #0f171e !important;
             color: #9ac2e8 !important;
         }
+        .btn-switch-role {
+            background: linear-gradient(180deg, #3a3114 0%, #241e0b 100%) !important;
+            border-color: rgba(241, 196, 15, 0.55) !important;
+            color: #f1c40f !important;
+        }
         .btn-clothing {
             background: linear-gradient(180deg, #3a2b48 0%, #251b2e 100%) !important;
             border-color: #17111c !important;
@@ -1406,7 +1411,7 @@
             display: none !important;
         }
 
-        /* CLEAN & COMPACT AR UI (WebXR Active - Identisk skala och layout med Live AI + Batteri, Vinkla, Funk. Kontroll & Röst) */
+        /* CLEAN & COMPACT AR UI (WebXR Active - Identisk skala och layout med Live AI + Batteri, Funk. Kontroll & Röst) */
         body.ar-combat-mode .main-container,
         .main-container.ar-combat-mode {
             position: fixed !important;
@@ -1499,7 +1504,7 @@
 
         body.ar-combat-mode .btn-grid-compact:has(#btn-warn),
         .main-container.ar-combat-mode .btn-grid-compact:has(#btn-warn) {
-            grid-template-columns: 1fr 1fr 1fr !important;
+            grid-template-columns: 1fr 1fr !important;
             gap: 5px !important;
             margin-bottom: 5px !important;
         }
@@ -1524,7 +1529,7 @@
             visibility: visible !important;
         }
 
-        /* Behåll OLED, Säkring, Varningsknappar, Avfyra, Kassett, Batteri, Vinkla, Funk. Kontroll, Återställ, Röst samt Flytta Mål / Avsluta WebXR synliga och klickbara */
+        /* Behåll OLED, Säkring, Varningsknappar, Avfyra, Kassett, Batteri, Funk. Kontroll, Återställ, Röst samt Flytta Mål / Avsluta WebXR synliga och klickbara */
         body.ar-combat-mode #taser-display,
         body.ar-combat-mode .safety-container,
         body.ar-combat-mode #safety-switch,
@@ -1534,7 +1539,6 @@
         body.ar-combat-mode #btn-trigger,
         body.ar-combat-mode #btn-cassette,
         body.ar-combat-mode #btn-battery,
-        body.ar-combat-mode #btn-tilt,
         body.ar-combat-mode #btn-warn,
         body.ar-combat-mode #btn-reset,
         body.ar-combat-mode #btn-voice,
@@ -1549,7 +1553,6 @@
         .main-container.ar-combat-mode #btn-trigger,
         .main-container.ar-combat-mode #btn-cassette,
         .main-container.ar-combat-mode #btn-battery,
-        .main-container.ar-combat-mode #btn-tilt,
         .main-container.ar-combat-mode #btn-warn,
         .main-container.ar-combat-mode #btn-reset,
         .main-container.ar-combat-mode #btn-voice,
@@ -1664,10 +1667,8 @@
 
         body.ar-combat-mode #btn-cassette,
         body.ar-combat-mode #btn-battery,
-        body.ar-combat-mode #btn-tilt,
         .main-container.ar-combat-mode #btn-cassette,
-        .main-container.ar-combat-mode #btn-battery,
-        .main-container.ar-combat-mode #btn-tilt {
+        .main-container.ar-combat-mode #btn-battery {
             background: linear-gradient(180deg, #323844 0%, #1e222a 100%) !important;
             border: 1px solid #101216 !important;
             border-top: 1px solid rgba(255,255,255,0.22) !important;
@@ -1748,7 +1749,7 @@
             white-space: nowrap;
         }
 
-        /* COMPACT LIVE-AR UI (.live-ar-active / .live-ai-active): Behåll endast Taser-chassi (säkring), Avfyra, Kassett, Batteri, Vinkla, Återställ och Avsluta */
+        /* COMPACT LIVE-AR UI (.live-ar-active / .live-ai-active): Behåll endast Taser-chassi (säkring), Avfyra, Kassett, Batteri, Återställ och Avsluta */
         body.live-ar-active .main-container,
         body.live-ai-active .main-container,
         .main-container.live-ar-active {
@@ -1892,12 +1893,17 @@
         }
 
         body.live-ar-active .btn-grid-compact:has(#btn-cassette),
-        body.live-ar-active .btn-grid-compact:has(#btn-tilt),
         body.live-ai-active .btn-grid-compact:has(#btn-cassette),
-        body.live-ai-active .btn-grid-compact:has(#btn-tilt),
-        .main-container.live-ar-active .btn-grid-compact:has(#btn-cassette),
-        .main-container.live-ar-active .btn-grid-compact:has(#btn-tilt) {
+        .main-container.live-ar-active .btn-grid-compact:has(#btn-cassette) {
             grid-template-columns: 1fr 1fr !important;
+            gap: 5px !important;
+            margin-bottom: 5px !important;
+        }
+
+        body.live-ar-active .btn-grid-compact:has(#btn-reset),
+        body.live-ai-active .btn-grid-compact:has(#btn-reset),
+        .main-container.live-ar-active .btn-grid-compact:has(#btn-reset) {
+            grid-template-columns: 1fr !important;
             gap: 5px !important;
             margin-bottom: 5px !important;
         }
@@ -1927,17 +1933,14 @@
 
         body.live-ar-active #btn-cassette,
         body.live-ar-active #btn-battery,
-        body.live-ar-active #btn-tilt,
         body.live-ar-active #btn-reset,
         body.live-ar-active #btn-live-ar-exit,
         body.live-ai-active #btn-cassette,
         body.live-ai-active #btn-battery,
-        body.live-ai-active #btn-tilt,
         body.live-ai-active #btn-reset,
         body.live-ai-active #btn-live-ar-exit,
         .main-container.live-ar-active #btn-cassette,
         .main-container.live-ar-active #btn-battery,
-        .main-container.live-ar-active #btn-tilt,
         .main-container.live-ar-active #btn-reset,
         .main-container.live-ar-active #btn-live-ar-exit {
             display: inline-flex !important;
@@ -2083,7 +2086,7 @@
             -webkit-tap-highlight-color: transparent;
             transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.12s ease, opacity 0.12s ease;
         }
-        button, .action-btn, .safety-switch, .warning-btn, .main-menu-btn, .scenario-btn {
+        button, .action-btn, .safety-switch, .warning-btn, .launcher-option-card, .scenario-btn {
             touch-action: manipulation;
         }
         .scenario-btn:active,
@@ -2178,110 +2181,178 @@
             #landscape-guard { display: flex; }
         }
 
-        /* ----- HUVUDMENY / STARTMENY (#main-menu) ----- */
-        #main-menu {
+        /* ----- TAKTISK STARTMENY / MODE LAUNCHER (#mode-launcher-overlay) ----- */
+        #mode-launcher-overlay {
             position: fixed;
             inset: 0;
             width: 100%;
             height: 100%;
-            z-index: 9999;
+            z-index: 60000;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
-            background: radial-gradient(circle at center, rgba(22, 24, 29, 0.96) 0%, rgba(5, 5, 5, 0.99) 100%);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            padding: 16px;
+            background: radial-gradient(circle at top center, rgba(28, 32, 40, 0.98) 0%, rgba(5, 6, 9, 0.995) 100%);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.22s ease, visibility 0.22s ease;
+            overflow-y: auto;
+        }
+        #mode-launcher-overlay.launcher-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
         }
 
-        .main-menu-card {
+        .launcher-card {
             width: 100%;
-            max-width: 390px;
-            background: linear-gradient(180deg, #1a1d24 0%, #0d0f13 100%);
-            border: 2px solid #2c313a;
-            border-top: 4px solid #f1c40f;
-            border-radius: 14px;
-            padding: 26px 22px;
-            box-shadow: 0 20px 55px rgba(0, 0, 0, 0.95), 0 0 30px rgba(241, 196, 15, 0.12);
+            max-width: 420px;
+            background: linear-gradient(180deg, #171a21 0%, #0b0d11 100%);
+            border: 1.5px solid #2b313c;
+            border-top: 4px solid #FCBE00;
+            border-radius: 16px;
+            padding: 22px 18px 18px 18px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.96), 0 0 36px rgba(252, 190, 0, 0.12);
             text-align: center;
         }
 
-        .main-menu-badge {
+        .launcher-badge {
             display: inline-block;
             font-size: 9px;
-            font-weight: 800;
+            font-weight: 900;
             letter-spacing: 2px;
             text-transform: uppercase;
             color: #050505;
-            background: #f1c40f;
+            background: #FCBE00;
             padding: 3px 10px;
             border-radius: 4px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 8px rgba(241, 196, 15, 0.35);
+            margin-bottom: 10px;
+            box-shadow: 0 2px 10px rgba(252, 190, 0, 0.35);
         }
 
-        #main-menu h1 {
-            color: #f1c40f;
-            font-size: 18px;
+        #mode-launcher-overlay h1 {
+            color: #FCBE00;
+            font-size: 16px;
             font-weight: 900;
-            letter-spacing: 1.8px;
+            letter-spacing: 1.5px;
             text-transform: uppercase;
-            margin: 0 0 8px 0;
-            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+            margin: 0 0 6px 0;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
         }
 
-        .main-menu-desc {
-            color: #bdc3c7;
+        .launcher-desc {
+            color: #94a3b8;
             font-size: 11px;
-            line-height: 1.45;
-            margin: 0 0 22px 0;
+            line-height: 1.4;
+            margin: 0 0 16px 0;
         }
 
-        .main-menu-buttons {
+        .launcher-options {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 11px;
         }
 
-        .main-menu-btn {
+        .launcher-option-card {
             width: 100%;
-            padding: 15px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 800;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 14px;
+            border-radius: 11px;
+            text-align: left;
             cursor: pointer;
             transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
             touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
-
-        .main-menu-btn:active {
-            transform: translateY(2px);
+        .launcher-option-card:active {
+            transform: translateY(2px) scale(0.992);
         }
-
-        .main-menu-btn-mobile {
-            background: linear-gradient(180deg, #f1c40f 0%, #d4ac0d 100%);
-            color: #050505;
-            border: 1px solid #f7dc6f;
-            box-shadow: 0 4px 0 #7d6608, 0 8px 18px rgba(241, 196, 15, 0.25);
+        .launcher-opt-icon {
+            font-size: 24px;
+            line-height: 1;
+            flex-shrink: 0;
+            margin-top: 2px;
         }
-
-        .main-menu-btn-vr {
-            background: linear-gradient(180deg, #252a34 0%, #14171d 100%);
-            color: #f1c40f;
-            border: 1px solid rgba(241, 196, 15, 0.65);
-            box-shadow: 0 4px 0 #090a0d, 0 8px 18px rgba(0, 0, 0, 0.7);
+        .launcher-opt-body {
+            flex: 1;
+            min-width: 0;
         }
-
-        .main-menu-btn span {
-            display: block;
-            font-size: 10px;
-            font-weight: 600;
-            margin-top: 4px;
+        .launcher-opt-title {
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+        .launcher-opt-sub {
+            font-size: 10.5px;
+            font-weight: 500;
+            line-height: 1.38;
+            opacity: 0.9;
+        }
+        .launcher-opt-arrow {
+            font-size: 15px;
+            font-weight: 900;
+            align-self: center;
             opacity: 0.85;
-            letter-spacing: 0.3px;
-            text-transform: none;
+            flex-shrink: 0;
+        }
+
+        .launcher-card-mobile {
+            background: linear-gradient(180deg, #FCBE00 0%, #d49d00 100%);
+            color: #060709;
+            border: 1px solid #fde047;
+            box-shadow: 0 4px 0 #7a5c00, 0 10px 22px rgba(252, 190, 0, 0.24);
+        }
+        .launcher-card-mobile .launcher-opt-sub {
+            color: #181a1f;
+            font-weight: 600;
+        }
+
+        .launcher-card-vr {
+            background: linear-gradient(180deg, #212734 0%, #131720 100%);
+            color: #FCBE00;
+            border: 1.5px solid rgba(252, 190, 0, 0.72);
+            box-shadow: 0 4px 0 #090b10, 0 10px 22px rgba(0, 0, 0, 0.72);
+        }
+        .launcher-card-vr .launcher-opt-sub {
+            color: #cbd5e1;
+        }
+
+        .launcher-card-marker {
+            background: linear-gradient(180deg, #1b3b2c 0%, #0f2219 100%);
+            color: #4ade80;
+            border: 1.5px solid rgba(46, 204, 113, 0.75);
+            box-shadow: 0 4px 0 #08140e, 0 10px 22px rgba(0, 0, 0, 0.75);
+        }
+        .launcher-card-marker .launcher-opt-sub {
+            color: #cbd5e1;
+        }
+
+        .launcher-remember-row {
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 11px;
+            color: #94a3b8;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        .launcher-remember-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #FCBE00;
+            cursor: pointer;
         }
 
         /* FAST TILLBAKAKNAPP TILL HUVUDMENYN (#btn-back-menu) */
@@ -2467,12 +2538,6 @@
         }
 
         /* MARKÖR-KNAPP I HUVUDMENYN */
-        .main-menu-btn-marker {
-            background: linear-gradient(180deg, #1e3d2f 0%, #11241c 100%);
-            color: #2ecc71;
-            border: 1px solid rgba(46, 204, 113, 0.72);
-            box-shadow: 0 4px 0 #09150f, 0 8px 18px rgba(0, 0, 0, 0.75);
-        }
 
         /* MARKÖR-VY (#marker-overlay) */
         #marker-overlay {
@@ -2650,8 +2715,8 @@
 </head>
 <body>
 
-    <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
-    <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
+    <!-- FAST TILLBAKAKNAPP TILL STARTMENYN -->
+    <button type="button" id="btn-back-menu" aria-label="Byt läge eller roll">🔄 BYT LÄGE</button>
     <!-- AR HUD FEEDBACK TOAST -->
     <div id="ar-hud-toast" role="status" aria-live="polite" style="display:none;"></div>
     <!-- LIVE AR MARKÖR-KOD BRICKA -->
@@ -2811,8 +2876,7 @@
                         <button class="action-btn btn-stealth" id="btn-stealth">🥷 Dolt</button>
                     </div>
                     
-                    <div class="btn-grid-compact">
-                        <button class="action-btn" id="btn-tilt">🔄 Vinkla (Tilt)</button>
+                    <div class="btn-grid-compact" style="grid-template-columns: 1fr 1fr;">
                         <button class="action-btn btn-warn" id="btn-warn">⚠️ Funk. Kontroll</button>
                         <button class="action-btn btn-reset" id="btn-reset">♻️ Återställ</button>
                     </div>
@@ -2840,8 +2904,9 @@
                         <button class="action-btn btn-gyro" id="btn-gyro">📱 Gyro: AV</button>
                     </div>
 
-                    <div id="info-btn-row" style="margin-top: 4px;">
-                        <button class="action-btn btn-info" id="btn-info">ℹ️ Taktisk Lathund & Manual</button>
+                    <div id="info-btn-row" class="btn-grid-compact" style="grid-template-columns: 1fr 1fr; margin-top: 4px;">
+                        <button class="action-btn btn-info" id="btn-info">ℹ️ Lathund</button>
+                        <button type="button" class="action-btn btn-switch-role" id="btn-switch-role">🔄 BYT LÄGE / ROLL</button>
                     </div>
 
                 </div>
@@ -2926,28 +2991,44 @@
     </script>
 
     <!-- Huvudapplikation (Relativ sökväg för GitHub Pages subpath-kompatibilitet) -->
-    <script type="module" src="./js/app.js?v=9"></script>
+    <script type="module" src="./js/app.js?v=10"></script>
 
-    <!-- HUVUDMENY / STARTMENY (VISAS INNAN APPEN STARTAR) -->
-    <div id="main-menu" role="dialog" aria-modal="true" aria-labelledby="main-menu-title">
-        <div class="main-menu-card">
-            <div class="main-menu-badge">TAKTISK PROCEDURSIMULATOR</div>
-            <h1 id="main-menu-title">TASER 7 ELITE - VÄLJ LÄGE</h1>
-            <p class="main-menu-desc">Välj hur du vill träna. Mobil/handhållen bevarar standardvyn, VR-headset aktiverar delad 3D-skärm och Markör kopplar ihop din mobil med skytten.</p>
-            <div class="main-menu-buttons">
-                <button type="button" id="menu-btn-mobile" class="main-menu-btn main-menu-btn-mobile">
-                    📱 MOBIL / HANDHÅLLEN
-                    <span>Standardläge med pekskärm, gyro och kamera-AR</span>
+    <!-- TAKTISK STARTMENY / MODE LAUNCHER (#mode-launcher-overlay) -->
+    <div id="mode-launcher-overlay" role="dialog" aria-modal="true" aria-labelledby="mode-launcher-title">
+        <div class="launcher-card">
+            <div class="launcher-badge">TASER 7 ELITE • SYSTEMSTART</div>
+            <h1 id="mode-launcher-title">TASER SIMULATOR – VÄLJ ROLL &amp; LÄGE</h1>
+            <p class="launcher-desc">Välj operatörsroll och visningsläge för din enhet. Växla enkelt mellan rollerna när som helst.</p>
+            <div class="launcher-options">
+                <button type="button" id="menu-btn-mobile" class="launcher-option-card launcher-card-mobile">
+                    <div class="launcher-opt-icon">📱</div>
+                    <div class="launcher-opt-body">
+                        <div class="launcher-opt-title">MOBIL – LIVE AI (SKYTT)</div>
+                        <div class="launcher-opt-sub">Kör direkt i handen med kamera, Live AI-träffzoner och genererad 4-siffrig rumskod.</div>
+                    </div>
+                    <div class="launcher-opt-arrow">➜</div>
                 </button>
-                <button type="button" id="menu-btn-vr" class="main-menu-btn main-menu-btn-vr">
-                    🥽 VR-HEADSET (3D PASS-THROUGH)
-                    <span>Delad Side-by-Side 3D-vy i helskärm för VR-glasögon &amp; Bluetooth-joystick</span>
+                <button type="button" id="menu-btn-vr" class="launcher-option-card launcher-card-vr">
+                    <div class="launcher-opt-icon">🥽</div>
+                    <div class="launcher-opt-body">
+                        <div class="launcher-opt-title">VR / AR-HEADSET (SKYTT)</div>
+                        <div class="launcher-opt-sub">Stereoskopisk VR-vy med handspårning, CID-display på vapnet, fallback-läge och Bluetooth-joystick.</div>
+                    </div>
+                    <div class="launcher-opt-arrow">➜</div>
                 </button>
-                <button type="button" id="menu-btn-marker" class="main-menu-btn main-menu-btn-marker">
-                    🎭 AGERA MARKÖR (MÅL)
-                    <span>Anslut till skyttens Live AR för vibration &amp; Taser-ljud vid träff</span>
+                <button type="button" id="menu-btn-marker" class="launcher-option-card launcher-card-marker">
+                    <div class="launcher-opt-icon">🎭</div>
+                    <div class="launcher-opt-body">
+                        <div class="launcher-opt-title">AGERA MARKÖR (FIGURANT)</div>
+                        <div class="launcher-opt-sub">Anslut din telefon till skyttens övning med en 4-siffrig kod för att ta emot NMI-träffar och vibration.</div>
+                    </div>
+                    <div class="launcher-opt-arrow">➜</div>
                 </button>
             </div>
+            <label class="launcher-remember-row" for="launcher-remember-chk">
+                <input type="checkbox" id="launcher-remember-chk" />
+                <span>Kom ihåg mitt val vid nästa start</span>
+            </label>
         </div>
     </div>
 
@@ -3000,14 +3081,91 @@
       if (typeof window.state.isFiring !== 'boolean') window.state.isFiring = false;
 
       (function initMainMenuAndVR() {
-        const mainMenu = document.getElementById('main-menu');
+        const LAUNCHER_MODE_KEY = 'taser7_launcher_mode_v1';
+        const LAUNCHER_REMEMBER_KEY = 'taser7_launcher_remember_v1';
+        const mainMenu = document.getElementById('mode-launcher-overlay');
         const btnMobile = document.getElementById('menu-btn-mobile');
         const btnVr = document.getElementById('menu-btn-vr');
         const btnBackMenu = document.getElementById('btn-back-menu');
+        const btnSwitchRole = document.getElementById('btn-switch-role');
+        const chkRemember = document.getElementById('launcher-remember-chk');
         const joystickStatusEl = document.getElementById('vr-joystick-status');
         const cameraContainerEl = document.getElementById('camera-container');
         const cameraFeedLeftEl = document.getElementById('camera-feed-left');
         const cameraFeedRightEl = document.getElementById('camera-feed-right');
+
+        function persistLauncherChoice(mode) {
+          try {
+            if (chkRemember && chkRemember.checked) {
+              localStorage.setItem(LAUNCHER_REMEMBER_KEY, '1');
+              localStorage.setItem(LAUNCHER_MODE_KEY, mode);
+            } else {
+              localStorage.removeItem(LAUNCHER_REMEMBER_KEY);
+              localStorage.removeItem(LAUNCHER_MODE_KEY);
+            }
+          } catch (_) {}
+        }
+
+        function hideLauncherSmooth(immediate = false) {
+          if (!mainMenu) return;
+          if (immediate) {
+            mainMenu.classList.add('launcher-hidden');
+            mainMenu.style.display = 'none';
+            return;
+          }
+          mainMenu.classList.add('launcher-hidden');
+          setTimeout(() => {
+            if (mainMenu.classList.contains('launcher-hidden')) {
+              mainMenu.style.display = 'none';
+            }
+          }, 230);
+        }
+
+        function showLauncherOverlay() {
+          if (!mainMenu) return;
+          mainMenu.style.display = 'flex';
+          void mainMenu.offsetWidth;
+          mainMenu.classList.remove('launcher-hidden');
+        }
+
+        function bindInstantAction(el, fn) {
+          if (!el || typeof fn !== 'function') return;
+          let lastTriggerTs = 0;
+          const runOnce = (e) => {
+            const now = performance.now();
+            if (now - lastTriggerTs < 420) return;
+            lastTriggerTs = now;
+            if (e && e.type === 'pointerdown') {
+              e.preventDefault();
+            }
+            fn(e);
+          };
+          el.addEventListener('pointerdown', (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            runOnce(e);
+          });
+          el.addEventListener('click', (e) => {
+            runOnce(e);
+          });
+        }
+
+        if (chkRemember) {
+          try {
+            chkRemember.checked = localStorage.getItem(LAUNCHER_REMEMBER_KEY) === '1';
+          } catch (_) {}
+          chkRemember.addEventListener('change', () => {
+            if (!chkRemember.checked) {
+              try {
+                localStorage.removeItem(LAUNCHER_REMEMBER_KEY);
+                localStorage.removeItem(LAUNCHER_MODE_KEY);
+              } catch (_) {}
+            }
+          });
+        }
+        window.__taserPersistLauncherChoice = persistLauncherChoice;
+        window.__taserHideLauncherSmooth = hideLauncherSmooth;
+        window.__taserShowLauncherOverlay = showLauncherOverlay;
+        window.__taserBindInstantAction = bindInstantAction;
 
         let vrXRSupported = false;
         let lastInputTime = 0;
@@ -3284,23 +3442,12 @@
             prevGamepadButtons[i] = isPressed;
           }
 
-          // Analog styrspak (axes[0] för tvåvägs tilt -90°..+90°, axes[1] för avstånd)
+          // Analog styrspak (axes[1] för avstånd)
           if (gp.axes && gp.axes.length >= 2) {
-            const rawX = gp.axes[0] || 0;
             const rawY = gp.axes[1] || 0;
-            const axX = Math.abs(rawX) > 0.2 ? rawX : 0;
             const axY = Math.abs(rawY) > 0.2 ? rawY : 0;
 
-            if (axX !== 0 || axY !== 0) {
-              const curTilt = (typeof app.tilt === 'number' ? app.tilt : (window.state?.tilt || 0));
-              const nextTilt = Math.max(-90, Math.min(90, curTilt + axX * 2.2));
-              if (typeof app.setTilt === 'function') {
-                app.setTilt(nextTilt);
-              } else {
-                app.tilt = nextTilt;
-                if (window.state) window.state.tilt = nextTilt;
-                app.updateAimVisuals();
-              }
+            if (axY !== 0) {
               app.currentDistance = Math.max(1.0, Math.min(7.5, (app.currentDistance || 3.0) + axY * 0.04));
               app.updateAimVisuals();
             }
@@ -3424,34 +3571,6 @@
             return;
           }
 
-          // Styrspak vänster/höger: ArrowLeft / ArrowRight -> Justera vapnets lutning (tilt) steglöst åt båda hållen (-90° till +90°)
-          if (key === 'ArrowLeft') {
-            e.preventDefault();
-            const curTilt = (typeof app.tilt === 'number' ? app.tilt : (window.state?.tilt || 0));
-            const nextTilt = Math.max(-90, curTilt - 5);
-            if (typeof app.setTilt === 'function') {
-              app.setTilt(nextTilt);
-            } else {
-              app.tilt = nextTilt;
-              if (window.state) window.state.tilt = nextTilt;
-              app.updateAimVisuals();
-            }
-            return;
-          }
-          if (key === 'ArrowRight') {
-            e.preventDefault();
-            const curTilt = (typeof app.tilt === 'number' ? app.tilt : (window.state?.tilt || 0));
-            const nextTilt = Math.min(90, curTilt + 5);
-            if (typeof app.setTilt === 'function') {
-              app.setTilt(nextTilt);
-            } else {
-              app.tilt = nextTilt;
-              if (window.state) window.state.tilt = nextTilt;
-              app.updateAimVisuals();
-            }
-            return;
-          }
-
           // Styrspak upp/ner: ArrowUp / ArrowDown -> Justera avståndet till målet stegvis
           if (key === 'ArrowUp') {
             e.preventDefault();
@@ -3467,101 +3586,61 @@
           }
         }, { passive: false });
 
-        // MOBIL / HANDHÅLLEN (Kamera & handspårning helt avstängda, ursprunglig mörk 3D-vy & gyro aktivt)
+        // KORT 1: MOBIL – LIVE AI (SKYTT)
+        function launchMobileMode(immediate = false) {
+          persistLauncherChoice('mobile');
+          appMode = 'mobile';
+          currentMode = 'mobile';
+          window.appMode = appMode;
+          window.currentMode = currentMode;
+
+          document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
+          document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
+          const mcMobile = document.getElementById('main-container');
+          if (mcMobile) mcMobile.classList.remove('ar-combat-mode', 'live-ar-active');
+          const scMobile = document.querySelector('.sim-controls');
+          if (scMobile) scMobile.classList.remove('ar-combat-mode', 'live-ar-active');
+
+          if (typeof window.stopHandTracking === 'function') {
+            window.stopHandTracking();
+          }
+          stopCameraPassThrough();
+
+          if (window.taserApp) {
+            window.taserApp.disableStereoVR();
+            if (window.taserApp.scene) {
+              window.taserApp.scene.disableARMode();
+            }
+            window.taserApp.updateProjectors();
+            if (typeof window.taserApp.initGyro === 'function') {
+              window.taserApp.initGyro(true);
+            }
+          }
+
+          if (window.location.search.includes('menu=1') && window.history && window.history.replaceState) {
+            try {
+              window.history.replaceState(null, '', window.location.pathname);
+            } catch (_) {}
+          }
+
+          hideLauncherSmooth(immediate);
+          if (btnBackMenu) btnBackMenu.style.display = 'inline-flex';
+          window.dispatchEvent(new Event('resize'));
+        }
         if (btnMobile) {
-          btnMobile.addEventListener('click', () => {
-            appMode = 'mobile';
-            currentMode = 'mobile';
-            window.appMode = appMode;
-            window.currentMode = currentMode;
-
-            document.documentElement.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
-            document.body.classList.remove('vr-headset-mode', 'vr-active', 'camera-active', 'live-ai-active', 'live-ar-active', 'ar-active', 'webxr-mode', 'ar-combat-mode');
-            const mcMobile = document.getElementById('main-container');
-            if (mcMobile) mcMobile.classList.remove('ar-combat-mode', 'live-ar-active');
-            const scMobile = document.querySelector('.sim-controls');
-            if (scMobile) scMobile.classList.remove('ar-combat-mode', 'live-ar-active');
-
-            if (typeof window.stopHandTracking === 'function') {
-              window.stopHandTracking();
-            }
-            stopCameraPassThrough();
-
-            if (window.taserApp) {
-              window.taserApp.disableStereoVR();
-              if (window.taserApp.scene) {
-                window.taserApp.scene.disableARMode();
-              }
-              window.taserApp.updateProjectors();
-              // Aktivera/kalibrera telefonens gyroskop direkt vid användarklick
-              if (typeof window.taserApp.initGyro === 'function') {
-                window.taserApp.initGyro(true);
-              }
-            }
-
-            if (mainMenu) mainMenu.style.display = 'none';
-            if (btnBackMenu) btnBackMenu.style.display = 'inline-flex';
-            window.dispatchEvent(new Event('resize'));
-          });
+          bindInstantAction(btnMobile, () => launchMobileMode(false));
         }
 
-        // VR-HEADSET (3D PASS-THROUGH - SIDE-BY-SIDE + LANDSCAPE LOCK + HANDSPÅRNING + WEBXR FALLBACK)
+        // KORT 2: VR / AR-HEADSET (SKYTT) -> Navigerar direkt till ./vr.html
         if (btnVr) {
-          btnVr.addEventListener('click', async () => {
-            appMode = 'vr';
-            currentMode = 'vr';
-            window.appMode = appMode;
-            window.currentMode = currentMode;
-            document.body.classList.add('vr-headset-mode', 'vr-active');
-            window.vrJoystickReady = true;
-            ensureAppArmedForInput();
-
-            if (mainMenu) mainMenu.style.display = 'none';
-            if (btnBackMenu) btnBackMenu.style.display = 'inline-flex';
-
-            startCameraPassThrough();
-
-            // Aktivera helskärm och lås skärmen i liggande läge (landscape)
-            try {
-              if (document.documentElement.requestFullscreen) {
-                await document.documentElement.requestFullscreen();
-              }
-            } catch (_) {}
-
-            try {
-              if (screen.orientation && screen.orientation.lock) {
-                await screen.orientation.lock('landscape');
-              }
-            } catch (_) {}
-
-            // Aktivera äkta Side-by-Side stereoskopisk 3D via StereoEffect (FOV 80°)
-            if (window.taserApp) {
-              window.taserApp.enableStereoVR();
-              window.taserApp.updateProjectors();
-            }
-
-            // Om enheten har inbyggt WebXR VR-headsetstöd (t.ex. Quest), starta WebXR immersive-vr direkt
-            if (vrXRSupported && navigator.xr && window.taserApp && window.taserApp.scene) {
-              const renderer = window.taserApp.scene.renderer;
-              renderer.xr.enabled = true;
-              navigator.xr.requestSession('immersive-vr', {
-                optionalFeatures: ['local-floor', 'bounded-floor']
-              }).then((session) => {
-                window.taserApp.xr.xrSession = session;
-                renderer.xr.setReferenceSpaceType('local-floor');
-                return renderer.xr.setSession(session);
-              }).catch(() => {
-                if (window.taserApp) window.taserApp.enableStereoVR();
-              });
-            }
-
-            setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+          bindInstantAction(btnVr, () => {
+            persistLauncherChoice('vr');
+            window.location.href = './vr.html';
           });
         }
 
-        // TILLBAKAKNAPP (⬅ MENY) — Stänger av alla kameraströmmar, pausar handspårning och återställer scenen helt
-        if (btnBackMenu) {
-          btnBackMenu.addEventListener('click', async () => {
+        // TILLBAKAKNAPP / BYT LÄGE — Stänger av alla kameraströmmar, pausar handspårning och visar startmenyn igen
+        async function returnToModeLauncher() {
             // 1. Avsluta eventuell pågående VR/XR-session och Live AI
             if (window.taserApp && window.taserApp.xr && window.taserApp.xr.xrSession) {
               try {
@@ -3648,11 +3727,8 @@
                 window.taserApp.fsm.functionCheckMode = false;
                 window.taserApp.fsm.isFunkLocked = false;
               }
-              if (typeof window.taserApp.setTilt === 'function') {
-                window.taserApp.setTilt(0);
-              } else {
-                window.taserApp.tilt = 0;
-              }
+              window.taserApp.tilt = 0;
+              if (window.state) window.state.tilt = 0;
               window.taserApp.isGameOver = false;
               window.taserApp.hideFailOverlay();
               if (window.taserApp.xr) {
@@ -3677,12 +3753,36 @@
               window.taserApp.updateProjectors();
             }
 
-            // 5. Dölj tillbakaknappen och visa huvudmenyn igen
-            btnBackMenu.style.display = 'none';
-            if (mainMenu) mainMenu.style.display = 'flex';
+            // 5. Dölj tillbakaknappen och visa startmenyn igen
+            if (btnBackMenu) btnBackMenu.style.display = 'none';
+            showLauncherOverlay();
             setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
-          });
         }
+
+        if (btnBackMenu) {
+          bindInstantAction(btnBackMenu, returnToModeLauncher);
+        }
+        if (btnSwitchRole) {
+          bindInstantAction(btnSwitchRole, returnToModeLauncher);
+        }
+
+        // Kontrollera "Kom ihåg mitt val" samt URL-parametern ?menu=1
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const forceMenu = urlParams.get('menu') === '1';
+          const remember = localStorage.getItem(LAUNCHER_REMEMBER_KEY) === '1';
+          const savedMode = localStorage.getItem(LAUNCHER_MODE_KEY);
+          if (!forceMenu && remember && savedMode) {
+            if (savedMode === 'vr') {
+              window.location.replace('./vr.html');
+            } else if (savedMode === 'mobile') {
+              launchMobileMode(true);
+            } else if (savedMode === 'marker') {
+              window.__taserAutoOpenMarker = true;
+              hideLauncherSmooth(true);
+            }
+          }
+        } catch (_) {}
       })();
     </script>
 
@@ -4502,7 +4602,7 @@
 
       // Markör-läge (Målperson) logik
       (function initMarkerMode() {
-        const mainMenu = document.getElementById('main-menu');
+        const mainMenu = document.getElementById('mode-launcher-overlay');
         const btnOpenMarker = document.getElementById('menu-btn-marker');
         const markerOverlay = document.getElementById('marker-overlay');
         const setupView = document.getElementById('marker-setup-view');
@@ -4748,23 +4848,49 @@
           });
         }
 
+        function openMarkerOverlayView(immediate = false) {
+          if (typeof window.__taserPersistLauncherChoice === 'function') {
+            window.__taserPersistLauncherChoice('marker');
+          }
+          cleanupMarkerMode();
+          if (typeof window.__taserHideLauncherSmooth === 'function') {
+            window.__taserHideLauncherSmooth(immediate);
+          } else if (mainMenu) {
+            mainMenu.style.display = 'none';
+          }
+          if (markerOverlay) markerOverlay.style.display = 'flex';
+          if (window.location.search.includes('menu=1') && window.history && window.history.replaceState) {
+            try {
+              window.history.replaceState(null, '', window.location.pathname);
+            } catch (_) {}
+          }
+          if (codeInput) {
+            codeInput.value = '';
+            setTimeout(() => codeInput.focus(), 80);
+          }
+        }
+
         if (btnOpenMarker) {
-          btnOpenMarker.addEventListener('click', () => {
-            cleanupMarkerMode();
-            if (mainMenu) mainMenu.style.display = 'none';
-            if (markerOverlay) markerOverlay.style.display = 'flex';
-            if (codeInput) {
-              codeInput.value = '';
-              setTimeout(() => codeInput.focus(), 80);
-            }
-          });
+          if (typeof window.__taserBindInstantAction === 'function') {
+            window.__taserBindInstantAction(btnOpenMarker, () => openMarkerOverlayView(false));
+          } else {
+            btnOpenMarker.addEventListener('click', () => openMarkerOverlayView(false));
+          }
+        }
+
+        if (window.__taserAutoOpenMarker) {
+          openMarkerOverlayView(true);
         }
 
         if (btnBackMenu) {
           btnBackMenu.addEventListener('click', () => {
             cleanupMarkerMode();
             if (markerOverlay) markerOverlay.style.display = 'none';
-            if (mainMenu) mainMenu.style.display = 'flex';
+            if (typeof window.__taserShowLauncherOverlay === 'function') {
+              window.__taserShowLauncherOverlay();
+            } else if (mainMenu) {
+              mainMenu.style.display = 'flex';
+            }
           });
         }
 
@@ -4772,7 +4898,11 @@
           btnLeave.addEventListener('click', () => {
             cleanupMarkerMode();
             if (markerOverlay) markerOverlay.style.display = 'none';
-            if (mainMenu) mainMenu.style.display = 'flex';
+            if (typeof window.__taserShowLauncherOverlay === 'function') {
+              window.__taserShowLauncherOverlay();
+            } else if (mainMenu) {
+              mainMenu.style.display = 'flex';
+            }
           });
         }
 
