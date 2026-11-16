@@ -11,12 +11,12 @@ if (typeof window !== 'undefined') {
 }
 import { TaserFSM, ChamberState } from './fsm.js';
 import { TaserAudio } from './audio.js';
-import { TaserBallistics } from './ballistics.js';
+import { TaserBallistics } from './ballistics.js?v=7';
 import { TaserScene } from './scene.js?v=6';
 import { TaserXR } from './xr.js';
 import { TaserPWA } from './pwa.js';
 import { TaserVoice } from './voice.js';
-import { TaserAIPose } from './pose.js';
+import { TaserAIPose } from './pose.js?v=7';
 
 export class TaserApp {
   constructor() {
@@ -650,7 +650,9 @@ export class TaserApp {
         hitWall1: hitResult.hitWall1,
         hitWall2: hitResult.hitWall2,
         currentDistance: this.currentDistance,
-        heavyClothing: this.fsm.heavyClothing
+        heavyClothing: this.fsm.heavyClothing,
+        isLiveAR: isLiveARActive,
+        ballisticSpreadCm: spreadInfo.spreadCm
       });
 
       if (evalResult.success) {
@@ -1914,7 +1916,7 @@ export class TaserApp {
     this.liveARRoomCode = roomCode;
     const roomBadge = document.getElementById('live-ar-room-badge');
     if (roomBadge) {
-      roomBadge.textContent = `🔗 MARKÖR-KOD: ${roomCode}`;
+      roomBadge.textContent = `🔗 KOD: ${roomCode}`;
       roomBadge.classList.remove('hit-sent');
       roomBadge.style.display = 'inline-flex';
     }

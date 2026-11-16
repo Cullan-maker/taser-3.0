@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taser7-tactical-v12';
+const CACHE_NAME = 'taser7-tactical-v13';
 
 // Relativa resurser för full kompatibilitet med GitHub Pages undermappar
 const PRECACHE_ASSETS = [

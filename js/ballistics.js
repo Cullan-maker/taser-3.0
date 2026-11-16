@@ -58,7 +58,9 @@ export class TaserBallistics {
     hitWall1 = false,
     hitWall2 = false,
     currentDistance = 3.0,
-    heavyClothing = false
+    heavyClothing = false,
+    isLiveAR = false,
+    ballisticSpreadCm = null
   }) {
     // Both probes must strike the target
     if (!hit1 || !hit2) {
@@ -79,9 +81,12 @@ export class TaserBallistics {
       };
     }
 
-    // Distance between probe entry points on the 3D model
+    // Distance between probe entry points on the 3D model or calibrated Live AR spread
     const distMeters = hit1.point.distanceTo(hit2.point);
-    const spreadCm = distMeters * 100;
+    const rawSpreadCm = distMeters * 100;
+    const spreadCm = isLiveAR
+      ? Math.max(rawSpreadCm, Number(ballisticSpreadCm) || 0)
+      : rawSpreadCm;
 
     // Forbidden Zone Check
     let badZone = null;
@@ -101,12 +106,14 @@ export class TaserBallistics {
     }
 
     // Minimum Spread Threshold
-    // Probe separation < 20cm provides pain compliance rather than full NMI
-    let minSpreadCm = 20.0;
-    if (currentDistance > 7.0) {
-      minSpreadCm = 20.0 + (currentDistance - 7.0) * 2;
-    } else if (currentDistance < 2.0) {
-      minSpreadCm = 15.0;
+    // I Live AR tillåts närstridshåll (1.0 - 2.0 m) i grön zon med sänkt gränsvärde (minst 3.0 cm)
+    let minSpreadCm = isLiveAR ? 3.0 : 20.0;
+    if (!isLiveAR) {
+      if (currentDistance > 7.0) {
+        minSpreadCm = 20.0 + (currentDistance - 7.0) * 2;
+      } else if (currentDistance < 2.0) {
+        minSpreadCm = 15.0;
+      }
     }
 
     if (spreadCm < minSpreadCm) {
@@ -118,8 +125,8 @@ export class TaserBallistics {
       };
     }
 
-    // Heavy clothing impedance resistance check
-    if (heavyClothing && Math.random() > 0.8) {
+    // Heavy clothing impedance resistance check (endast i 3D-läge)
+    if (!isLiveAR && heavyClothing && Math.random() > 0.8) {
       return {
         success: false,
         reason: 'DISCONNECT: Tjocka kläder blockerar elektrisk krets.',

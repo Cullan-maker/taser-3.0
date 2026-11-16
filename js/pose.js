@@ -480,9 +480,11 @@ export class TaserAIPose {
     const lAnkle = lm[27];
     const rAnkle = lm[28];
 
-    // Visibility score check
-    const upperBodyVis = (lShoulder.visibility + rShoulder.visibility + lHip.visibility + rHip.visibility) / 4.0;
-    if (upperBodyVis < 0.45) {
+    // Visibility score check (prioritize visible shoulders/head so seated persons with occluded hips still track)
+    const shoulderVis = ((lShoulder.visibility || 0) + (rShoulder.visibility || 0)) * 0.5;
+    const hipVis = ((lHip.visibility || 0) + (rHip.visibility || 0)) * 0.5;
+    const upperBodyVis = Math.max(shoulderVis * 0.85, (shoulderVis + hipVis) * 0.5);
+    if (upperBodyVis < 0.40 || shoulderVis < 0.35) {
       if (this.isPersonDetected) {
         this.isPersonDetected = false;
         if (this.onStatusChange) this.onStatusChange(false, 'SVAG SIGNAL');
@@ -491,28 +493,72 @@ export class TaserAIPose {
     }
 
     // ============================================================
-    // 1. BIOMETRIC DEPTH ESTIMATION (Z-AXIS) WITH OUTLIER-CLAMPED EMA
+    // 1. BIOMETRIC DEPTH ESTIMATION (PIXEL-CALIBRATED FOR SITTING & CLOSE RANGE)
     // ============================================================
-    // Biacromial breadth (inter-shoulder distance) in average adults = 0.40m
-    const realShoulderWidth = 0.40;
-    const dx = Math.abs(rShoulder.x - lShoulder.x);
-    const dy = Math.abs(rShoulder.y - lShoulder.y);
-    const screenShoulderDist = Math.hypot(dx, dy);
+    const vp = document.getElementById('viewport');
+    const vpW = (vp && vp.clientWidth) ? vp.clientWidth : (window.innerWidth || 390);
+    const vpH = (vp && vp.clientHeight) ? vp.clientHeight : (window.innerHeight || 844);
+    const refDimPx = Math.max(240, Math.min(vpW, vpH));
 
-    const fovYRad = (this.camera.fov * Math.PI) / 180;
-    const fy = 1.0 / (2.0 * Math.tan(fovYRad / 2.0));
-    const fx = fy / Math.max(0.2, this.camera.aspect);
+    // Shoulder width in pixels (independent of cropped/bent legs while sitting)
+    const shoulderPxRaw = Math.hypot((rShoulder.x - lShoulder.x) * vpW, (rShoulder.y - lShoulder.y) * vpH);
+    const shoulderZ = (0.36 * refDimPx) / Math.max(12, shoulderPxRaw);
 
-    // Compute depth via pinhole perspective projection
-    let rawZ = (realShoulderWidth * fx) / Math.max(0.06, screenShoulderDist);
-    rawZ = Math.min(Math.max(rawZ, 0.9), 7.5);
+    // Head width / height in pixels (ears & eye-to-mouth span) to keep close/angled poses accurate
+    const headDepthEstimates = [];
+    const lEar = lm[7];
+    const rEar = lm[8];
+    if (
+      lEar && rEar &&
+      (lEar.visibility === undefined || lEar.visibility > 0.35) &&
+      (rEar.visibility === undefined || rEar.visibility > 0.35)
+    ) {
+      const earSpanPx = Math.hypot((rEar.x - lEar.x) * vpW, (rEar.y - lEar.y) * vpH);
+      if (earSpanPx > 6) {
+        headDepthEstimates.push((0.145 * refDimPx) / earSpanPx);
+      }
+    }
 
-    // Outlier-clamped Adaptive EMA filter on Z depth
-    const zDiff = rawZ - this.estimatedDistance;
-    const maxZDelta = 0.35; // prevent unrealistic frame-to-frame depth teleportation
-    const clampedRawZ = this.estimatedDistance + Math.sign(zDiff) * Math.min(Math.abs(zDiff), maxZDelta);
-    const zAlpha = Math.abs(zDiff) > 0.2 ? 0.32 : 0.18;
-    this.estimatedDistance += (clampedRawZ - this.estimatedDistance) * zAlpha;
+    const eyeL = lm[2] || lm[1];
+    const eyeR = lm[5] || lm[4];
+    const mouthL = lm[9];
+    const mouthR = lm[10];
+    if (
+      eyeL && eyeR && mouthL && mouthR &&
+      (eyeL.visibility === undefined || eyeL.visibility > 0.35) &&
+      (mouthL.visibility === undefined || mouthL.visibility > 0.35)
+    ) {
+      const eyeMidX = ((eyeL.x + eyeR.x) * 0.5) * vpW;
+      const eyeMidY = ((eyeL.y + eyeR.y) * 0.5) * vpH;
+      const mouthMidX = ((mouthL.x + mouthR.x) * 0.5) * vpW;
+      const mouthMidY = ((mouthL.y + mouthR.y) * 0.5) * vpH;
+      const faceHeightPx = Math.hypot(mouthMidX - eyeMidX, mouthMidY - eyeMidY);
+      if (faceHeightPx > 4) {
+        headDepthEstimates.push((0.068 * refDimPx) / faceHeightPx);
+      }
+    }
+
+    let rawZ = shoulderZ;
+    if (headDepthEstimates.length > 0) {
+      const headZ = headDepthEstimates.reduce((acc, v) => acc + v, 0) / headDepthEstimates.length;
+      if (shoulderZ > headZ * 1.35) {
+        rawZ = shoulderZ * 0.30 + headZ * 0.70;
+      } else {
+        rawZ = shoulderZ * 0.60 + headZ * 0.40;
+      }
+    }
+    rawZ = Math.min(Math.max(rawZ, 0.7), 7.5);
+
+    // Outlier-clamped Adaptive EMA filter on Z depth (snap immediately on first lock)
+    if (!this.isPersonDetected) {
+      this.estimatedDistance = rawZ;
+    } else {
+      const zDiff = rawZ - this.estimatedDistance;
+      const maxZDelta = 0.45;
+      const clampedRawZ = this.estimatedDistance + Math.sign(zDiff) * Math.min(Math.abs(zDiff), maxZDelta);
+      const zAlpha = Math.abs(zDiff) > 0.2 ? 0.35 : 0.20;
+      this.estimatedDistance += (clampedRawZ - this.estimatedDistance) * zAlpha;
+    }
     const currentZ = this.estimatedDistance;
 
     this.isPersonDetected = true;
@@ -577,10 +623,6 @@ export class TaserAIPose {
     // ============================================================
     // 3. COMPUTE 2D SCREEN TARGET OVERLAY & HIT ZONES (PIXEL-EXAKT)
     // ============================================================
-    const vp = document.getElementById('viewport');
-    const vpW = (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth;
-    const vpH = (vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight;
-
     const lShPx = { x: lShoulder.x * vpW, y: lShoulder.y * vpH };
     const rShPx = { x: rShoulder.x * vpW, y: rShoulder.y * vpH };
     const lHipPx = { x: lHip.x * vpW, y: lHip.y * vpH };
@@ -590,7 +632,10 @@ export class TaserAIPose {
     const shoulderPx = Math.max(28, Math.hypot(rShPx.x - lShPx.x, rShPx.y - lShPx.y));
     const shMidX = (lShPx.x + rShPx.x) * 0.5;
     const shTopY = Math.min(lShPx.y, rShPx.y);
-    const hipBotY = Math.max(lHipPx.y, rHipPx.y);
+    const rawHipBotY = Math.max(lHipPx.y, rHipPx.y);
+    const hipBotY = (hipVis < 0.35 || rawHipBotY <= shTopY + shoulderPx * 0.45)
+      ? Math.min(vpH, shTopY + shoulderPx * 1.35)
+      : rawHipBotY;
 
     // 3A. Snäv Röd Huvudbox: endast ansikte/skalle (landmarks 0..10 med tajt marginal)
     const faceIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];

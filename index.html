@@ -2251,28 +2251,26 @@
             background-color: transparent !important;
         }
 
-        /* LIVE AR MARKÖR-KOD BRICKA I TOPPEN */
+        /* LIVE AR MARKÖR-KOD BRICKA NEDANFÖR TOPP-BANNER */
         #live-ar-room-badge {
             display: none;
             position: fixed;
-            top: 12px;
+            top: 86px;
             right: 12px;
-            z-index: 9998;
+            z-index: 10000;
             align-items: center;
             gap: 5px;
-            background: rgba(10, 14, 18, 0.9);
-            color: #2ecc71;
-            border: 1.5px solid rgba(46, 204, 113, 0.85);
+            background: #000000;
+            color: #00ff00;
+            border: 2px solid #00ff00;
             border-radius: 6px;
             padding: 6px 10px;
             font-family: 'Courier New', monospace;
-            font-size: 11px;
-            font-weight: 900;
+            font-size: 12px;
+            font-weight: bold;
             letter-spacing: 0.8px;
             text-transform: uppercase;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
             pointer-events: none;
             white-space: nowrap;
         }
@@ -2470,7 +2468,7 @@
     <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
     <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
     <!-- LIVE AR MARKÖR-KOD BRICKA -->
-    <div id="live-ar-room-badge" aria-live="polite">🔗 MARKÖR-KOD: ----</div>
+    <div id="live-ar-room-badge" aria-live="polite">🔗 KOD: ----</div>
     <!-- STATUSPILL FÖR FUNKTIONSKONTROLL -->
     <div id="funk-status-pill" aria-live="polite">⚡ FUNKTIONSKONTROLL AKTIV</div>
     <!-- WEBXR HIT-TEST PLACERINGSKNAPP -->
@@ -2741,7 +2739,7 @@
     </script>
 
     <!-- Huvudapplikation (Relativ sökväg för GitHub Pages subpath-kompatibilitet) -->
-    <script type="module" src="./js/app.js?v=6"></script>
+    <script type="module" src="./js/app.js?v=7"></script>
 
     <!-- HUVUDMENY / STARTMENY (VISAS INNAN APPEN STARTAR) -->
     <div id="main-menu" role="dialog" aria-modal="true" aria-labelledby="main-menu-title">
