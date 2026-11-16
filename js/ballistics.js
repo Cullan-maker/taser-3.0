@@ -32,6 +32,24 @@ export class TaserBallistics {
     };
   }
 
+  /**
+   * Dynamic Live-AI HUD spread in pixels:
+   * Scales continuously and monotonically with measured distance (farther target => larger spread)
+   * and matches weapon chamber divergence angle (12° vs 3.5°).
+   */
+  calculateLiveSpreadPx(distance, chamber = 1, viewportHeight = 760) {
+    const safeDist = Math.max(0.5, Math.min(8.5, parseFloat(distance) || 3.0));
+    const angleDeg = chamber === 1 ? 12 : 3.5;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const spreadMeters = safeDist * Math.tan(angleRad);
+    const vpH = Math.max(240, Number(viewportHeight) || 760);
+    const vpScale = Math.max(0.7, Math.min(1.3, vpH / 760));
+
+    // At 1.0m: C1 ~38px / C2 ~21px; at 3.0m: C1 ~87px / C2 ~35px; at 6.0m: C1 ~161px / C2 ~56px
+    const rawPx = (14 + spreadMeters * 115) * vpScale;
+    return Math.min(Math.max(rawPx, 14), vpH * 0.36);
+  }
+
   calculateNdcCoordinates(distance, chamber, viewportHeight = 320, tiltDeg = 0, viewportWidth = viewportHeight) {
     const spreadInfo = this.calculateSpread(distance, chamber);
     const ndc1 = { x: 0, y: 0 }; // Top dart aligned with central aim

@@ -269,10 +269,10 @@ export class TaserScene {
     blade.position.y = 0.22;
     knifeGroup.add(blade);
 
-    // Explicit high-visibility scale and position offset
+    // Explicit high-visibility scale and position offset (hidden until active armed attack)
     knifeGroup.scale.set(10, 10, 10);
     knifeGroup.position.set(0.5, 0.5, 0.5);
-    knifeGroup.visible = true;
+    knifeGroup.visible = false;
 
     this.knifeMesh = knifeGroup;
     this.taserGroup.add(knifeGroup);
@@ -309,14 +309,15 @@ export class TaserScene {
 
   setThreatWeapon(type = 'KNIFE') {
     this.activeThreatWeapon = (type || 'KNIFE').toUpperCase();
-    this.updateWeaponVisibility();
+    this.updateWeaponVisibility(this._isAttackArmed || false);
   }
 
-  updateWeaponVisibility() {
-    const isKniv = this.activeThreatWeapon === 'KNIFE';
-    const isBaton = this.activeThreatWeapon === 'BATON';
+  updateWeaponVisibility(isAttackArmed = false) {
+    this._isAttackArmed = !!isAttackArmed;
+    const canShow = !!this.show3DModel && !this.isTased && !this.figureFallen && this._isAttackArmed;
+    const isKniv = canShow && this.activeThreatWeapon === 'KNIFE';
+    const isBaton = canShow && this.activeThreatWeapon === 'BATON';
 
-    // Guaranteed visibility: active weapon is always visible when selected
     if (this.knifeMesh) {
       this.knifeMesh.visible = isKniv;
     }
@@ -515,17 +516,19 @@ export class TaserScene {
         });
 
         if (handBone) {
-          // Explicit large scale and offset from hand bone to guarantee visibility
+          // Explicit large scale and offset from hand bone (kept hidden until active attack)
           if (this.knifeMesh) {
             if (this.knifeMesh.parent) this.knifeMesh.parent.remove(this.knifeMesh);
             this.knifeMesh.scale.set(10, 10, 10);
             this.knifeMesh.position.set(0.5, 0.5, 0.5);
+            this.knifeMesh.visible = false;
             handBone.add(this.knifeMesh);
           }
           if (this.batonMesh) {
             if (this.batonMesh.parent) this.batonMesh.parent.remove(this.batonMesh);
             this.batonMesh.scale.set(10, 10, 10);
             this.batonMesh.position.set(0.5, 0.5, 0.5);
+            this.batonMesh.visible = false;
             handBone.add(this.batonMesh);
           }
         } else {
@@ -535,15 +538,18 @@ export class TaserScene {
             if (this.knifeMesh.parent) this.knifeMesh.parent.remove(this.knifeMesh);
             this.knifeMesh.scale.set(10, 10, 10);
             this.knifeMesh.position.set(0.5, 1.2, 0.5);
+            this.knifeMesh.visible = false;
             this.taserGroup.add(this.knifeMesh);
           }
           if (this.batonMesh) {
             if (this.batonMesh.parent) this.batonMesh.parent.remove(this.batonMesh);
             this.batonMesh.scale.set(10, 10, 10);
             this.batonMesh.position.set(0.5, 1.2, 0.5);
+            this.batonMesh.visible = false;
             this.taserGroup.add(this.batonMesh);
           }
         }
+        this.updateWeaponVisibility(false);
 
         this.glbDummy = dummy;
         this.hasGLBMannequin = true;
@@ -876,7 +882,7 @@ export class TaserScene {
     // 1. NMI / VILA / FALLET: Släpp attacken omedelbart och slerpa alla ben tillbaka till vilopose
     if (isTasedOrFallen) {
       this.armOverrideWeight = THREE.MathUtils.damp(this.armOverrideWeight, 0.0, 10.0, delta);
-      this.updateWeaponVisibility();
+      this.updateWeaponVisibility(false);
 
       const returnSpeed = Math.min(1.0, 8.5 * delta);
       rUpper.quaternion.slerp(restRU, returnSpeed);
@@ -897,17 +903,18 @@ export class TaserScene {
 
     if (!this.show3DModel) {
       this.armOverrideWeight = 0;
-      this.updateWeaponVisibility();
+      this.updateWeaponVisibility(false);
       return;
     }
 
     const isScenarioActive = !!scenarioState.isScenarioActive;
     const threatLevel = typeof scenarioState.threatLevel === 'number' ? scenarioState.threatLevel : 0;
     const isAttackActive = isScenarioActive && threatLevel >= 2;
+    const isWeaponDrawn = isScenarioActive && threatLevel >= 3;
     const targetWeight = isAttackActive ? 1.0 : 0.0;
 
     this.armOverrideWeight = THREE.MathUtils.damp(this.armOverrideWeight, targetWeight, 6.0, delta);
-    this.updateWeaponVisibility();
+    this.updateWeaponVisibility(isWeaponDrawn);
 
     if (this.armOverrideWeight < 0.001) {
       const restSpeed = Math.min(1.0, 6.0 * delta);
@@ -1394,7 +1401,7 @@ export class TaserScene {
     this.groundImpactDone = false;
     this.fallVelocity = 0.0;
     this.armOverrideWeight = 0;
-    this.updateWeaponVisibility();
+    this.updateWeaponVisibility(false);
 
     if (this.taserGroup) {
       this.taserGroup.rotation.set(0, 0, 0);
@@ -1564,7 +1571,7 @@ export class TaserScene {
           }
         }
       });
-      this.updateWeaponVisibility();
+      this.updateWeaponVisibility(false);
     }
   }
 
