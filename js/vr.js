@@ -22,21 +22,64 @@ if (typeof window !== 'undefined') {
   window.GLTFLoader = GLTFLoader;
 }
 
-const VR_CAMERA_FOV = 78;
-const GAMEPAD_MAP_STORAGE_KEY = 'taser7_vr_gamepad_map_v1';
+const VR_CAMERA_FOV = 90;
+const VR_EYE_SEPARATION = 0.072;
+const WEAPON_VR_SCALE = 2.2;
+const WEAPON_FALLBACK_Z = -0.48;
+const GAMEPAD_MAP_STORAGE_KEY = 'taser7_vr_gamepad_map_v2';
 const WEAPON_MODE_STORAGE_KEY = 'taser7_vr_weapon_mode_v1';
 
 /**
- * Standardmappning för extern Bluetooth-joystick / VR-fjärrkontroll.
- * Kan ändras direkt här eller via "🕹️ Mappa BT" i VR-menyn (sparas i localStorage).
+ * Redigerbar samlad kontrollmappning för extern Bluetooth-joystick / VR-fjärrkontroll
+ * (stöder HTML5 Gamepad API, HID-tangentbord & musknapp i capture-läge).
+ */
+export const INPUT_MAP = Object.freeze({
+  fire: Object.freeze({
+    gamepadButtons: [0, 7], // Knapp 0 (A/Trigger) eller Knapp 7 (R2)
+    hidCodes: ['Space', 'KeyJ', 'KeyZ'],
+    mouseButtons: [0]       // MouseLeft (utanför UI-knappar i skarpt läge)
+  }),
+  safety: Object.freeze({
+    gamepadButtons: [1, 3], // Knapp 1 (B) eller Knapp 3 (Y)
+    hidCodes: ['KeyB', 'KeyX', 'KeyC', 'KeyM', 'Escape', 'Backspace']
+  }),
+  arc: Object.freeze({
+    gamepadButtons: [2, 5], // Knapp 2 (X) eller Knapp 5 (R1)
+    hidCodes: ['Enter', 'NumpadEnter']
+  }),
+  confirm: Object.freeze({
+    gamepadButtons: [10, 11], // L3 / R3 spakklick
+    hidCodes: ['Enter', 'NumpadEnter', 'KeyY', 'KeyA']
+  }),
+  move: Object.freeze({
+    gamepadAxes: [0, 1],
+    deadzone: 0.15,
+    gamepadDpad: { up: 12, down: 13, left: 14, right: 15 },
+    hidUp: ['ArrowUp', 'KeyW'],
+    hidDown: ['ArrowDown', 'KeyS'],
+    hidLeft: ['ArrowLeft', 'KeyA'],
+    hidRight: ['ArrowRight', 'KeyD']
+  }),
+  cassette: Object.freeze({
+    gamepadButtons: [4],
+    hidCodes: ['KeyQ', 'Tab']
+  }),
+  reset: Object.freeze({
+    gamepadButtons: [9],
+    hidCodes: ['KeyR']
+  })
+});
+
+/**
+ * Standardmappning för Gamepad API (används även i kalibreringsmodal & localStorage).
  */
 export const DEFAULT_GAMEPAD_MAP = Object.freeze({
-  fire: 0,           // Button 0 (Trigger / A): Avfyra vald kassett / elchock om skott redan är avfyrat
-  safety: 1,         // Button 1 (B / Sidoknapp): Osäkra / Säkra
-  cassette: 2,       // Button 2 (X): Ladda om / Byt kassett
-  arc: 3,            // Button 3 (Y): Ljusbågscykel (motsv. Enter i HID-läge)
-  confirm: [10, 11], // Button 10/11 (L3/R3 spakklick): Fastställ målposition (motsv. Space i HID-läge)
-  reset: 9           // Button 9 (Start / Meny): Återställ skott & trådar
+  fire: [...INPUT_MAP.fire.gamepadButtons],
+  safety: [...INPUT_MAP.safety.gamepadButtons],
+  cassette: INPUT_MAP.cassette.gamepadButtons[0],
+  arc: [...INPUT_MAP.arc.gamepadButtons],
+  confirm: [...INPUT_MAP.confirm.gamepadButtons],
+  reset: INPUT_MAP.reset.gamepadButtons[0]
 });
 
 function normalizeMappingValue(val) {
@@ -50,10 +93,10 @@ function normalizeMappingValue(val) {
 
 function loadGamepadMap() {
   const base = {
-    fire: DEFAULT_GAMEPAD_MAP.fire,
-    safety: DEFAULT_GAMEPAD_MAP.safety,
+    fire: [...DEFAULT_GAMEPAD_MAP.fire],
+    safety: [...DEFAULT_GAMEPAD_MAP.safety],
     cassette: DEFAULT_GAMEPAD_MAP.cassette,
-    arc: DEFAULT_GAMEPAD_MAP.arc,
+    arc: [...DEFAULT_GAMEPAD_MAP.arc],
     confirm: [...DEFAULT_GAMEPAD_MAP.confirm],
     reset: DEFAULT_GAMEPAD_MAP.reset
   };
@@ -63,18 +106,10 @@ function loadGamepadMap() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          let hadLegacyTilt = false;
-          if ('tilt' in parsed) {
-            delete parsed.tilt;
-            hadLegacyTilt = true;
-          }
           for (const key of Object.keys(base)) {
             if (parsed[key] !== undefined) {
               base[key] = normalizeMappingValue(parsed[key]);
             }
-          }
-          if (hadLegacyTilt) {
-            localStorage.setItem(GAMEPAD_MAP_STORAGE_KEY, JSON.stringify(base));
           }
         }
       }
@@ -235,7 +270,7 @@ export class TaserVRApp {
     // Display & Stereo VR state
     this.isStereoVR = true;
     this.stereoEffect = new StereoEffect(this.scene.renderer);
-    this.stereoEffect.setEyeSeparation(0.064);
+    this.stereoEffect.setEyeSeparation(VR_EYE_SEPARATION);
     this.hudHidden = false;
     this.passthroughStream = null;
     this.isSyntheticPassthrough = false;
@@ -330,12 +365,12 @@ export class TaserVRApp {
     this._consecutiveHandFrames = 0;
     this._returnBlendRemaining = 0;
     this._lastHudTrackBadgeKey = '';
-    this.handDetected = true;
-    this.handTargetPos = new THREE.Vector3(0.21, -0.19, -0.56);
-    this.handCurrentPos = new THREE.Vector3(0.21, -0.19, -0.56);
+    this.handDetected = false;
+    this.handTargetPos = new THREE.Vector3(0.21, -0.17, WEAPON_FALLBACK_Z);
+    this.handCurrentPos = new THREE.Vector3(0.21, -0.17, WEAPON_FALLBACK_Z);
     this.handTargetQuat = new THREE.Quaternion();
     this.handCurrentQuat = new THREE.Quaternion();
-    this._fallbackTargetPos = new THREE.Vector3(0.21, -0.19, -0.56);
+    this._fallbackTargetPos = new THREE.Vector3(0.21, -0.17, WEAPON_FALLBACK_Z);
     this._fallbackTargetQuat = new THREE.Quaternion();
 
     // Pre-allocated math helpers (Zero-GC render loop)
@@ -354,7 +389,10 @@ export class TaserVRApp {
     this._fbBack = new THREE.Vector3();
     this._fbBasis = new THREE.Matrix4();
 
-    // 3D Curved Stereoscopic VR Start & Pause Menu + Gaze-Dwell state
+    // 3-stegs startflöde: 'STATE_PLACE_DUMMY' -> 'STATE_MENU' -> 'STATE_ACTIVE'
+    this.vrAppState = 'STATE_PLACE_DUMMY';
+    this._hasCompletedInitialPlacement = false;
+    this._repositionFromPause = false;
     this.vrMenuState = 'closed'; // 'start' | 'pause' | 'closed'
     this.vrMenuSelectedIndex = 0;
     this.vrMenuGazeHoverIndex = -1;
@@ -560,6 +598,23 @@ export class TaserVRApp {
     }
   }
 
+  findUltraWideRearDeviceId(devices) {
+    if (!Array.isArray(devices) || devices.length === 0) return null;
+    const videoInputs = devices.filter((d) => d && d.kind === 'videoinput' && d.deviceId);
+    if (videoInputs.length === 0) return null;
+
+    const isFront = (lbl) => /front|selfie|user|face/i.test(lbl);
+    const isTeleOrMacro = (lbl) => /tele|zoom|macro|depth|ir\b/i.test(lbl);
+    const isUltraWide = (lbl) => /ultra[\s-]*wide|0\.5x|0\.6x|13\s*mm|back.*2|rear.*2|wide\s*angle/i.test(lbl);
+
+    const ultraMatch = videoInputs.find((d) => {
+      const lbl = String(d.label || '');
+      return lbl && !isFront(lbl) && !isTeleOrMacro(lbl) && isUltraWide(lbl);
+    });
+    if (ultraMatch) return ultraMatch.deviceId;
+    return null;
+  }
+
   async resetCameraWideAngle(stream) {
     if (!stream || typeof stream.getVideoTracks !== 'function') return;
     const [track] = stream.getVideoTracks();
@@ -588,32 +643,89 @@ export class TaserVRApp {
     this.isSyntheticPassthrough = false;
 
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: false
-        });
-      } catch (errIdeal) {
-        console.warn('[VR CAMERA] Ideal bakre 1080p-kamera ej tillgänglig, provar standard bakre kamera:', errIdeal);
+      let preUltraWideId = null;
+      if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        try {
+          const devs = await navigator.mediaDevices.enumerateDevices();
+          preUltraWideId = this.findUltraWideRearDeviceId(devs);
+        } catch (_) {}
+      }
+
+      if (preUltraWideId) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' },
+            video: {
+              deviceId: { exact: preUltraWideId },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
             audio: false
           });
-        } catch (errEnv) {
-          console.warn('[VR CAMERA] Bakre kamera nekad/ej tillgänglig, provar valfri kamera:', errEnv);
+        } catch (_) {
+          stream = null;
+        }
+      }
+
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
+            audio: false
+          });
+        } catch (errIdeal) {
+          console.warn('[VR CAMERA] Ideal bakre 1080p-kamera ej tillgänglig, provar standard bakre kamera:', errIdeal);
           try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          } catch (errAny) {
-            console.warn('[VR CAMERA] Kamera blockerad/saknas, startar syntetisk pass-through:', errAny);
-            this.isSyntheticPassthrough = true;
-            stream = this.xr.createSyntheticCameraStream(640, 480);
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'environment' },
+              audio: false
+            });
+          } catch (errEnv) {
+            console.warn('[VR CAMERA] Bakre kamera nekad/ej tillgänglig, provar valfri kamera:', errEnv);
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            } catch (errAny) {
+              console.warn('[VR CAMERA] Kamera blockerad/saknas, startar syntetisk pass-through:', errAny);
+              this.isSyntheticPassthrough = true;
+              stream = this.xr.createSyntheticCameraStream(640, 480);
+            }
           }
         }
+      }
+
+      // Om enhetsnamnen blev synliga först efter kameratillstånd, byt till bakre ultravidvinkel om sådan finns
+      if (stream && !this.isSyntheticPassthrough && !preUltraWideId && typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        try {
+          const postDevs = await navigator.mediaDevices.enumerateDevices();
+          const postUltraId = this.findUltraWideRearDeviceId(postDevs);
+          const currentTrack = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+          const currentId = currentTrack && typeof currentTrack.getSettings === 'function'
+            ? currentTrack.getSettings().deviceId
+            : null;
+          if (postUltraId && postUltraId !== currentId) {
+            if (typeof stream.getTracks === 'function') {
+              stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+            }
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  deviceId: { exact: postUltraId },
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 }
+                },
+                audio: false
+              });
+            } catch (_) {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                audio: false
+              });
+            }
+          }
+        } catch (_) {}
       }
     } else {
       this.isSyntheticPassthrough = true;
@@ -680,13 +792,24 @@ export class TaserVRApp {
     document.body.classList.add('vr-headset-session', 'vr-ar-passthrough');
     this.enableStereoVR();
     this.scene.enableARMode();
-    if (this.xr) {
-      this.xr.isPlacing = false;
-      this.xr.placeMode = false;
-      this.xr.figureLocked = true;
+
+    // STEG 1: Starta alltid i placeringsläget med 3D-figuren framför skytten (3.0 m) + golvmarkör
+    this.vrAppState = 'STATE_PLACE_DUMMY';
+    this._hasCompletedInitialPlacement = false;
+    this._repositionFromPause = false;
+    this.vrMenuState = 'closed';
+    document.body.classList.remove('vr-menu-open', 'vr-menu-paused');
+    document.documentElement.classList.remove('vr-menu-open', 'vr-menu-paused');
+
+    this.scene.resetTarget();
+    if (this.scene.taserGroup) {
+      this.scene.taserGroup.position.set(0, 0, 0);
+      this.scene.taserGroup.lookAt(0, 0, 3.0);
+      this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
+      this.scene.taserGroup.visible = true;
     }
-    this.scene.set3DVisibility(false);
-    this.openVRStartMenu();
+    this.currentDistance = 3.0;
+    this.togglePlaceMode(true);
     this.updateDisplay();
     this.updateAimVisuals();
     this.updateMinimalHud();
@@ -1467,37 +1590,42 @@ export class TaserVRApp {
       hudBadge.style.display = btReady ? 'inline-flex' : 'none';
     }
 
-    const debugHud = document.getElementById('vr-bt-debug-hud');
-    if (debugHud) {
-      debugHud.style.display = (btReady && this._showBtDebugHud) ? 'inline-flex' : 'none';
+    const snifferEl = document.getElementById('vr-bt-sniffer');
+    if (snifferEl) {
+      snifferEl.classList.toggle('is-connected', btReady);
+      if (!this._lastBtSignalText) {
+        snifferEl.textContent = connected ? 'BT SIGNAL: GAMEPAD ANSLUTEN' : 'BT SIGNAL: VÄNTAR...';
+      }
     }
   }
 
   updateBtDebugReadout(signalOrBtn, gp = null) {
-    let label = this._lastBtSignalText || 'BT: VÄNTAR PÅ SIGNAL...';
+    let label = this._lastBtSignalText || 'BT SIGNAL: VÄNTAR...';
     let isFreshSignal = false;
 
     if (typeof signalOrBtn === 'string' && signalOrBtn.trim()) {
-      label = signalOrBtn.trim();
+      const raw = signalOrBtn.trim();
+      label = raw.startsWith('BT SIGNAL:') ? raw : `BT SIGNAL: ${raw.replace(/^BT:\s*/i, '')}`;
       this._lastBtSignalText = label;
       isFreshSignal = true;
     } else if (typeof signalOrBtn === 'number') {
-      label = `BT: KNAPP ${signalOrBtn}`;
+      label = `BT SIGNAL: GP B${signalOrBtn}`;
       this._lastBtSignalText = label;
       isFreshSignal = true;
     } else if (!this._lastBtSignalText) {
-      label = (gp || this._btInputDetected) ? '🎮 BT REDO — VÄNTAR...' : 'BT: VÄNTAR PÅ SIGNAL...';
+      label = (gp || this._btInputDetected) ? 'BT SIGNAL: REDO — VÄNTAR...' : 'BT SIGNAL: VÄNTAR...';
     }
 
-    const debugHud = document.getElementById('vr-bt-debug-hud');
-    if (debugHud) {
-      debugHud.textContent = label;
+    const snifferEl = document.getElementById('vr-bt-sniffer');
+    if (snifferEl) {
+      snifferEl.textContent = label;
+      snifferEl.classList.toggle('is-connected', !!(gp || this._btInputDetected));
       if (isFreshSignal) {
-        debugHud.classList.add('active-input');
+        snifferEl.classList.add('active-input');
         if (this._btDebugFadeTimer) clearTimeout(this._btDebugFadeTimer);
         this._btDebugFadeTimer = setTimeout(() => {
-          debugHud.classList.remove('active-input');
-        }, 550);
+          snifferEl.classList.remove('active-input');
+        }, 650);
       }
     }
 
@@ -1563,10 +1691,10 @@ export class TaserVRApp {
   }
 
   resetGamepadMapping() {
-    GAMEPAD_MAP.fire = DEFAULT_GAMEPAD_MAP.fire;
-    GAMEPAD_MAP.safety = DEFAULT_GAMEPAD_MAP.safety;
+    GAMEPAD_MAP.fire = [...DEFAULT_GAMEPAD_MAP.fire];
+    GAMEPAD_MAP.safety = [...DEFAULT_GAMEPAD_MAP.safety];
     GAMEPAD_MAP.cassette = DEFAULT_GAMEPAD_MAP.cassette;
-    GAMEPAD_MAP.arc = DEFAULT_GAMEPAD_MAP.arc;
+    GAMEPAD_MAP.arc = [...DEFAULT_GAMEPAD_MAP.arc];
     GAMEPAD_MAP.confirm = [...DEFAULT_GAMEPAD_MAP.confirm];
     GAMEPAD_MAP.reset = DEFAULT_GAMEPAD_MAP.reset;
     this._calibratingAction = null;
@@ -1583,7 +1711,7 @@ export class TaserVRApp {
     const handleConnected = (gp) => {
       this._btInputDetected = true;
       this.updateBluetoothStatusUI(gp);
-      this.updateBtDebugReadout('🎮 BT REDO — GAMEPAD ANSLUTEN', gp);
+      this.updateBtDebugReadout('GAMEPAD ANSLUTEN', gp);
       this.log(`<span style='color:#2ecc71; font-weight:bold;'>🎮 BT REDO</span>${gp?.id ? ` (${gp.id})` : ''}`);
     };
 
@@ -1603,37 +1731,93 @@ export class TaserVRApp {
     }
 
     const DEBOUNCE_MS = 160;
-    const isArrowKey = (k, c) =>
-      k === 'ArrowUp' || k === 'ArrowDown' || k === 'ArrowLeft' || k === 'ArrowRight' ||
-      c === 'ArrowUp' || c === 'ArrowDown' || c === 'ArrowLeft' || c === 'ArrowRight';
+    const isInteractiveDomTarget = (target) => !!(
+      target &&
+      typeof target.closest === 'function' &&
+      target.closest('button, a, input, select, textarea, .vr-menu-btn, #vr-btn-menu, #btn-place-xr, #btn-fail-reset, #vr-landscape-prompt')
+    );
+
+    const blurNonTextFocus = () => {
+      const ae = document.activeElement;
+      if (ae && ae.tagName !== 'INPUT' && ae.tagName !== 'TEXTAREA' && typeof ae.blur === 'function') {
+        ae.blur();
+      }
+    };
+
+    // Global capture-override mot högerklick / contextmenu på Bluetooth-kontroller
+    window.addEventListener('contextmenu', (e) => {
+      if (isInteractiveDomTarget(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      this.markBtActive('ContextMenu (BLOCKERAD)');
+    }, { capture: true, passive: false });
+
+    // Global capture-override för musknappar från BT-fjärr / MouseLeft -> Avfyra i skarpt läge
+    window.addEventListener('mousedown', (e) => {
+      if (isInteractiveDomTarget(e.target)) return;
+      if (document.body.classList.contains('vr-portrait-blocked')) return;
+      if (e.button === 0 || e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (e.button === 0 && INPUT_MAP.fire.mouseButtons.includes(0)) {
+        const now = performance.now();
+        if (this.vrAppState === 'STATE_ACTIVE' && this.vrMenuState === 'closed' && !this.isPlacementActive()) {
+          if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
+            this._lastControllerActionTs = now;
+            this.markBtActive('MouseLeft -> AVFYRA');
+            this.triggerFireInput();
+          }
+        } else {
+          this.markBtActive('MouseLeft');
+        }
+      } else if (e.button === 2) {
+        this.markBtActive('MouseRight');
+      }
+    }, { capture: true, passive: false });
+
+    const matchesHid = (list, code, key) => list.includes(code) || list.includes(key);
 
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
       const key = e.key || '';
       const code = e.code || '';
       const kl = key.toLowerCase();
+      const rawSig = code || key || 'UNKNOWN';
       const now = performance.now();
       const menuOpen = this.vrMenuState !== 'closed';
+      const placing = this.isPlacementActive();
 
-      // 0. ESCAPE: stäng modal -> eller stäng pausmeny -> eller håll inne 1.0s för Pausmeny -> kort tryck säkring
-      if (key === 'Escape' || code === 'Escape') {
+      const isUpKey = matchesHid(INPUT_MAP.move.hidUp, code, key);
+      const isDownKey = matchesHid(INPUT_MAP.move.hidDown, code, key);
+      const isLeftKey = matchesHid(INPUT_MAP.move.hidLeft, code, key);
+      const isRightKey = matchesHid(INPUT_MAP.move.hidRight, code, key);
+      const isMoveKey = isUpKey || isDownKey || isLeftKey || isRightKey;
+      const isFireHid = matchesHid(INPUT_MAP.fire.hidCodes, code, key) || key === 'AudioVolumeUp' || key === 'VolumeUp' || code === 'AudioVolumeUp' || code === 'VolumeUp';
+      const isSafetyHid = matchesHid(INPUT_MAP.safety.hidCodes, code, key) || key === 'BrowserBack' || key === 'GoBack';
+      const isArcHid = matchesHid(INPUT_MAP.arc.hidCodes, code, key) || key === 'AudioVolumeDown' || key === 'VolumeDown' || code === 'VolumeDown' || key === 'MediaPlayPause' || code === 'MediaPlayPause';
+      const isConfirmHid = matchesHid(INPUT_MAP.confirm.hidCodes, code, key);
+      const isCassetteHid = matchesHid(INPUT_MAP.cassette.hidCodes, code, key) || key === 'MediaNextTrack' || key === 'MediaPreviousTrack' || code === 'MediaTrackNext' || code === 'MediaTrackPrevious';
+      const isResetHid = matchesHid(INPUT_MAP.reset.hidCodes, code, key);
+
+      // Spärra webbläsarens standardbeteende (Tillbaka, scroll, menyfokus, volym) på alla mappade HID-tangenter
+      if (isMoveKey || isFireHid || isSafetyHid || isArcHid || isConfirmHid || isCassetteHid || isResetHid) {
         e.preventDefault();
         e.stopPropagation();
-        const gpModal = document.getElementById('gamepad-modal');
-        const scModal = document.getElementById('scenario-modal');
-        if (gpModal && gpModal.style.display === 'flex') {
-          this.closeModal('gamepad-modal');
-          return;
+        if ((key === 'Backspace' || key === 'BrowserBack' || key === 'GoBack') && typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
         }
-        if (scModal && scModal.style.display === 'flex') {
-          this.closeModal('scenario-modal');
-          return;
-        }
+        blurNonTextFocus();
+      }
+
+      // 0. ESCAPE: stäng pausmeny eller håll inne 1.0s för Pausmeny; kort tryck -> Säkring
+      if (key === 'Escape' || code === 'Escape') {
         if (e.repeat) return;
         this._heldKeys.add('Escape');
         if (this.vrMenuState === 'pause') {
           this._escHoldOpenedMenu = true;
-          this.markBtActive('BT: ESC -> STÄNG MENY');
+          this.markBtActive(`${rawSig} -> STÄNG MENY`);
           this.closeVRMenu();
           return;
         }
@@ -1645,7 +1829,7 @@ export class TaserVRApp {
             this._escHoldTimer = null;
             if (this._heldKeys.has('Escape') && this.vrMenuState === 'closed' && !this._escHoldOpenedMenu) {
               this._escHoldOpenedMenu = true;
-              this.markBtActive('BT: ESC (1s) -> PAUSMENY');
+              this.markBtActive(`${rawSig} (1s) -> PAUSMENY`);
               this.openVRPauseMenu();
             }
           }, 1000);
@@ -1653,132 +1837,108 @@ export class TaserVRApp {
         return;
       }
 
-      // 1. RETURNKEY (ENTER) -> Välj i 3D-menyn, eller aktivera 5s ljusbåge i skarpt läge
-      if (key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (document.activeElement && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && typeof document.activeElement.blur === 'function') {
-          document.activeElement.blur();
-        }
+      // 1. STEG 2: MENY ÖPPEN (D-pad/WASD navigerar, Enter/Space/KeyA/KeyY väljer)
+      if (menuOpen) {
         if (e.repeat) return;
-        if (menuOpen) {
-          this.markBtActive(`BT: KEY ${code === 'NumpadEnter' ? 'NumpadEnter' : 'Enter'} -> VÄLJ I MENY`);
+        if (isUpKey || isLeftKey) {
+          this.markBtActive(`${rawSig} -> MENY UPP`);
+          this.navigateVRMenu(-1);
+        } else if (isDownKey || isRightKey) {
+          this.markBtActive(`${rawSig} -> MENY NER`);
+          this.navigateVRMenu(1);
+        } else if (isConfirmHid || isFireHid || isArcHid) {
+          this.markBtActive(`${rawSig} -> VÄLJ`);
           this.activateVRMenuSelection();
-          return;
+        } else if ((isSafetyHid || kl === 'b') && this.vrMenuState === 'pause') {
+          this.markBtActive(`${rawSig} -> STÄNG MENY`);
+          this.closeVRMenu();
+        } else {
+          this.markBtActive(rawSig);
         }
-        this.markBtActive(`BT: KEY ${code === 'NumpadEnter' ? 'NumpadEnter' : 'Enter'} -> LJUSBÅGE`);
-        this.triggerArcInput();
         return;
       }
 
-      // 2. SPACE -> Välj i 3D-menyn, eller fastställ målposition i placeringsläge, eller Avfyra i skarpt läge
-      if (key === ' ' || key === 'Spacebar' || code === 'Space') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (document.activeElement && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && typeof document.activeElement.blur === 'function') {
-          document.activeElement.blur();
-        }
-        if (e.repeat) return;
-        if (menuOpen) {
-          this.markBtActive('BT: KEY Space -> VÄLJ I MENY');
-          this.activateVRMenuSelection();
+      // 2. STEG 1: PLACERINGSLÄGE (D-pad/Pilar/WASD flyttar figur; Enter/Space/KeyY bekräftar)
+      if (placing) {
+        if (isMoveKey) {
+          if (code) this._heldKeys.add(code);
+          if (key) this._heldKeys.add(key);
+          if (!e.repeat) {
+            this.markBtActive(`${rawSig} -> FLYTTA MÅL`);
+          }
           return;
         }
-        if (this.isPlacementActive()) {
-          this.markBtActive('BT: KEY Space -> MÅL LÅST');
+        if ((code === 'Enter' || code === 'NumpadEnter' || code === 'Space' || code === 'KeyY' || key === 'Enter' || key === ' ') && !e.repeat) {
+          this.markBtActive(`${rawSig} -> BEKRÄFTA MÅL`);
           this.confirmPlacement();
-        } else if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
+          return;
+        }
+      }
+
+      // 3. STEG 3: SKARPT LÄGE (STATE_ACTIVE)
+      if (isFireHid) {
+        if (e.repeat) return;
+        if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
           this._lastControllerActionTs = now;
-          this.markBtActive('BT: KEY Space -> AVFYRA');
+          this.markBtActive(`${rawSig} -> AVFYRA`);
           this.triggerFireInput();
         }
         return;
       }
 
-      // 3. PILTANGENTER (HID) -> Bläddra i 3D-menyn, eller styr dummyn i placeringsläge
-      if (isArrowKey(key, code)) {
-        e.preventDefault();
-        e.stopPropagation();
-        const arrowCode = code.startsWith('Arrow') ? code : key;
-        this._heldKeys.add(arrowCode);
-        if (menuOpen) {
-          if (!e.repeat && (arrowCode === 'ArrowUp' || arrowCode === 'ArrowLeft')) {
-            this.markBtActive(`BT: KEY ${arrowCode} -> MENY UPP`);
-            this.navigateVRMenu(-1);
-          } else if (!e.repeat && (arrowCode === 'ArrowDown' || arrowCode === 'ArrowRight')) {
-            this.markBtActive(`BT: KEY ${arrowCode} -> MENY NER`);
-            this.navigateVRMenu(1);
-          }
-          return;
-        }
-        if (this.isPlacementActive()) {
-          if (!e.repeat) {
-            this.markBtActive(`BT: KEY ${arrowCode} -> FLYTTA MÅL`);
-          }
-        } else if (arrowCode === 'ArrowUp') {
-          this.currentDistance = Math.max(1.5, Number(((this.currentDistance || 3.0) - 0.2).toFixed(2)));
-          this.markBtActive('BT: KEY ArrowUp -> AVSTÅND');
-          this.updateAimVisuals();
-        } else if (arrowCode === 'ArrowDown') {
-          this.currentDistance = Math.min(7.0, Number(((this.currentDistance || 3.0) + 0.2).toFixed(2)));
-          this.markBtActive('BT: KEY ArrowDown -> AVSTÅND');
-          this.updateAimVisuals();
-        }
-        return;
-      }
-
-      if (menuOpen) {
-        if ((kl === 'b' || key === 'Backspace' || key === 'BrowserBack' || key === 'GoBack') && this.vrMenuState === 'pause' && !e.repeat) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.closeVRMenu();
-        }
-        return;
-      }
-
-      // 4. ÖVRIGA HID-KNAPPAR (Game mode / Bluetooth remote)
-      if (kl === 'a' || key === 'AudioVolumeUp' || key === 'VolumeUp' || code === 'AudioVolumeUp' || code === 'VolumeUp') {
-        e.preventDefault();
-        e.stopPropagation();
+      if (isArcHid) {
         if (e.repeat) return;
         if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
           this._lastControllerActionTs = now;
-          this.markBtActive(`BT: KEY ${key === ' ' ? 'Space' : key} -> AVFYRA`);
-          this.handleGamepadFireEdge();
-        }
-      } else if (kl === 'b' || key === 'Backspace' || key === 'BrowserBack' || key === 'GoBack') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.repeat) return;
-        if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
-          this._lastControllerActionTs = now;
-          this.markBtActive(`BT: KEY ${key} -> SÄKRING`);
-          this.triggerSafetyInput();
-        }
-      } else if (kl === 'c' || kl === 'd' || key === 'AudioVolumeDown' || key === 'VolumeDown' || code === 'VolumeDown' || key === 'MediaPlayPause' || code === 'MediaPlayPause') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.repeat) return;
-        if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
-          this._lastControllerActionTs = now;
-          this.markBtActive(`BT: KEY ${key} -> LJUSBÅGE`);
+          this.markBtActive(`${rawSig} -> LJUSBÅGE`);
           this.triggerArcInput();
         }
-      } else if (kl === 'q' || kl === 'x' || key === 'Tab' || key === 'MediaNextTrack' || key === 'MediaPreviousTrack' || code === 'MediaTrackNext' || code === 'MediaTrackPrevious') {
-        e.preventDefault();
-        e.stopPropagation();
+        return;
+      }
+
+      if (isSafetyHid) {
         if (e.repeat) return;
         if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
           this._lastControllerActionTs = now;
-          this.markBtActive(`BT: KEY ${key} -> KASSETT`);
+          this.markBtActive(`${rawSig} -> SÄKRING`);
+          this.triggerSafetyInput();
+        }
+        return;
+      }
+
+      if (isCassetteHid) {
+        if (e.repeat) return;
+        if (now - this._lastControllerActionTs >= DEBOUNCE_MS) {
+          this._lastControllerActionTs = now;
+          this.markBtActive(`${rawSig} -> KASSETT`);
           this.triggerCartridgeInput();
         }
-      } else if (kl === 'r') {
-        e.preventDefault();
-        e.stopPropagation();
+        return;
+      }
+
+      if (isResetHid) {
         if (e.repeat) return;
-        this.markBtActive('BT: KEY r -> ÅTERSTÄLL');
+        this.markBtActive(`${rawSig} -> ÅTERSTÄLL`);
         this.resetSimulator();
+        return;
+      }
+
+      if (isUpKey) {
+        this.currentDistance = Math.max(1.5, Number(((this.currentDistance || 3.0) - 0.2).toFixed(2)));
+        this.markBtActive(`${rawSig} -> AVSTÅND`);
+        this.updateAimVisuals();
+        return;
+      }
+
+      if (isDownKey) {
+        this.currentDistance = Math.min(7.0, Number(((this.currentDistance || 3.0) + 0.2).toFixed(2)));
+        this.markBtActive(`${rawSig} -> AVSTÅND`);
+        this.updateAimVisuals();
+        return;
+      }
+
+      if (!e.repeat) {
+        this.markBtActive(rawSig);
       }
     }, { capture: true, passive: false });
 
@@ -1793,7 +1953,7 @@ export class TaserVRApp {
         if (!this._escHoldOpenedMenu && this.vrMenuState === 'closed' && this._escDownSince > 0) {
           const heldMs = performance.now() - this._escDownSince;
           if (heldMs < 1000) {
-            this.markBtActive('BT: KEY Escape -> SÄKRING');
+            this.markBtActive('Escape -> SÄKRING');
             this.triggerSafetyInput();
           }
         }
@@ -1878,76 +2038,85 @@ export class TaserVRApp {
               confirm: 'Fastställ mål',
               reset: 'Återställ'
             };
-            this.markBtActive(`BT: KNAPP ${i} -> ${labels[action] || action}`, gp);
+            this.markBtActive(`GP B${i} -> ${labels[action] || action}`, gp);
             this.showHudToast(`✅ ${labels[action] || action} → Knapp ${i}`, '#2ecc71');
             prev[i] = true;
             return;
           }
 
-          // Om 3D VR-menyn är öppen: styr menyval med D-pad + L3/Enter/Trigger
+          // STEG 2: MENY ÖPPEN
           if (menuOpen) {
-            if (i === 12) {
-              this.markBtActive('BT: D-PAD UPP -> MENY', gp);
+            if (i === INPUT_MAP.move.gamepadDpad.up || i === INPUT_MAP.move.gamepadDpad.left) {
+              this.markBtActive(`GP B${i} -> MENY UPP`, gp);
               this.navigateVRMenu(-1);
-            } else if (i === 13) {
-              this.markBtActive('BT: D-PAD NER -> MENY', gp);
+            } else if (i === INPUT_MAP.move.gamepadDpad.down || i === INPUT_MAP.move.gamepadDpad.right) {
+              this.markBtActive(`GP B${i} -> MENY NER`, gp);
               this.navigateVRMenu(1);
             } else if (isButtonMapped(i, GAMEPAD_MAP.confirm) || isButtonMapped(i, GAMEPAD_MAP.fire) || isButtonMapped(i, GAMEPAD_MAP.arc)) {
-              this.markBtActive(`BT: KNAPP ${i} -> VÄLJ I MENY`, gp);
+              this.markBtActive(`GP B${i} -> VÄLJ`, gp);
               this.activateVRMenuSelection();
             } else if ((isButtonMapped(i, GAMEPAD_MAP.safety) || isButtonMapped(i, GAMEPAD_MAP.reset)) && this.vrMenuState === 'pause') {
-              this.markBtActive(`BT: KNAPP ${i} -> STÄNG MENY`, gp);
+              this.markBtActive(`GP B${i} -> STÄNG MENY`, gp);
               this.closeVRMenu();
+            } else {
+              this.markBtActive(`GP B${i}`, gp);
             }
             prev[i] = true;
             continue;
           }
 
-          // Edge-detection på mappade knappar + L3/R3 spakklick + Start-håll 1s för Pausmeny
+          // STEG 1: PLACERINGSLÄGE (L3/R3/A/Trigger/R2 bekräftar)
+          if (isPlacing) {
+            if (isButtonMapped(i, GAMEPAD_MAP.confirm) || isButtonMapped(i, GAMEPAD_MAP.fire) || isButtonMapped(i, GAMEPAD_MAP.arc)) {
+              this.markBtActive(`GP B${i} -> BEKRÄFTA MÅL`, gp);
+              this.confirmPlacement();
+            } else if (i >= 12 && i <= 15) {
+              const dirLabel = i === 12 ? 'UPP' : (i === 13 ? 'NER' : (i === 14 ? 'VÄNSTER' : 'HÖGER'));
+              this.markBtActive(`GP B${i} (${dirLabel}) -> FLYTTA`, gp);
+            } else {
+              this.markBtActive(`GP B${i}`, gp);
+            }
+            prev[i] = true;
+            continue;
+          }
+
+          // STEG 3: SKARPT LÄGE (STATE_ACTIVE)
           if (isButtonMapped(i, GAMEPAD_MAP.reset)) {
             this._resetBtnDownSince = now;
             this._resetHoldOpenedMenu = false;
-            this.markBtActive(`BT: KNAPP ${i} -> START/ÅTERSTÄLL`, gp);
-          } else if (isButtonMapped(i, GAMEPAD_MAP.confirm)) {
-            if (isPlacing) {
-              this.markBtActive('BT: SPAKKLICK -> MÅL LÅST', gp);
-              this.confirmPlacement();
-            } else {
-              this.markBtActive(`BT: KNAPP ${i} -> SPAKKLICK`, gp);
-            }
+            this.markBtActive(`GP B${i} -> START/ÅTERSTÄLL`, gp);
           } else if (isButtonMapped(i, GAMEPAD_MAP.fire)) {
             this._fireBtnHeldSince = now;
-            this.markBtActive(`BT: KNAPP ${i} -> ${isPlacing ? 'MÅL LÅST' : 'AVFYRA'}`, gp);
+            this.markBtActive(`GP B${i} -> AVFYRA`, gp);
             this.handleGamepadFireEdge();
           } else if (isButtonMapped(i, GAMEPAD_MAP.safety)) {
-            this.markBtActive(`BT: KNAPP ${i} -> SÄKRING`, gp);
+            this.markBtActive(`GP B${i} -> SÄKRING`, gp);
             this.triggerSafetyInput();
-          } else if (isButtonMapped(i, GAMEPAD_MAP.cassette)) {
-            this.markBtActive(`BT: KNAPP ${i} -> KASSETT`, gp);
-            this.triggerCartridgeInput();
           } else if (isButtonMapped(i, GAMEPAD_MAP.arc)) {
-            this.markBtActive(`BT: KNAPP ${i} -> LJUSBÅGE`, gp);
+            this.markBtActive(`GP B${i} -> LJUSBÅGE`, gp);
             this.triggerArcInput();
-          } else if (i >= 12 && i <= 15 && isPlacing) {
-            const dirLabel = i === 12 ? 'UPP' : (i === 13 ? 'NER' : (i === 14 ? 'VÄNSTER' : 'HÖGER'));
-            this.markBtActive(`BT: D-PAD ${dirLabel} -> FLYTTA MÅL`, gp);
+          } else if (isButtonMapped(i, GAMEPAD_MAP.cassette)) {
+            this.markBtActive(`GP B${i} -> KASSETT`, gp);
+            this.triggerCartridgeInput();
+          } else if (isButtonMapped(i, GAMEPAD_MAP.confirm)) {
+            this.markBtActive(`GP B${i} -> SPAKKLICK`, gp);
           } else {
-            this.markBtActive(`BT: KNAPP ${i}`, gp);
+            this.markBtActive(`GP B${i}`, gp);
           }
         } else if (isPressed && wasPressed && !this._calibratingAction) {
-          if (!menuOpen && isButtonMapped(i, GAMEPAD_MAP.reset)) {
+          if (!menuOpen && !isPlacing && isButtonMapped(i, GAMEPAD_MAP.reset)) {
             if (!this._resetHoldOpenedMenu && this._resetBtnDownSince > 0 && (now - this._resetBtnDownSince) >= 1000) {
               this._resetHoldOpenedMenu = true;
-              this.markBtActive('BT: START (1s) -> PAUSMENY', gp);
+              this.markBtActive('GP START (1s) -> PAUSMENY', gp);
               this.openVRPauseMenu();
             }
-          } else if (!menuOpen && isButtonMapped(i, GAMEPAD_MAP.fire)) {
+          } else if (!menuOpen && !isPlacing && isButtonMapped(i, GAMEPAD_MAP.fire)) {
             this.handleGamepadFireHold(now);
           }
         } else if (!isPressed && wasPressed) {
           if (isButtonMapped(i, GAMEPAD_MAP.reset)) {
-            if (!this._resetHoldOpenedMenu && !menuOpen && this._resetBtnDownSince > 0) {
-              this.markBtActive(`BT: KNAPP ${i} -> ÅTERSTÄLL`, gp);
+            if (!this._resetHoldOpenedMenu && !menuOpen && !isPlacing && this._resetBtnDownSince > 0) {
+              this.markBtActive(`GP B${i} -> ÅTERSTÄLL`, gp);
               this.resetSimulator();
             }
             this._resetBtnDownSince = 0;
@@ -1963,7 +2132,7 @@ export class TaserVRApp {
     }
 
     // Analog spak (axes[0], axes[1] med deadzone 0.15) + Digital D-pad (knapp 12..15)
-    const DEADZONE = 0.15;
+    const DEADZONE = INPUT_MAP.move.deadzone;
     const applyDeadzone = (rawVal) => {
       const v = Number(rawVal) || 0;
       if (Math.abs(v) <= DEADZONE) return 0;
@@ -1979,6 +2148,7 @@ export class TaserVRApp {
       this._gpMoveY = 0;
       if (Math.abs(stickY) > 0.55 && now >= (this._stickMenuRepeatAt || 0)) {
         this._stickMenuRepeatAt = now + 240;
+        this.markBtActive(`GP Ax1=${Number(axes[1] || 0).toFixed(2)} -> MENY`, primaryGp);
         this.navigateVRMenu(stickY < 0 ? -1 : 1);
       } else if (Math.abs(stickY) <= 0.35) {
         this._stickMenuRepeatAt = 0;
@@ -1986,7 +2156,8 @@ export class TaserVRApp {
       return;
     }
 
-    const isDpadSpecial = (idx) =>
+    const isDpadReserved = (idx) =>
+      idx < 12 ||
       isButtonMapped(idx, GAMEPAD_MAP.fire) ||
       isButtonMapped(idx, GAMEPAD_MAP.safety) ||
       isButtonMapped(idx, GAMEPAD_MAP.cassette) ||
@@ -1995,7 +2166,7 @@ export class TaserVRApp {
       isButtonMapped(idx, GAMEPAD_MAP.reset);
 
     const isBtnDown = (idx) => {
-      if (isDpadSpecial(idx)) return false;
+      if (isDpadReserved(idx)) return false;
       const b = primaryGp.buttons && primaryGp.buttons[idx];
       return !!(b && (b.pressed || b.value > 0.5));
     };
@@ -2006,9 +2177,9 @@ export class TaserVRApp {
     if (isPlacing) {
       this._gpMoveX = Math.max(-1, Math.min(1, stickX !== 0 ? stickX : dpadX));
       this._gpMoveY = Math.max(-1, Math.min(1, stickY !== 0 ? stickY : dpadY));
-      if ((Math.abs(this._gpMoveX) > 0.05 || Math.abs(this._gpMoveY) > 0.05) && now - (this._lastMoveSignalLogTs || 0) > 450) {
+      if ((Math.abs(this._gpMoveX) > 0.05 || Math.abs(this._gpMoveY) > 0.05) && now - (this._lastMoveSignalLogTs || 0) > 380) {
         this._lastMoveSignalLogTs = now;
-        this.markBtActive('BT: SPAK -> FLYTTA MÅL', primaryGp);
+        this.markBtActive(`GP Ax0=${Number(axes[0] || 0).toFixed(2)} Ax1=${Number(axes[1] || 0).toFixed(2)} -> FLYTTA`, primaryGp);
       }
     } else {
       this._gpMoveX = 0;
@@ -2054,8 +2225,12 @@ export class TaserVRApp {
       marker.scale.set(1.8, 1.8, 1.8);
     }
 
-    const hidX = (this._heldKeys.has('ArrowRight') ? 1 : 0) - (this._heldKeys.has('ArrowLeft') ? 1 : 0);
-    const hidY = (this._heldKeys.has('ArrowDown') ? 1 : 0) - (this._heldKeys.has('ArrowUp') ? 1 : 0);
+    const hidRight = this._heldKeys.has('ArrowRight') || this._heldKeys.has('KeyD') || this._heldKeys.has('d');
+    const hidLeft = this._heldKeys.has('ArrowLeft') || this._heldKeys.has('KeyA') || this._heldKeys.has('a');
+    const hidDown = this._heldKeys.has('ArrowDown') || this._heldKeys.has('KeyS') || this._heldKeys.has('s');
+    const hidUp = this._heldKeys.has('ArrowUp') || this._heldKeys.has('KeyW') || this._heldKeys.has('w');
+    const hidX = (hidRight ? 1 : 0) - (hidLeft ? 1 : 0);
+    const hidY = (hidDown ? 1 : 0) - (hidUp ? 1 : 0);
     const moveX = Math.max(-1, Math.min(1, (this._gpMoveX || 0) + hidX));
     const moveY = Math.max(-1, Math.min(1, (this._gpMoveY || 0) + hidY));
     const hasMove = Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01;
@@ -2343,24 +2518,16 @@ export class TaserVRApp {
   // =========================================================================
   updateProjectors() {
     const flashlight = document.getElementById('flashlight');
-    const laserGreen = document.getElementById('laser-green');
-    const laserRed = document.getElementById('laser-red');
-
     const isLiveAR = this.isLiveAIRunning();
     const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
     const hasCartridge = (this.fsm.chamber1 === ChamberState.LOADED || this.fsm.chamber2 === ChamberState.LOADED);
     const flashlightOn = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
     const shouldShow = isLiveAR ? flashlightOn : (flashlightOn && hasCartridge);
 
-    // Hide CSS single-screen elements in Stereo VR / Live-AR so #hud-canvas & 3D dots render cleanly per-eye
-    if (isLiveAR || this.isStereoVR || isXRPresenting) {
-      if (flashlight) flashlight.style.display = 'none';
-      if (laserGreen) laserGreen.style.display = 'none';
-      if (laserRed) laserRed.style.display = 'none';
-    } else {
-      if (flashlight) flashlight.style.display = flashlightOn ? 'block' : 'none';
-      if (laserGreen) laserGreen.style.display = shouldShow ? 'block' : 'none';
-      if (laserRed) laserRed.style.display = shouldShow ? 'block' : 'none';
+    if (flashlight) {
+      flashlight.style.display = (isLiveAR || this.isStereoVR || isXRPresenting || this.vrAppState !== 'STATE_ACTIVE')
+        ? 'none'
+        : (flashlightOn ? 'block' : 'none');
     }
 
     this.drawHudCanvas(flashlightOn, shouldShow);
@@ -2503,17 +2670,7 @@ export class TaserVRApp {
         ctx.fillText(`● ${(this.aiPose.estimatedDistance || 3.0).toFixed(1)} M`, labelX, labelY - 3);
       }
 
-      // 3. Subtle VR Stereoscopic Reticle Ring (dämpad när 3D-handvapnets lasrar är aktiva)
-      if (!isLiveAR && isStereo) {
-        const hasHandWeapon = !!(this.weaponGroup && this.weaponGroup.visible);
-        ctx.strokeStyle = hasHandWeapon
-          ? 'rgba(0, 255, 136, 0.16)'
-          : (lasersOn ? 'rgba(0, 255, 136, 0.48)' : 'rgba(241, 196, 15, 0.38)');
-        ctx.lineWidth = hasHandWeapon ? 1.0 : 1.4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, hasHandWeapon ? 8 : 12, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      // Inga statiska 2D-laserpunkter eller siktesringar mitt på skärmen i 3D VR (lasrarna kommer enbart från 3D-Taserns mynning)
 
       // 4. Live-AR Lasers (Dynamic spread + smooth tilt rotation)
       if (isLiveAR && lasersOn) {
@@ -2736,22 +2893,6 @@ export class TaserVRApp {
     const spreadLabel = document.getElementById('spread-label');
     if (distLabel) distLabel.textContent = `${spreadData.distanceMeters.toFixed(1)} M`;
     if (spreadLabel) spreadLabel.textContent = `SPRIDNING: ${spreadData.spreadCm.toFixed(1)} CM (K${activeCh})`;
-
-    const tiltDeg = this.getEffectiveTiltDeg();
-    const tiltRad = (tiltDeg * Math.PI) / 180;
-    const vp = document.getElementById('viewport');
-    const vH = (vp && vp.clientHeight) || window.innerHeight || 760;
-    const drop = isLiveAR
-      ? this.ballistics.calculateLiveSpreadPx(activeDist, activeCh, vH)
-      : spreadData.visualDropPx;
-    const dx = -Math.sin(tiltRad) * drop;
-    const dy = Math.cos(tiltRad) * drop;
-
-    const laserRed = document.getElementById('laser-red');
-    if (laserRed) {
-      laserRed.style.left = `calc(50% + ${dx.toFixed(2)}px)`;
-      laserRed.style.top = `calc(50% + ${dy.toFixed(2)}px)`;
-    }
     this.updateMinimalHud();
   }
 
@@ -3908,6 +4049,7 @@ export class TaserVRApp {
 
   togglePlaceMode(silent = false) {
     if (this.isLiveAIRunning()) return;
+    this.vrAppState = 'STATE_PLACE_DUMMY';
     this.xr.isPlacing = true;
     this.xr.placeMode = true;
     this.xr.figureLocked = false;
@@ -3925,7 +4067,7 @@ export class TaserVRApp {
     }
     const hint = document.getElementById('place-hint');
     if (hint) {
-      hint.textContent = 'Styr med D-pad/spak • Tryck L3 / Space / FASTSTÄLL';
+      hint.textContent = 'STEG 1: FLYTTA MÅLET MED D-PAD – TRYCK PÅ SPAKEN / ENTER FÖR ATT BEKRÄFTA';
       hint.classList.add('visible');
     }
     const tLabel = document.getElementById('target-label');
@@ -3959,8 +4101,9 @@ export class TaserVRApp {
     }
     this.syncDistanceFromTarget();
     this.updateAimVisuals();
+    this.updateProjectors();
     if (!silent) {
-      this.showHudToast('Flytta målet med D-pad/spak • Tryck L3 eller Space', '#2ecc71');
+      this.showHudToast('Flytta målet med D-pad/spak • Tryck L3 eller Enter för att bekräfta', '#2ecc71');
     }
   }
 
@@ -3998,12 +4141,13 @@ export class TaserVRApp {
     this._xrManualMoveUsed = false;
     this._gpMoveX = 0;
     this._gpMoveY = 0;
+    this._heldKeys.clear();
 
     document.body.classList.remove('xr-placing');
     document.documentElement.classList.remove('xr-placing');
     this.scene.set3DVisibility(true);
 
-    // Dölj placeringsringen under fötterna helt så att ingen extra ring ligger kvar
+    // Dölj placeringsringen under fötterna helt efter bekräftad placering
     if (marker) {
       marker.visible = false;
       marker.scale.set(1, 1, 1);
@@ -4022,29 +4166,34 @@ export class TaserVRApp {
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
 
+    const placedDist = this.syncDistanceFromTarget();
+    this.updateAimVisuals();
+    this.updateDisplay();
+
+    this.playPlacementConfirmSound();
+    if (navigator.vibrate) {
+      try { navigator.vibrate(28); } catch (_) {}
+    }
+
+    // STEG 1 -> STEG 2: Öppna övningsmenyn efter första placering (eller om man kom från startmenyn)
+    if (!this._hasCompletedInitialPlacement || !this._repositionFromPause) {
+      this._hasCompletedInitialPlacement = true;
+      this._repositionFromPause = false;
+      this.showHudToast(`MÅL BEKRÄFTAT (${placedDist.toFixed(1)} M) — VÄLJ ÖVNING`, '#2ecc71');
+      this.openVRStartMenu({ keepDummyVisible: true });
+      return;
+    }
+
+    // Återgå direkt till skarpt övningsläge om man flyttade figuren från pausmenyn
+    this._repositionFromPause = false;
+    this.vrAppState = 'STATE_ACTIVE';
     const activeScen = (isXR ? this.xr.scenario : null) || this.selectedScenario || 'static';
     if (activeScen === 'moving' || activeScen === 'charging') {
       this.startVirtualScenario(activeScen, { preservePosition: true });
     } else {
       this.stopScenario();
     }
-
-    const placedDist = this.syncDistanceFromTarget();
-    this.updateAimVisuals();
-    this.updateDisplay();
-
-    const tLabel = document.getElementById('target-label');
-    if (tLabel && !this.isScenarioActive && !this.isLiveAIRunning()) {
-      tLabel.textContent = 'PERSON (3D VR): SKARPT LÄGE';
-      tLabel.classList.remove('armed');
-    }
-
-    this.playPlacementConfirmSound();
-    if (navigator.vibrate) {
-      try { navigator.vibrate(28); } catch (_) {}
-    }
-    this.showHudToast(`MÅL PLACERAT (${placedDist.toFixed(1)} M)`, '#2ecc71');
-    this.log(`<span style='color:#2ecc71; font-weight:bold;'>🔒 MÅL PLACERAT (${placedDist.toFixed(1)} M) — Skarpt skjutläge aktivt.</span>`);
+    this.showHudToast(`MÅL FLYTTAT (${placedDist.toFixed(1)} M)`, '#2ecc71');
   }
 
   // =========================================================================
@@ -4252,7 +4401,7 @@ export class TaserVRApp {
 
   computeFallbackPose() {
     const sideSign = this.handPreference === 'left' ? -1 : 1;
-    const pos = this._fallbackTargetPos.set(sideSign * 0.21, -0.19, -0.56);
+    const pos = this._fallbackTargetPos.set(sideSign * 0.21, -0.17, WEAPON_FALLBACK_Z);
     const convergeDist = Math.max(1.8, Math.min(9.0, this.currentDistance || 3.0));
 
     // Rikta pipan från ergonomisk höft-/skjutställning snett inåt mot headsetets siktlinje i mitten (0, 0, -convergeDist)
@@ -4762,12 +4911,12 @@ export class TaserVRApp {
     this.computeFallbackPose();
     this.handCurrentPos.copy(this._fallbackTargetPos);
     this.handCurrentQuat.copy(this._fallbackTargetQuat);
-    this.handDetected = !this.isLiveAIRunning();
-    window.handDetected = this.handDetected;
-    this.weaponGroup.visible = this.handDetected;
+    this.handDetected = false;
+    window.handDetected = false;
+    this.weaponGroup.visible = false;
     this.weaponGroup.position.copy(this.handCurrentPos);
     this.weaponGroup.quaternion.copy(this.handCurrentQuat);
-    this.weaponGroup.scale.setScalar(0.88);
+    this.weaponGroup.scale.setScalar(WEAPON_VR_SCALE);
     this.weaponGroup.updateMatrixWorld(true);
     this.syncWeaponOverlays(this.fsm, this._cidActiveCycleCount || 0);
   }
@@ -4829,7 +4978,7 @@ export class TaserVRApp {
           const palmSpan = Math.hypot(indexMcp.x - wrist.x, indexMcp.y - wrist.y);
           const knuckleSpan = Math.hypot(indexMcp.x - pinkyMcp.x, indexMcp.y - pinkyMcp.y);
           const apparentSize = Math.max(0.06, Math.min(0.45, palmSpan * 0.7 + knuckleSpan * 0.6));
-          const targetZ = Math.max(-0.92, Math.min(-0.44, -0.78 + (apparentSize - 0.16) * 0.85));
+          const targetZ = Math.max(-0.55, Math.min(-0.44, -0.51 + (apparentSize - 0.16) * 0.45));
 
           const anchorX = wrist.x * 0.35 + indexMcp.x * 0.65;
           const anchorY = wrist.y * 0.35 + indexMcp.y * 0.65;
@@ -4841,8 +4990,8 @@ export class TaserVRApp {
           const halfW = halfH * activeAspect;
 
           this.handTargetPos.set(
-            THREE.MathUtils.clamp(ndcX * halfW, -0.58, 0.58),
-            THREE.MathUtils.clamp(ndcY * halfH - 0.04, -0.38, 0.28),
+            THREE.MathUtils.clamp(ndcX * halfW, -0.48, 0.48),
+            THREE.MathUtils.clamp(ndcY * halfH - 0.04, -0.32, 0.24),
             targetZ
           );
 
@@ -4950,7 +5099,7 @@ export class TaserVRApp {
     if (!this.weaponGroup || !this.weaponMesh) return;
 
     const isLiveAR = this.isLiveAIRunning();
-    const isVisible = !isLiveAR && this.vrMenuState === 'closed';
+    const isVisible = !isLiveAR && this.vrAppState === 'STATE_ACTIVE' && this.vrMenuState === 'closed' && !this.isPlacementActive();
     this.weaponGroup.visible = isVisible;
     this.handDetected = isVisible;
     window.handDetected = isVisible;
@@ -5006,7 +5155,7 @@ export class TaserVRApp {
       this.handCurrentQuat.slerp(this._fallbackTargetQuat, fbAlpha);
     }
 
-    this.weaponGroup.scale.setScalar(0.88);
+    this.weaponGroup.scale.setScalar(WEAPON_VR_SCALE);
     this.weaponGroup.position.copy(this.handCurrentPos);
     this.weaponGroup.quaternion.copy(this.handCurrentQuat);
     this.weaponMesh.rotation.set(0, 0, 0);
@@ -5023,6 +5172,7 @@ export class TaserVRApp {
 
     this.updateWeaponArcEffect();
     this.weaponGroup.updateMatrixWorld(true);
+    if (this.muzzlePoint) this.muzzlePoint.updateWorldMatrix(true, false);
     this.updateWeaponTrackBadge();
   }
 
@@ -5468,7 +5618,8 @@ export class TaserVRApp {
     });
   }
 
-  openVRStartMenu() {
+  openVRStartMenu(options = {}) {
+    this.vrAppState = 'STATE_MENU';
     this.vrMenuState = 'start';
     this.vrMenuSelectedIndex = 0;
     this.vrMenuGazeHoverIndex = -1;
@@ -5483,9 +5634,10 @@ export class TaserVRApp {
     document.body.classList.add('vr-menu-open');
     document.documentElement.classList.add('vr-menu-open');
 
+    const keepDummy = !!(this._hasCompletedInitialPlacement || options.keepDummyVisible) && !this.isLiveAIRunning();
     if (this.scene) {
       if (this.scene.placementMarker) this.scene.placementMarker.visible = false;
-      this.scene.set3DVisibility(false);
+      this.scene.set3DVisibility(keepDummy);
     }
     if (this.vrMenuGroup) this.vrMenuGroup.visible = false;
     if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = false;
@@ -5498,6 +5650,7 @@ export class TaserVRApp {
   }
 
   openVRPauseMenu() {
+    this.vrAppState = 'STATE_MENU';
     this.vrMenuState = 'pause';
     this.vrMenuSelectedIndex = 0;
     this.vrMenuGazeHoverIndex = -1;
@@ -5518,6 +5671,7 @@ export class TaserVRApp {
 
   closeVRMenu() {
     this.vrMenuState = 'closed';
+    this.vrAppState = this.isPlacementActive() ? 'STATE_PLACE_DUMMY' : 'STATE_ACTIVE';
     this.vrMenuGazeHoverIndex = -1;
     this.vrMenuGazeDwellSec = 0;
     this._menuActionCooldownUntil = performance.now() + 340;
@@ -5559,7 +5713,8 @@ export class TaserVRApp {
     this._menuActionCooldownUntil = performance.now() + 360;
 
     if (idx === 0) {
-      // 1. Starta Fri Övning
+      // 1. Starta Fri Övning (STEG 3: Skarpt läge mot redan utplacerad figur)
+      this.vrAppState = 'STATE_ACTIVE';
       this.closeVRMenu();
       if (this.xr) {
         this.xr.isPlacing = false;
@@ -5570,7 +5725,8 @@ export class TaserVRApp {
       document.documentElement.classList.remove('xr-placing');
       this.startVirtualScenario('static', { preservePosition: true });
     } else if (idx === 1) {
-      // 2. Starta Scenario (Kniv / Motstånd)
+      // 2. Starta Scenario (Kniv / Motstånd) (STEG 3: Skarpt läge mot redan utplacerad figur)
+      this.vrAppState = 'STATE_ACTIVE';
       this.closeVRMenu();
       if (this.xr) {
         this.xr.isPlacing = false;
@@ -5588,6 +5744,7 @@ export class TaserVRApp {
       }
     } else if (idx === 2) {
       // 3. Placera / Flytta 3D-mål
+      this._repositionFromPause = (this.vrMenuState === 'pause');
       this.closeVRMenu();
       this.togglePlaceMode();
     } else if (idx === 3) {
@@ -5786,7 +5943,15 @@ export class TaserVRApp {
       this.drawHudCanvas(flashlightOn, lasersOn);
 
       const isPlacingNow = this.isPlacementActive();
-      const shouldShow3DLasers = menuClosed && lasersOn && !isLiveARLoop && !isPlacingNow;
+      const hasActiveWeapon = !!(this.weaponGroup && this.weaponGroup.visible);
+      const shouldShow3DLasers =
+        this.vrAppState === 'STATE_ACTIVE' &&
+        menuClosed &&
+        hasActiveWeapon &&
+        !this.fsm.isSafe &&
+        lasersOn &&
+        !isLiveARLoop &&
+        !isPlacingNow;
       const aimNDC = this.scene._v3.set(0, 0, 0);
 
       const laserHit = this.scene.updateDynamicLaserRaycast(
@@ -5799,7 +5964,7 @@ export class TaserVRApp {
         null
       );
 
-      if (menuClosed && laserHit && laserHit.hit && !isPlacingNow && !isLiveARLoop && (renderer.xr.isPresenting || (this.weaponGroup && this.weaponGroup.visible)) && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
+      if (menuClosed && laserHit && laserHit.hit && !isPlacingNow && !isLiveARLoop && (renderer.xr.isPresenting || hasActiveWeapon) && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
         this.currentDistance = Math.max(0.4, laserHit.distance);
         this.updateAimVisuals();
       }
@@ -5840,8 +6005,8 @@ export class TaserVRApp {
     if (!this.scene || !this.scene.renderer) return;
     if (!this.stereoEffect) {
       this.stereoEffect = new StereoEffect(this.scene.renderer);
-      this.stereoEffect.setEyeSeparation(0.064);
     }
+    this.stereoEffect.setEyeSeparation(VR_EYE_SEPARATION);
     this.isStereoVR = true;
     this.scene.onResize();
     this.applyVRCameraProjection();

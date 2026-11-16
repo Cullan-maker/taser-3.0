@@ -195,25 +195,6 @@
             background: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.04) 42%, transparent 70%);
             display: none;
         }
-        .laser-green,
-        .laser-red {
-            position: absolute;
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: none;
-        }
-        .laser-green {
-            background-color: #00ff00;
-            box-shadow: 0 0 12px #00ff00;
-        }
-        .laser-red {
-            background-color: #ff0000;
-            box-shadow: 0 0 12px #ff0000;
-        }
 
         /* =========================================================
            LAGER 3: MINIMAL SPEGLAD HUD & 4-VALSMENY (z-index: 3)
@@ -301,6 +282,91 @@
         }
         body.vr-menu-open #vr-btn-menu,
         body.vr-portrait-blocked #vr-btn-menu {
+            display: none !important;
+        }
+
+        /* Steg 1: Placeringsinstruktion (speglad för båda ögonen, endast i xr-placing) */
+        #vr-placement-banner {
+            display: none;
+            position: fixed;
+            top: max(46px, calc(env(safe-area-inset-top, 10px) + 36px));
+            left: 0;
+            right: 0;
+            z-index: 3;
+            flex-direction: row;
+            pointer-events: none;
+        }
+        body.xr-placing #vr-placement-banner {
+            display: flex;
+        }
+        body.vr-menu-open #vr-placement-banner,
+        body.vr-portrait-blocked #vr-placement-banner {
+            display: none !important;
+        }
+        body.vr-mono-mode #vr-placement-banner .vr-hud-eye--right {
+            display: none;
+        }
+        body.vr-mono-mode #vr-placement-banner .vr-hud-eye--left {
+            width: 100vw;
+        }
+        .vr-placement-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 7px;
+            background: rgba(8, 14, 18, 0.86);
+            border: 1.5px solid #2ecc71;
+            color: #a3f7bf;
+            font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+            font-size: 10.5px;
+            font-weight: 800;
+            letter-spacing: 0.4px;
+            text-align: center;
+            max-width: 46vw;
+            line-height: 1.3;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+        }
+        body.vr-mono-mode .vr-placement-pill {
+            max-width: 90vw;
+        }
+
+        /* Diskret live-sniffer för Bluetooth-joystick i nedre vänstra hörnet */
+        #vr-bt-sniffer {
+            position: fixed;
+            bottom: max(12px, env(safe-area-inset-bottom, 12px));
+            left: max(12px, env(safe-area-inset-left, 12px));
+            z-index: 3;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            background: rgba(8, 11, 16, 0.74);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            color: #94a3b8;
+            font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            pointer-events: none;
+            white-space: nowrap;
+            max-width: 44vw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+        }
+        #vr-bt-sniffer.is-connected {
+            border-color: rgba(46, 204, 113, 0.55);
+            color: #86efac;
+        }
+        #vr-bt-sniffer.active-input {
+            border-color: #FCBE00;
+            background: rgba(34, 28, 8, 0.92);
+            color: #FCBE00;
+        }
+        body.vr-portrait-blocked #vr-bt-sniffer {
             display: none !important;
         }
 
@@ -670,8 +736,6 @@
         <canvas id="hud-canvas"></canvas>
         <div class="fixed-aim-layer">
             <div id="flashlight" class="flashlight-beam"></div>
-            <div id="laser-green" class="laser-green"></div>
-            <div id="laser-red" class="laser-red"></div>
         </div>
     </div>
 
@@ -697,8 +761,18 @@
         </div>
     </div>
 
+    <div id="vr-placement-banner" aria-live="polite">
+        <div class="vr-hud-eye vr-hud-eye--left">
+            <div class="vr-placement-pill">STEG 1: FLYTTA MÅLET MED D-PAD – TRYCK PÅ SPAKEN / ENTER FÖR ATT BEKRÄFTA</div>
+        </div>
+        <div class="vr-hud-eye vr-hud-eye--right" aria-hidden="true">
+            <div class="vr-placement-pill">STEG 1: FLYTTA MÅLET MED D-PAD – TRYCK PÅ SPAKEN / ENTER FÖR ATT BEKRÄFTA</div>
+        </div>
+    </div>
+
+    <div id="vr-bt-sniffer" aria-live="off">BT SIGNAL: VÄNTAR...</div>
     <button type="button" id="vr-btn-menu" aria-label="Öppna VR-meny">☰ MENY</button>
-    <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 FASTSTÄLL MÅL</button>
+    <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 BEKRÄFTA MÅL</button>
 
     <div id="ar-hud-toast" role="status" aria-live="polite"></div>
     <div id="subtitle-overlay"></div>
