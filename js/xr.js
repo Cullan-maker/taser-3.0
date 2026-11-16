@@ -43,26 +43,38 @@ export class TaserXR {
 
     // Pre-cache WebXR immersive-ar support asynchronously to avoid blocking gesture turn
     this.xrSupported = null;
+    this._hadCameraBeforeXR = false;
+    this._endingSession = false;
+    this._boundOnSessionEnded = this.onSessionEnded.bind(this);
     if (this.isWebXRSupported() && typeof navigator.xr.isSessionSupported === 'function') {
-      navigator.xr.isSessionSupported('immersive-ar')
-        .then((supported) => {
-          this.xrSupported = supported;
-        })
-        .catch(() => {
-          this.xrSupported = false;
-        });
+      try {
+        navigator.xr.isSessionSupported('immersive-ar')
+          .then((supported) => {
+            this.xrSupported = !!supported;
+          })
+          .catch(() => {
+            this.xrSupported = false;
+          });
+      } catch (_) {
+        this.xrSupported = false;
+      }
+    } else {
+      this.xrSupported = false;
     }
   }
 
   isWebXRSupported() {
-    return typeof navigator !== 'undefined' && 'xr' in navigator;
+    return typeof navigator !== 'undefined' && !!navigator.xr && typeof navigator.xr.requestSession === 'function';
   }
 
   async checkXRSupport() {
-    if (!this.isWebXRSupported()) return false;
+    if (!this.isWebXRSupported() || typeof navigator.xr.isSessionSupported !== 'function') {
+      this.xrSupported = false;
+      return false;
+    }
     if (this.xrSupported !== null) return this.xrSupported;
     try {
-      this.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+      this.xrSupported = !!(await navigator.xr.isSessionSupported('immersive-ar'));
       return this.xrSupported;
     } catch (e) {
       this.xrSupported = false;
@@ -70,21 +82,43 @@ export class TaserXR {
     }
   }
 
-  async startXR(scenario = 'static') {
-    this.scenario = scenario;
-    this.resetScenarioState();
-    if (!this.isWebXRSupported() || this.xrSupported === false) {
-      console.info('[WEBXR INFO] WebXR Immersive-AR stöds inte på denna enhet eller i denna webbläsare. Växlar till simulerat AR-scenario.');
-      return { success: false, fallback: true, scenario, reason: 'not-supported' };
+  releaseCameraAndMediaPipe() {
+    if (this.taserScene && this.taserScene.aiPose) {
+      try {
+        if (this.taserScene.aiPose.isActive) {
+          this.taserScene.aiPose.stop();
+        }
+        this.taserScene.aiPose.isDetecting = false;
+      } catch (_) {}
     }
 
-    // Stop Live AI pose tracking and clear Live-AR classes when starting WebXR 3D-dummy mode
-    if (this.taserScene && this.taserScene.aiPose && this.taserScene.aiPose.isActive) {
-      try {
-        this.taserScene.aiPose.stop();
-      } catch (e) {}
+    if (typeof window !== 'undefined') {
+      if (typeof window.stopHandTracking === 'function') {
+        try { window.stopHandTracking(); } catch (_) {}
+      }
+      if (typeof window.stopCameraPassThrough === 'function') {
+        try { window.stopCameraPassThrough(); } catch (_) {}
+      }
     }
+
     if (typeof document !== 'undefined') {
+      ['camera-feed-left', 'camera-feed-right', 'camera-feed'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const stream = el.srcObject;
+        if (stream && typeof stream.getTracks === 'function') {
+          stream.getTracks().forEach((track) => {
+            try { track.stop(); } catch (_) {}
+          });
+        }
+        if (stream && typeof stream._cleanup === 'function') {
+          try { stream._cleanup(); } catch (_) {}
+        }
+        try { el.pause(); } catch (_) {}
+        try { el.srcObject = null; } catch (_) {}
+        try { el.removeAttribute('src'); } catch (_) {}
+      });
+
       document.body.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
       document.documentElement.classList.remove('live-ai-active', 'live-ar-active', 'camera-active');
       const mc = document.getElementById('main-container');
@@ -93,41 +127,105 @@ export class TaserXR {
       if (sc) sc.classList.remove('live-ar-active');
       const liveTargetEl = document.getElementById('live-target-overlay');
       if (liveTargetEl) liveTargetEl.style.display = 'none';
+      const camContainer = document.getElementById('camera-container');
+      if (camContainer) camContainer.style.display = 'none';
     }
 
-    // Release camera stream synchronously if held by WebRTC to prevent camera HAL hardware conflict
-    if (typeof window !== 'undefined' && typeof window.stopCameraPassThrough === 'function') {
-      try {
-        window.stopCameraPassThrough();
-      } catch (e) {}
-    }
-    if (this.useCamera && this.videoStream) {
-      console.log('[WEBXR PREP] Frigör WebRTC-kameran synkront inför WebXR...');
-      try {
-        this.videoStream.getTracks().forEach((track) => track.stop());
-      } catch (e) {}
+    if (this.videoStream) {
+      if (typeof this.videoStream.getTracks === 'function') {
+        this.videoStream.getTracks().forEach((track) => {
+          try { track.stop(); } catch (_) {}
+        });
+      }
+      if (typeof this.videoStream._cleanup === 'function') {
+        try { this.videoStream._cleanup(); } catch (_) {}
+      }
       this.videoStream = null;
-      this.useCamera = false;
     }
+    this.useCamera = false;
+    this.isSimulatedCamera = false;
+  }
 
-    // End existing session synchronously if active without delay
-    if (this.xrSession) {
-      try {
-        this.xrSession.end();
-      } catch (e) {}
-      this.xrSession = null;
-    }
+  async startXR(scenario = 'static') {
+    this.scenario = scenario;
+    this.resetScenarioState();
 
-    // Immediately invoke navigator.xr.requestSession within active transient user activation context
+    const hadActiveCamera = !!(
+      this.useCamera ||
+      (this.taserScene && this.taserScene.aiPose && this.taserScene.aiPose.isActive) ||
+      (typeof document !== 'undefined' && (
+        document.body.classList.contains('live-ai-active') ||
+        document.body.classList.contains('live-ar-active')
+      ))
+    );
+    this._hadCameraBeforeXR = hadActiveCamera;
+
     try {
-      const session = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test'],
-        optionalFeatures: ['dom-overlay', 'camera-access', 'local-floor', 'local'],
-        domOverlay: { root: document.body }
-      });
+      if (!this.isWebXRSupported()) {
+        console.info('[WEBXR INFO] WebXR AR saknas på denna enhet/webbläsare.');
+        return { success: false, fallback: true, scenario, reason: 'not-supported' };
+      }
+
+      if (this.xrSupported === false) {
+        console.info('[WEBXR INFO] WebXR Immersive-AR stöds inte på denna enhet.');
+        return { success: false, fallback: true, scenario, reason: 'not-supported' };
+      }
+
+      if (this.xrSupported === null && typeof navigator.xr.isSessionSupported === 'function') {
+        const supported = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+        this.xrSupported = !!supported;
+        if (!supported) {
+          return { success: false, fallback: true, scenario, reason: 'not-supported' };
+        }
+      }
+
+      // Stop active getUserMedia stream & MediaPipe/Pose loops synchronously before requestSession to free camera HAL
+      this.releaseCameraAndMediaPipe();
+
+      // End existing session safely if active
+      if (this.xrHitTestSource && typeof this.xrHitTestSource.cancel === 'function') {
+        try { this.xrHitTestSource.cancel(); } catch (_) {}
+      }
+      this.xrHitTestSource = null;
+      this.hitTestSourceRequested = false;
+
+      if (this.xrSession) {
+        try {
+          this.xrSession.end().catch(() => {});
+        } catch (_) {}
+        this.xrSession = null;
+      }
+
+      const buildSessionOptions = (withDomOverlay) => {
+        const optionalFeatures = ['hit-test', 'local-floor', 'local'];
+        const opts = { optionalFeatures };
+        if (withDomOverlay && typeof document !== 'undefined' && document.body) {
+          optionalFeatures.push('dom-overlay');
+          opts.domOverlay = { root: document.body };
+        }
+        return opts;
+      };
+
+      let session = null;
+      try {
+        session = await navigator.xr.requestSession('immersive-ar', buildSessionOptions(true));
+      } catch (errWithOverlay) {
+        // Fallback if browser rejects dom-overlay configuration
+        try {
+          session = await navigator.xr.requestSession('immersive-ar', buildSessionOptions(false));
+        } catch (errNoOverlay) {
+          throw errNoOverlay || errWithOverlay;
+        }
+      }
+
+      if (!session) {
+        return { success: false, fallback: true, scenario: this.scenario, reason: 'session-null' };
+      }
 
       this.xrSession = session;
+      this._endingSession = false;
       this.hitTestSourceRequested = false;
+      this.hasHitTestPose = false;
       this.latestEnvHit = null;
 
       // Ensure Three.js WebGL context is transparent and clearColor is 0x000000 with alpha 0
@@ -135,28 +233,57 @@ export class TaserXR {
         this.taserScene.enableARMode();
       }
 
-      const renderer = this.taserScene.renderer;
-      renderer.xr.enabled = true;
-      try {
-        renderer.xr.setReferenceSpaceType('local-floor');
-      } catch (e) {
-        try {
-          renderer.xr.setReferenceSpaceType('local');
-        } catch (e2) {}
+      const renderer = this.taserScene && this.taserScene.renderer;
+      if (!renderer || !renderer.xr) {
+        try { await session.end(); } catch (_) {}
+        this.xrSession = null;
+        return { success: false, fallback: true, scenario: this.scenario, reason: 'renderer-missing' };
       }
-      await renderer.xr.setSession(session);
 
-      session.addEventListener('end', this.onSessionEnded.bind(this));
+      renderer.xr.enabled = true;
+      let boundRefSpace = null;
+      let bindErr = null;
+      for (const refType of ['local-floor', 'local', 'viewer']) {
+        try {
+          renderer.xr.setReferenceSpaceType(refType);
+          await renderer.xr.setSession(session);
+          boundRefSpace = refType;
+          break;
+        } catch (e) {
+          bindErr = e;
+        }
+      }
+
+      if (!boundRefSpace) {
+        try { await session.end(); } catch (_) {}
+        this.xrSession = null;
+        renderer.xr.enabled = false;
+        throw bindErr || new Error('Kunde inte binda WebXR-referensrymd');
+      }
+
+      session.addEventListener('end', this._boundOnSessionEnded, { once: true });
 
       if (typeof this.callbacks.onSessionStart === 'function') {
         this.callbacks.onSessionStart(session, this.scenario);
       }
 
-      console.log('[WEBXR] Immersive-AR session startad framgångsrikt i scenario:', this.scenario);
-      return { success: true, session, scenario: this.scenario };
+      console.log(`[WEBXR] Immersive-AR session startad (${boundRefSpace}) i scenario:`, this.scenario);
+      return { success: true, session, scenario: this.scenario, refSpace: boundRefSpace };
     } catch (err) {
-      console.warn('[WEBXR NOTICE] Misslyckades att initiera WebXR-session, växlar till simulerat AR:', err.message);
-      return { success: false, fallback: true, scenario: this.scenario, error: err };
+      console.warn('[WEBXR NOTICE] Misslyckades att initiera WebXR-session, växlar till standardläge:', err?.message || err);
+      this.xrSession = null;
+      this.xrHitTestSource = null;
+      this.hitTestSourceRequested = false;
+      this.latestEnvHit = null;
+      const renderer = this.taserScene && this.taserScene.renderer;
+      if (renderer && renderer.xr) {
+        try { renderer.xr.setSession(null); } catch (_) {}
+        renderer.xr.enabled = false;
+      }
+      if (this.taserScene) {
+        this.taserScene.disableARMode();
+      }
+      return { success: false, fallback: true, scenario: this.scenario, reason: err?.message || err?.name || 'request-failed', error: err };
     }
   }
 
@@ -166,13 +293,24 @@ export class TaserXR {
         await this.xrSession.end();
       } catch (err) {
         console.warn('[WEBXR WARNING] Fel vid avslutande av XR-session:', err);
+        this.onSessionEnded();
       }
+    } else {
+      this.onSessionEnded();
     }
   }
 
   onSessionEnded() {
+    if (this._endingSession) return;
+    this._endingSession = true;
+
+    if (this.xrHitTestSource && typeof this.xrHitTestSource.cancel === 'function') {
+      try { this.xrHitTestSource.cancel(); } catch (_) {}
+    }
+
     this.xrSession = null;
     this.hitTestSourceRequested = false;
+    this.hasHitTestPose = false;
     this.xrHitTestSource = null;
     this.xrRefSpace = null;
     this.latestEnvHit = null;
@@ -189,43 +327,67 @@ export class TaserXR {
       this.taserScene.disableARMode();
     }
 
-    const renderer = this.taserScene.renderer;
-    if (renderer) {
-      renderer.xr.setSession(null);
+    const renderer = this.taserScene && this.taserScene.renderer;
+    if (renderer && renderer.xr) {
+      try { renderer.xr.setSession(null); } catch (_) {}
       renderer.xr.enabled = false;
     }
 
     if (typeof this.callbacks.onSessionEnd === 'function') {
-      this.callbacks.onSessionEnd();
+      try {
+        this.callbacks.onSessionEnd();
+      } catch (err) {
+        console.warn('[WEBXR WARNING] Fel i onSessionEnd callback:', err);
+      }
     }
+
+    this._endingSession = false;
   }
 
   handleXRFrame(timestamp, frame, activeCamera) {
     if (!this.xrSession || !frame) return;
 
-    const referenceSpace = this.taserScene.renderer.xr.getReferenceSpace();
+    let referenceSpace = null;
+    try {
+      referenceSpace = this.taserScene?.renderer?.xr?.getReferenceSpace() || null;
+    } catch (_) {
+      referenceSpace = null;
+    }
 
-    // Begär WebXR hit-test source en gång per session så att både placering och verkliga rumsytor (vägg/golv/möbler) kan träffas
+    // Begär WebXR hit-test source en gång per session (med aktiv sessionskontroll)
     if (!this.hitTestSourceRequested) {
       this.hitTestSourceRequested = true;
       this.hasHitTestPose = false;
-      this.xrSession.requestReferenceSpace('viewer').then((viewerSpace) => {
-        return this.xrSession.requestHitTestSource({ space: viewerSpace });
-      }).then((source) => {
-        this.xrHitTestSource = source;
-      }).catch((err) => {
-        console.warn('[WEBXR HIT-TEST] Kunde inte begära hit-test source:', err);
-        this.hitTestSourceRequested = false;
-      });
+      const activeSession = this.xrSession;
+      if (typeof activeSession.requestReferenceSpace === 'function' && typeof activeSession.requestHitTestSource === 'function') {
+        activeSession.requestReferenceSpace('viewer')
+          .then((viewerSpace) => {
+            if (this.xrSession !== activeSession) return null;
+            return activeSession.requestHitTestSource({ space: viewerSpace });
+          })
+          .then((source) => {
+            if (source && this.xrSession === activeSession) {
+              this.xrHitTestSource = source;
+            } else if (source && typeof source.cancel === 'function') {
+              try { source.cancel(); } catch (_) {}
+            }
+          })
+          .catch((err) => {
+            console.warn('[WEBXR HIT-TEST] Hit-test ej tillgänglig (använder manuell placering):', err?.message || err);
+            this.xrHitTestSource = null;
+            this.hasHitTestPose = false;
+          });
+      }
     }
 
     let hitPose = null;
     if (this.xrHitTestSource && referenceSpace) {
-      const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
-      if (hitTestResults.length > 0) {
-        hitPose = hitTestResults[0].getPose(referenceSpace);
-        if (hitPose) {
-          this.hasHitTestPose = true;
+      try {
+        const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+        if (hitTestResults && hitTestResults.length > 0) {
+          hitPose = hitTestResults[0].getPose(referenceSpace);
+          if (hitPose) {
+            this.hasHitTestPose = true;
           this._envHitPos.set(
             hitPose.transform.position.x,
             hitPose.transform.position.y,
@@ -245,12 +407,16 @@ export class TaserXR {
             distance: hitDist,
             timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now()
           };
+          }
+        } else if (this.latestEnvHit) {
+          const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          if (nowMs - this.latestEnvHit.timestamp > 350) {
+            this.latestEnvHit = null;
+          }
         }
-      } else if (this.latestEnvHit) {
-        const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        if (nowMs - this.latestEnvHit.timestamp > 350) {
-          this.latestEnvHit = null;
-        }
+      } catch (_) {
+        this.xrHitTestSource = null;
+        this.hasHitTestPose = false;
       }
     }
 

@@ -31,6 +31,14 @@ export class TaserApp {
     const viewportEl = document.getElementById('three-canvas');
     this.scene = new TaserScene(viewportEl);
 
+    this._webglContextLost = false;
+    this._webglHandlersBound = false;
+    this._resumeCameraAfterXR = false;
+    this._suppressNextXRCameraResume = false;
+    this._liveAISessionGen = 0;
+    this._renderTick = null;
+    this.setupWebGLContextHandlers();
+
     this.xr = new TaserXR(this.scene, {
       onSessionStart: this.onXRSessionStart.bind(this),
       onSessionEnd: this.onXRSessionEnd.bind(this)
@@ -111,6 +119,57 @@ export class TaserApp {
     entry.className = 'log-entry';
     entry.innerHTML = `> ${msg}`;
     logBox.prepend(entry);
+  }
+
+  isLiveAIRunning() {
+    return !!(
+      (this.aiPose && this.aiPose.isActive) ||
+      (typeof document !== 'undefined' && (
+        document.body.classList.contains('live-ai-active') ||
+        document.body.classList.contains('live-ar-active')
+      ))
+    );
+  }
+
+  setupWebGLContextHandlers() {
+    const canvas = this.scene && this.scene.renderer && this.scene.renderer.domElement;
+    if (!canvas || this._webglHandlersBound) return;
+    this._webglHandlersBound = true;
+
+    canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      this._webglContextLost = true;
+      if (this.xr && this.xr.xrSession) {
+        try {
+          this.xr.onSessionEnded();
+        } catch (_) {}
+      }
+      this.log("<span style='color:#e74c3c; font-weight:bold;'>⚠️ WebGL-kontext förlorad — försöker återställa 3D-vyn...</span>");
+      this.showHudToast('⚠️ Grafikvy pausad – återställer 3D...', '#f1c40f', 3500);
+    }, false);
+
+    canvas.addEventListener('webglcontextrestored', () => {
+      this._webglContextLost = false;
+      if (this.scene) {
+        const shouldBeTransparent = this.isLiveAIRunning() || !!(this.xr && (this.xr.xrSession || this.xr.useCamera));
+        if (shouldBeTransparent) {
+          this.scene.enableARMode();
+        } else {
+          this.scene.disableARMode();
+        }
+        if (typeof this.scene.onResize === 'function') {
+          this.scene.onResize();
+        }
+      }
+      if (typeof window !== 'undefined' && typeof window.syncWeaponOverlays === 'function') {
+        window.syncWeaponOverlays(this.fsm);
+      }
+      if (typeof this.bindRenderLoop === 'function') {
+        this.bindRenderLoop(true);
+      }
+      this.log("<span style='color:#2ecc71; font-weight:bold;'>✅ WebGL-kontext återställd!</span>");
+      this.showHudToast('✅ Grafikvy återställd', '#2ecc71', 2500);
+    }, false);
   }
 
   initDOM() {
@@ -861,7 +920,7 @@ export class TaserApp {
     return active;
   }
 
-  showHudToast(message, accentColor = '#f1c40f') {
+  showHudToast(message, accentColor = '#f1c40f', durationMs = 2200) {
     if (typeof document === 'undefined') return;
     const toast = document.getElementById('ar-hud-toast');
     if (!toast) return;
@@ -872,7 +931,7 @@ export class TaserApp {
     if (this._hudToastTimer) clearTimeout(this._hudToastTimer);
     this._hudToastTimer = setTimeout(() => {
       toast.style.display = 'none';
-    }, 2200);
+    }, durationMs);
   }
 
   toggleCartridge() {
@@ -2049,6 +2108,7 @@ export class TaserApp {
   }
 
   stopRealPersonAI(silent = false) {
+    this._liveAISessionGen++;
     const cameraFeed = document.getElementById('camera-feed-left') || document.getElementById('camera-feed');
     const cameraFeedRight = document.getElementById('camera-feed-right');
     const btnCamera = document.getElementById('btn-camera');
@@ -2129,7 +2189,20 @@ export class TaserApp {
   }
 
   async startRealPersonAI() {
+    const gen = ++this._liveAISessionGen;
     this.closeModal('scenario-modal');
+
+    // Avsluta eventuell pågående WebXR-session innan Live AI tar över klasser & kamera-HAL
+    if (this.xr && this.xr.xrSession) {
+      this._suppressNextXRCameraResume = true;
+      try {
+        await this.xr.endXRSession();
+      } catch (_) {}
+      await new Promise((r) => setTimeout(r, 260));
+      this._suppressNextXRCameraResume = false;
+      if (gen !== this._liveAISessionGen) return;
+    }
+
     const cameraFeed = document.getElementById('camera-feed-left') || document.getElementById('camera-feed');
     const cameraFeedRight = document.getElementById('camera-feed-right');
     const btnCamera = document.getElementById('btn-camera');
@@ -2166,7 +2239,7 @@ export class TaserApp {
     }
     if (typeof window !== 'undefined' && window.taserFirebase && typeof window.taserFirebase.createSession === 'function') {
       window.taserFirebase.createSession(roomCode).then((ok) => {
-        if (ok) {
+        if (ok && gen === this._liveAISessionGen) {
           this.log(`<span style='color:#2ecc71; font-weight:bold;'>🔗 Markör-rum skapat: ${roomCode}</span>`);
         }
       });
@@ -2180,6 +2253,11 @@ export class TaserApp {
     try {
       // STEG 1: Kamerabehörighet (MÅSTE anropas direkt vid användarklick för att behålla aktiv User Gesture)
       const isActive = await this.xr.toggleCameraAR(cameraFeed, viewport);
+      if (gen !== this._liveAISessionGen) {
+        this.xr.releaseCameraAndMediaPipe();
+        return;
+      }
+
       if (isActive && cameraFeedRight && cameraFeed && cameraFeed.srcObject) {
         cameraFeedRight.srcObject = cameraFeed.srcObject;
         cameraFeedRight.play().catch(() => {});
@@ -2205,6 +2283,7 @@ export class TaserApp {
           console.warn('[AI MODEL NOTICE] Förbereder fallback till simulerad person:', e.message);
           this.aiPose.isSimulated = true;
         });
+        if (gen !== this._liveAISessionGen) return;
       }
 
       // STEG 3: Koppla videoströmmen till AI-detektorn
@@ -2229,6 +2308,7 @@ export class TaserApp {
         this.log("<span style='color:#2ecc71; font-weight:bold;'>✅ LIVE AI AKTIV:</span> Riktar kameran mot en levande människa för dynamiska träffzoner.");
       }
     } catch (err) {
+      if (gen !== this._liveAISessionGen) return;
       console.warn('[STARTUP SEQUENCE NOTICE] Faller tillbaka till simulerad AI-person:', err);
       activateLiveARClasses();
       this.scene.enableARMode();
@@ -2258,18 +2338,55 @@ export class TaserApp {
     if (btnWebXR) {
       btnWebXR.textContent = '⏳ Startar AR...';
     }
+
+    const hadLiveCamera = this.isLiveAIRunning() || !!(this.xr && this.xr.useCamera);
+    this._resumeCameraAfterXR = hadLiveCamera;
+    this._suppressNextXRCameraResume = false;
+
+    if (hadLiveCamera) {
+      // Stoppa getUserMedia och MediaPipe synkront innan navigator.xr.requestSession för att frigöra kamerahårdvaran
+      this.stopRealPersonAI(true);
+      if (this.xr && typeof this.xr.releaseCameraAndMediaPipe === 'function') {
+        this.xr.releaseCameraAndMediaPipe();
+      }
+    }
+
+    const handleWebXRFallback = async (reasonText) => {
+      document.body.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
+      document.documentElement.classList.remove('ar-active', 'webxr-mode', 'ar-combat-mode', 'xr-placing');
+      const mainContainer = document.getElementById('main-container');
+      if (mainContainer) mainContainer.classList.remove('ar-combat-mode');
+      const simControls = document.querySelector('.sim-controls');
+      if (simControls) simControls.classList.remove('ar-combat-mode');
+      if (btnWebXR) {
+        btnWebXR.textContent = '🌐 WebXR';
+        btnWebXR.style.backgroundColor = '';
+      }
+      if (this.scene) this.scene.disableARMode();
+      if (typeof this.bindRenderLoop === 'function') this.bindRenderLoop(true);
+
+      if (hadLiveCamera) {
+        this._resumeCameraAfterXR = false;
+        this.showHudToast('WebXR AR stöds ej på denna enhet – kör i standard Live AI-läge', '#f1c40f', 4000);
+        this.log(`<span style='color:#f1c40f; font-weight:bold;'>ℹ️ WebXR AR stöds ej (${reasonText || 'ej tillgänglig'}) – återgår till Live AI-läge.</span>`);
+        await this.startRealPersonAI();
+      } else {
+        this.showHudToast('WebXR AR stöds ej på denna enhet – kör i standardläge', '#f1c40f', 4000);
+        this.log(`<span style='color:#f1c40f; font-weight:bold;'>ℹ️ WebXR AR stöds ej (${reasonText || 'ej tillgänglig'}) – kör i standard 3D-läge.</span>`);
+        this.startVirtualScenario(type);
+      }
+    };
+
     try {
       const res = await this.xr.startXR(type);
       this.closeModal('scenario-modal');
-      if (res && res.success === false) {
-        if (btnWebXR) btnWebXR.textContent = '🌐 WebXR';
-        this.startVirtualScenario(type);
+      if (!res || res.success === false) {
+        await handleWebXRFallback(res?.reason || 'not-supported');
       }
     } catch (err) {
-      console.warn('[WEBXR NOTICE] Växlar automatiskt till simulerat AR-scenario:', err.message);
+      console.warn('[WEBXR NOTICE] Växlar automatiskt till standardläge:', err?.message || err);
       this.closeModal('scenario-modal');
-      if (btnWebXR) btnWebXR.textContent = '🌐 WebXR';
-      this.startVirtualScenario(type);
+      await handleWebXRFallback(err?.message || err?.name || 'error');
     }
   }
 
@@ -2343,6 +2460,9 @@ export class TaserApp {
     this.liveWires = [];
     this.scene.clearWiresAndDarts();
     this.scene.enableARMode();
+    if (typeof this.bindRenderLoop === 'function') {
+      this.bindRenderLoop(true);
+    }
 
     const btnWebXR = document.getElementById('btn-webxr') || document.getElementById('webxr-btn');
     if (btnWebXR) {
@@ -2397,10 +2517,29 @@ export class TaserApp {
     this.scene.resetTarget();
     this.stopScenario();
     this.updateDisplay();
+
+    // Återbind standard-renderloopen uttryckligen efter avslutad XR-session
+    if (typeof this.bindRenderLoop === 'function') {
+      this.bindRenderLoop(true);
+    }
+
+    const shouldResumeCamera = this._resumeCameraAfterXR && !this._suppressNextXRCameraResume && !this._webglContextLost;
+    this._resumeCameraAfterXR = false;
+    this._suppressNextXRCameraResume = false;
+
     this.log('WebXR-session avslutad.');
+
+    if (shouldResumeCamera) {
+      setTimeout(() => {
+        if ((!this.xr || !this.xr.xrSession) && !this._webglContextLost && !this.isLiveAIRunning()) {
+          this.startRealPersonAI();
+        }
+      }, 280);
+    }
   }
 
   togglePlaceMode() {
+    if (this.isLiveAIRunning()) return;
     this.xr.isPlacing = true;
     this.xr.placeMode = true;
     this.xr.figureLocked = false;
@@ -2710,15 +2849,34 @@ export class TaserApp {
     });
   }
 
+  bindRenderLoop(reset = false) {
+    const renderer = this.scene && this.scene.renderer;
+    if (!renderer || !this._renderTick) return;
+    if (reset) {
+      renderer.setAnimationLoop(null);
+    }
+    renderer.setAnimationLoop(this._renderTick);
+  }
+
   startRenderLoop() {
     const renderer = this.scene.renderer;
     const camera = this.scene.camera;
 
-    renderer.setAnimationLoop((timestamp, frame) => {
+    this._renderTick = (timestamp, frame) => {
+      if (this._webglContextLost) return;
+
       if (typeof window !== 'undefined' && typeof window.pollGamepad === 'function') {
         window.pollGamepad();
       }
-      const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
+
+      let activeCamera = camera;
+      if (renderer.xr && renderer.xr.isPresenting) {
+        try {
+          activeCamera = renderer.xr.getCamera(camera) || camera;
+        } catch (_) {
+          activeCamera = camera;
+        }
+      }
 
       // Skeletal Animation update & Threat Escalation movement
       const delta = Math.min(this.scene.clock.getDelta(), 0.1);
@@ -2781,8 +2939,12 @@ export class TaserApp {
       }
 
       // WebXR Frame logic & dynamic scenario updates
-      if (renderer.xr.isPresenting) {
-        this.xr.handleXRFrame(timestamp, frame, activeCamera);
+      if (renderer.xr && renderer.xr.isPresenting) {
+        try {
+          this.xr.handleXRFrame(timestamp, frame, activeCamera);
+        } catch (xrFrameErr) {
+          console.warn('[WEBXR FRAME NOTICE]', xrFrameErr?.message || xrFrameErr);
+        }
 
         if (this.xr.figureLocked && this.scene.taserGroup && this.scene.taserGroup.visible) {
           const chestPos = this.scene._v1.set(
@@ -2931,12 +3093,18 @@ export class TaserApp {
       }
 
       // Render the scene (Stereoscopic Side-by-Side 3D or Standard / WebXR)
-      if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
-        this.renderStereo(this.scene.scene, activeCamera);
-      } else {
-        renderer.render(this.scene.scene, activeCamera);
+      try {
+        if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
+          this.renderStereo(this.scene.scene, activeCamera);
+        } else {
+          renderer.render(this.scene.scene, activeCamera);
+        }
+      } catch (renderErr) {
+        console.warn('[RENDER NOTICE]', renderErr?.message || renderErr);
       }
-    });
+    };
+
+    this.bindRenderLoop(false);
   }
 
   renderStereo(scene, camera) {

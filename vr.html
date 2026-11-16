@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Taser 7 Elite — VR / AR Headset</title>
-    <meta name="description" content="Fristående VR/AR-headsetläge för Taser 7 Elite med kamera pass-through, stereoskopisk 3D, WebXR, Live AI, röststyrning och Firebase Markör-synk.">
-    <meta property="og:title" content="Taser 7 Elite — VR / AR Headset">
-    <meta property="og:description" content="Fristående VR/AR-headsetläge för Taser 7 Elite med kamera pass-through, stereoskopisk 3D, WebXR och Live AI.">
+    <title>Taser 7 Elite — VR Headset</title>
+    <meta name="description" content="Fristående VR-headsetläge för Taser 7 Elite med kamera pass-through, stereoskopisk 3D, handspårning och Firebase Markör-synk.">
+    <meta property="og:title" content="Taser 7 Elite — VR Headset">
+    <meta property="og:description" content="Fristående VR-headsetläge för Taser 7 Elite med kamera pass-through och stereoskopisk 3D.">
+    <meta name="screen-orientation" content="landscape">
+    <meta name="x5-orientation" content="landscape">
 
     <!-- PWA & Mobile Meta -->
     <meta name="theme-color" content="#050505">
@@ -41,14 +43,14 @@
             overscroll-behavior: none;
             background: transparent !important;
             background-color: transparent !important;
-            color: #ecf0f1;
+            color: #f8fafc;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             user-select: none;
             -webkit-user-select: none;
         }
 
         /* =========================================================
-           1. KAMERA PASS-THROUGH (BOTTENLAGER z-index: 1)
+           LAGER 1: KAMERA PASS-THROUGH (<video> z-index: 1)
            ========================================================= */
         #camera-container {
             position: fixed;
@@ -66,46 +68,27 @@
             overflow: hidden;
         }
 
-        /* När aktiv WebXR-session äger kamerahårdvaran döljs HTML-videon */
-        body.webxr-mode #camera-container {
-            display: none !important;
-        }
-
         .camera-feed {
+            width: 50vw;
             height: 100%;
+            flex: 0 0 50vw;
             margin: 0;
             padding: 0;
             border: none;
             background: transparent;
             pointer-events: none;
-            flex-shrink: 0;
+            display: block;
             object-fit: cover;
             object-position: center center;
-        }
-
-        /* Stereoskopisk split-screen: behåll hela sidobredden från 16:9-vidvinkelkameran */
-        body.vr-headset-session:not(.vr-mono-mode) .camera-feed {
-            object-fit: contain;
-            object-position: center center;
-        }
-
-        #camera-feed-left {
-            width: 50vw;
-            height: 100%;
-            display: block;
         }
 
         #camera-feed-right {
-            width: 50vw;
-            height: 100%;
-            display: block;
             border-left: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        /* Mono-läge: helskärm på vänster videoelement med cover */
         body.vr-mono-mode #camera-feed-left {
             width: 100vw;
-            object-fit: cover;
+            flex: 0 0 100vw;
         }
         body.vr-mono-mode #camera-feed-right {
             display: none !important;
@@ -116,8 +99,8 @@
             animation: strobe 0.1s infinite alternate;
         }
         @keyframes strobe {
-            0% { filter: brightness(2.2); }
-            100% { filter: brightness(0.6); }
+            0% { filter: brightness(2.0); }
+            100% { filter: brightness(0.65); }
         }
 
         .camera-feed.fail-flash,
@@ -130,7 +113,7 @@
         }
 
         /* =========================================================
-           2. HELSKÄRMS VIEWPORT + TRANSPARENT THREE.JS (z-index: 2)
+           LAGER 2: TRANSPARENT THREE.JS 3D-CANVAS & 2D HUD (z-index: 2)
            ========================================================= */
         #viewport {
             position: fixed;
@@ -141,6 +124,7 @@
             z-index: 2;
             overflow: hidden;
             background: transparent !important;
+            background-color: transparent !important;
             touch-action: none;
             pointer-events: auto;
         }
@@ -153,6 +137,7 @@
             height: 100dvh;
             z-index: 2;
             background: transparent !important;
+            background-color: transparent !important;
             pointer-events: none !important;
         }
         #three-canvas canvas {
@@ -161,10 +146,10 @@
             height: 100dvh !important;
             display: block;
             background: transparent !important;
+            background-color: transparent !important;
             pointer-events: none !important;
         }
 
-        /* Stereo center divider line */
         #vr-eye-divider {
             position: fixed;
             top: 0;
@@ -172,25 +157,21 @@
             left: 50%;
             width: 2px;
             transform: translateX(-50%);
-            background: linear-gradient(180deg, rgba(252,190,0,0.08) 0%, rgba(252,190,0,0.28) 50%, rgba(252,190,0,0.08) 100%);
-            z-index: 15;
+            background: linear-gradient(180deg, rgba(252, 190, 0, 0.08) 0%, rgba(252, 190, 0, 0.25) 50%, rgba(252, 190, 0, 0.08) 100%);
+            z-index: 2;
             pointer-events: none;
         }
-        body.vr-mono-mode #vr-eye-divider,
-        body.webxr-mode #vr-eye-divider {
+        body.vr-mono-mode #vr-eye-divider {
             display: none !important;
         }
 
-        /* =========================================================
-           3. 2D HUD CANVAS (LASRAR, TRÅDAR, AI-RUTOR) & FICKLAMPA
-           ========================================================= */
         #hud-canvas {
             position: fixed;
             inset: 0;
             width: 100vw;
             height: 100vh;
             height: 100dvh;
-            z-index: 50;
+            z-index: 2;
             pointer-events: none !important;
             background: transparent !important;
             display: block;
@@ -201,10 +182,9 @@
             inset: 0;
             width: 100vw;
             height: 100dvh;
-            z-index: 55;
+            z-index: 2;
             pointer-events: none !important;
         }
-
         .flashlight-beam {
             position: absolute;
             top: 50%;
@@ -212,1079 +192,369 @@
             transform: translate(-50%, -50%);
             width: 420px;
             height: 420px;
-            background: radial-gradient(circle, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.05) 42%, transparent 70%);
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.04) 42%, transparent 70%);
             display: none;
         }
-
-        .laser-green {
-            position: absolute;
-            width: 9px;
-            height: 9px;
-            background-color: #00ff00;
-            border-radius: 50%;
-            box-shadow: 0 0 12px #00ff00, 0 0 24px #00ff00;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: none;
-        }
-
+        .laser-green,
         .laser-red {
             position: absolute;
             width: 9px;
             height: 9px;
-            background-color: #ff0000;
             border-radius: 50%;
-            box-shadow: 0 0 12px #ff0000, 0 0 24px #ff0000;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             display: none;
-            animation: blinkLaser 0.15s infinite alternate;
-            transition: top 0.08s ease-out, left 0.08s ease-out;
         }
-        @keyframes blinkLaser {
-            0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.85); }
-            100% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+        .laser-green {
+            background-color: #00ff00;
+            box-shadow: 0 0 12px #00ff00;
         }
-
-        .lightning {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(circle, rgba(168, 235, 18, 0.22) 0%, transparent 60%);
-            display: none;
-            z-index: 5;
-        }
-        .lightning::before,
-        .lightning::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: #fff;
-            box-shadow: 0 0 15px #a8eb12, 0 0 30px #a8eb12;
-            animation: electricity 0.05s infinite alternate;
-        }
-        .lightning::after { transform: rotate(15deg); }
-        @keyframes electricity {
-            0% { opacity: 0.3; transform: scaleY(0.8); }
-            100% { opacity: 1; transform: scaleY(1.3); }
-        }
-
-        /* ----- LIVE AI PERSON OVERLAY (MONO FALLBACK, DÖLJS I STEREO VR) ----- */
-        .live-target-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            pointer-events: none;
-            z-index: 40;
-            box-sizing: border-box;
-            will-change: transform, width, height;
-        }
-        body:not(.live-ar-active):not(.live-ai-active) #live-target-overlay,
-        body.vr-headset-session:not(.vr-mono-mode) #live-target-overlay,
-        body.webxr-mode #live-target-overlay,
-        body.xr-placing #live-target-overlay {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-        }
-
-        .hud-zone-head {
-            position: absolute;
-            top: 2%;
-            left: 37%;
-            width: 26%;
-            height: 11.5%;
-            background: rgba(231, 76, 60, 0.08);
-            border-radius: 3px;
-            pointer-events: none;
-        }
-        .hud-zone-head .hud-brk {
-            position: absolute;
-            width: 8px;
-            height: 8px;
-            border-color: rgba(231, 76, 60, 0.88);
-            border-style: solid;
-        }
-        .hud-zone-head .hud-brk.tl { top: 0; left: 0; border-width: 1.5px 0 0 1.5px; }
-        .hud-zone-head .hud-brk.tr { top: 0; right: 0; border-width: 1.5px 1.5px 0 0; }
-        .hud-zone-head .hud-brk.bl { bottom: 0; left: 0; border-width: 0 0 1.5px 1.5px; }
-        .hud-zone-head .hud-brk.br { bottom: 0; right: 0; border-width: 0 1.5px 1.5px 0; }
-
-        .hud-head-cross {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 10px;
-            height: 10px;
-            transform: translate(-50%, -50%);
-            opacity: 0.6;
-        }
-        .hud-head-cross::before,
-        .hud-head-cross::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 1.5px;
-            background: #e74c3c;
-            border-radius: 1px;
-        }
-        .hud-head-cross::before { transform: translateY(-50%) rotate(45deg); }
-        .hud-head-cross::after { transform: translateY(-50%) rotate(-45deg); }
-
-        .hud-zone-torso {
-            position: absolute;
-            top: 14.5%;
-            left: 6%;
-            width: 88%;
-            height: 47%;
-            background: rgba(46, 204, 113, 0.065);
-            box-shadow: inset 0 0 18px rgba(46, 204, 113, 0.08);
-            border-radius: 3px;
-            pointer-events: none;
-        }
-        .hud-zone-torso .hud-brk {
-            position: absolute;
-            width: 13px;
-            height: 13px;
-            border-color: rgba(46, 204, 113, 0.9);
-            border-style: solid;
-        }
-        .hud-zone-torso .hud-brk.tl { top: 0; left: 0; border-width: 1.8px 0 0 1.8px; }
-        .hud-zone-torso .hud-brk.tr { top: 0; right: 0; border-width: 1.8px 1.8px 0 0; }
-        .hud-zone-torso .hud-brk.bl { bottom: 0; left: 0; border-width: 0 0 1.8px 1.8px; }
-        .hud-zone-torso .hud-brk.br { bottom: 0; right: 0; border-width: 0 1.8px 1.8px 0; }
-
-        .target-badge {
-            position: absolute;
-            top: -22px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(8, 14, 12, 0.85);
-            border: 1px solid rgba(46, 204, 113, 0.65);
-            color: #7ee8a6;
-            font-size: 9px;
-            font-weight: 700;
-            font-family: monospace;
-            letter-spacing: 0.8px;
-            padding: 2px 7px;
-            border-radius: 3px;
-            white-space: nowrap;
+        .laser-red {
+            background-color: #ff0000;
+            box-shadow: 0 0 12px #ff0000;
         }
 
         /* =========================================================
-           4. TOP VR QUICK BAR + TELEMETRI HUD
+           LAGER 3: MINIMAL SPEGLAD HUD & 4-VALSMENY (z-index: 3)
            ========================================================= */
-        #vr-top-bar {
+        #vr-minimal-hud {
             position: fixed;
-            top: max(6px, env(safe-area-inset-top, 6px));
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10006;
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            max-width: calc(100vw - 16px);
-            padding: 4px 6px;
-            background: rgba(10, 12, 16, 0.84);
-            border: 1px solid rgba(252, 190, 0, 0.45);
-            border-radius: 8px;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.75);
-            pointer-events: auto;
-        }
-
-        .vr-top-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            padding: 5px 9px;
-            border-radius: 6px;
-            border: 1px solid #2c313a;
-            background: linear-gradient(180deg, #272c36 0%, #16191f 100%);
-            color: #f4f6f8;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.4px;
-            text-transform: uppercase;
-            text-decoration: none;
-            cursor: pointer;
-            touch-action: manipulation;
-            white-space: nowrap;
-        }
-        .vr-top-btn:active,
-        .vr-top-btn.active-press {
-            transform: translateY(1px);
-            background: #101216;
-        }
-        .vr-top-btn.active-pill {
-            background: linear-gradient(180deg, #2ecc71 0%, #219653 100%);
-            border-color: #82e0aa;
-            color: #050505;
-        }
-        .vr-top-btn.vr-back-link {
-            border-color: rgba(241, 196, 15, 0.65);
-            color: #f1c40f;
-        }
-
-        #vr-cam-status {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            background: rgba(18, 22, 28, 0.9);
-            color: #bdc3c7;
-            font-size: 9.5px;
-            font-weight: 800;
-            letter-spacing: 0.4px;
-            white-space: nowrap;
-        }
-
-        /* Dölj-HUD-läge behåller endast visa-knappen längst upp till höger */
-        body.vr-hud-hidden #vr-top-bar {
-            background: transparent;
-            border-color: transparent;
-            box-shadow: none;
-            left: auto;
-            right: 8px;
-            transform: none;
-        }
-        body.vr-hud-hidden #vr-top-bar > *:not(#vr-btn-hide-hud) {
-            display: none !important;
-        }
-        body.vr-hud-hidden #main-container,
-        body.vr-hud-hidden .hud-overlay {
-            display: none !important;
-            pointer-events: none !important;
-        }
-
-        .hud-overlay {
-            position: fixed;
-            top: 48px;
+            top: max(10px, env(safe-area-inset-top, 10px));
             left: 0;
             right: 0;
-            padding: 4px 10px;
+            z-index: 3;
+            display: flex;
+            flex-direction: row;
             pointer-events: none;
-            z-index: 60;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
         }
-        .hud-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-        }
-        .target-label,
-        .dist-label,
-        .spread-label {
-            font-size: 9.5px;
-            font-weight: 800;
-            padding: 3px 7px;
-            border-radius: 4px;
-            border: 1px solid #222;
-            background-color: rgba(8, 10, 14, 0.84);
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-        }
-        .target-label { color: #f1c40f; border-color: rgba(241, 196, 15, 0.75); }
-        .target-label.armed {
-            color: #ff6b6b;
-            border-color: #e74c3c;
-            background-color: rgba(192, 57, 43, 0.35);
-            animation: strobe 0.5s infinite alternate;
-        }
-        .dist-label { color: #5dade2; border-color: rgba(52, 152, 219, 0.75); }
-        .spread-label { color: #f39c12; border-color: rgba(211, 84, 0, 0.75); }
 
-        .warning-badge {
-            font-size: 9.5px;
-            font-weight: 800;
-            padding: 3px 7px;
-            border-radius: 4px;
-            border: 1px solid #f1c40f;
-            background-color: rgba(241, 196, 15, 0.25);
-            color: #f1c40f;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-        }
-        .hud-row-right {
+        .vr-hud-eye {
+            width: 50vw;
             display: flex;
+            justify-content: center;
             align-items: center;
-            gap: 5px;
+            padding: 0 8px;
         }
-        .weapon-mode-badge {
-            font-size: 9px;
+        body.vr-mono-mode #vr-minimal-hud .vr-hud-eye--right {
+            display: none;
+        }
+        body.vr-mono-mode #vr-minimal-hud .vr-hud-eye--left {
+            width: 100vw;
+        }
+
+        .vr-hud-strip {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 5px 12px;
+            border-radius: 6px;
+            background: rgba(8, 11, 16, 0.72);
+            border: 1px solid rgba(252, 190, 0, 0.42);
+            backdrop-filter: blur(4px);
+            font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+            font-size: 11px;
             font-weight: 800;
-            padding: 3px 7px;
-            border-radius: 4px;
-            border: 1px solid rgba(56, 189, 248, 0.7);
-            background-color: rgba(8, 12, 18, 0.84);
-            color: #7dd3fc;
-            letter-spacing: 0.7px;
+            letter-spacing: 0.6px;
             text-transform: uppercase;
             white-space: nowrap;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.55);
         }
-        .weapon-mode-badge.tracked {
-            border-color: rgba(46, 204, 113, 0.85);
-            background-color: rgba(15, 34, 22, 0.88);
+        .vr-hud-sep {
+            color: rgba(148, 163, 184, 0.45);
+        }
+        .vr-hud-safety.safe {
             color: #4ade80;
         }
-        .weapon-mode-badge.grace {
-            border-color: rgba(241, 196, 15, 0.85);
-            background-color: rgba(34, 28, 12, 0.88);
-            color: #facc15;
+        .vr-hud-safety.unsafe {
+            color: #FCBE00;
         }
-        .weapon-mode-badge.fallback {
-            border-color: rgba(56, 189, 248, 0.75);
-            background-color: rgba(12, 22, 34, 0.88);
+        .vr-hud-dist {
             color: #7dd3fc;
         }
-
-        .place-hint {
-            align-self: center;
-            background: rgba(46, 204, 113, 0.2);
-            color: #2ecc71;
-            border: 1px solid #2ecc71;
-            padding: 4px 10px;
-            border-radius: 10px;
-            font-size: 10px;
-            font-weight: bold;
-            opacity: 0;
-            transition: opacity 0.15s ease;
+        .vr-hud-code {
+            color: #fde047;
         }
-        .place-hint.visible { opacity: 1; }
 
-        #nmi-overlay {
-            display: none;
+        /* Diskret menyknapp i hörnet under pågående övning */
+        #vr-btn-menu {
             position: fixed;
-            top: 96px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(5, 7, 10, 0.92);
-            border: 2px solid rgba(46, 204, 113, 0.95);
-            border-radius: 8px;
-            padding: 6px 14px;
-            text-align: center;
-            z-index: 70;
-            width: max-content;
-            min-width: 190px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.9);
-            pointer-events: none !important;
-        }
-        #nmi-overlay.fail { border-color: rgba(231, 76, 60, 0.95); }
-        #nmi-title {
-            font-size: 12px;
-            font-weight: 900;
-            color: #2ecc71;
-            margin: 0 0 2px 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        #nmi-overlay.fail #nmi-title { color: #e74c3c; }
-        #nmi-details {
-            font-size: 10px;
-            color: #ecf0f1;
-            margin: 0;
-            line-height: 1.3;
-            font-family: 'Courier New', monospace;
-        }
-        .nmi-highlight { font-weight: bold; color: #f1c40f; }
-
-        #subtitle-overlay {
-            display: none;
-            position: fixed;
-            top: 152px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(192, 57, 43, 0.94);
-            border: 1px solid #e74c3c;
-            border-radius: 5px;
-            padding: 4px 10px;
-            text-align: center;
-            z-index: 70;
-            color: #ffffff;
-            font-weight: 800;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
-            pointer-events: none !important;
-        }
-
-        #ar-hud-toast {
-            display: none;
-            position: fixed;
-            top: 52px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10010;
-            pointer-events: none;
-            background: rgba(10, 12, 16, 0.94);
-            color: #f1c40f;
-            border: 1.5px solid #f1c40f;
-            border-radius: 8px;
-            padding: 6px 12px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            text-align: center;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.85);
-            max-width: 88vw;
-            white-space: nowrap;
-        }
-
-        #live-ar-room-badge {
-            display: none;
-            position: fixed;
-            top: 56px;
-            right: 12px;
-            z-index: 10010;
-            align-items: center;
-            gap: 5px;
-            background: #000000;
-            color: #00ff00;
-            border: 2px solid #00ff00;
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            font-weight: bold;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
-            pointer-events: none;
-            white-space: nowrap;
-        }
-        #live-ar-room-badge.hit-sent {
-            background: #7f1d1d;
-            color: #ffffff;
-            border-color: #ff4444;
-        }
-
-        #funk-status-pill {
-            display: none;
-            position: fixed;
-            top: 52px;
-            left: 12px;
-            z-index: 10010;
-            pointer-events: none;
-            background: #FCBE00;
-            color: #050505;
-            border: 2px solid #050505;
+            bottom: max(12px, env(safe-area-inset-bottom, 12px));
+            right: max(12px, env(safe-area-inset-right, 12px));
+            z-index: 3;
+            padding: 7px 12px;
             border-radius: 7px;
-            padding: 5px 10px;
-            font-size: 10px;
-            font-weight: 900;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            box-shadow: 0 4px 16px rgba(252, 190, 0, 0.55);
-            white-space: nowrap;
-        }
-        body.function-check-active #funk-status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        #vr-bt-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            background: rgba(24, 28, 34, 0.9);
-            color: #95a5a6;
-            font-size: 9.5px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        #vr-bt-status.bt-connected {
-            background: rgba(20, 62, 38, 0.95);
-            border-color: #2ecc71;
-            color: #2ecc71;
-            box-shadow: 0 0 10px rgba(46, 204, 113, 0.35);
-        }
-
-        #vr-joystick-status {
-            display: none;
-            position: fixed;
-            top: 94px;
-            right: 12px;
-            z-index: 10010;
-            align-items: center;
-            gap: 5px;
-            background: rgba(15, 28, 20, 0.94);
-            color: #2ecc71;
-            border: 1.5px solid rgba(46, 204, 113, 0.9);
-            border-radius: 6px;
-            padding: 5px 9px;
-            font-size: 10px;
-            font-weight: 900;
-            letter-spacing: 0.6px;
-            text-transform: uppercase;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75);
-            pointer-events: none;
-        }
-
-        #vr-bt-debug-hud {
-            display: none;
-            position: fixed;
-            top: 94px;
-            left: 12px;
-            z-index: 10010;
-            align-items: center;
-            gap: 6px;
-            background: rgba(8, 12, 16, 0.88);
-            color: #a8eb12;
-            border: 1px solid rgba(168, 235, 18, 0.65);
-            border-radius: 6px;
-            padding: 5px 9px;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75);
-            pointer-events: none;
-            white-space: nowrap;
-        }
-        #vr-bt-debug-hud.active-input {
-            background: rgba(20, 48, 22, 0.96);
-            border-color: #2ecc71;
-            color: #ffffff;
-        }
-
-        .gp-debug-box {
-            background: #0a0d12;
-            border: 1.5px solid #2ecc71;
-            border-radius: 8px;
-            padding: 10px 12px;
-            margin-bottom: 10px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            font-weight: 800;
-            color: #a8eb12;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .gp-debug-sub {
-            font-size: 10px;
-            color: #94a3b8;
-            font-weight: 600;
-        }
-        .gp-debug-toggle {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            color: #cbd5e1;
-            margin-bottom: 10px;
-            cursor: pointer;
-        }
-        .gp-map-list {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 10px;
-        }
-        .gp-map-row {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 10px 12px;
-            border-radius: 7px;
-            border: 1px solid #334155;
-            background: linear-gradient(180deg, #27303f 0%, #181e28 100%);
-            color: #f8fafc;
+            border: 1px solid rgba(252, 190, 0, 0.55);
+            background: rgba(8, 12, 18, 0.78);
+            color: #FCBE00;
             font-size: 11px;
             font-weight: 800;
-            cursor: pointer;
-            text-align: left;
-            touch-action: manipulation;
-        }
-        .gp-map-row.listening {
-            border: 2px solid #f1c40f;
-            background: rgba(241, 196, 15, 0.18);
-            color: #f1c40f;
-        }
-        .gp-map-badge {
-            font-family: 'Courier New', monospace;
-            font-size: 10.5px;
-            font-weight: 900;
-            padding: 3px 8px;
-            border-radius: 4px;
-            background: #0f172a;
-            border: 1px solid #475569;
-            color: #2ecc71;
-            white-space: nowrap;
-        }
-        .gp-map-row.listening .gp-map-badge {
-            background: #f1c40f;
-            border-color: #f1c40f;
-            color: #050505;
-        }
-
-        /* =========================================================
-           5. KOMPAKT PISTOL-HUD LÄNGST NER (#main-container)
-           ========================================================= */
-        .main-container {
-            position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%) scale(0.66);
-            transform-origin: bottom center;
-            width: 100%;
-            max-width: 330px;
-            padding: 0 0 env(safe-area-inset-bottom, 2px) 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            z-index: 10005 !important;
-            pointer-events: auto !important;
-            overflow: visible;
-        }
-
-        @media (max-height: 640px) {
-            .main-container {
-                transform: translateX(-50%) scale(0.50);
-            }
-        }
-
-        @media (max-height: 450px) {
-            .main-container {
-                transform: translateX(-50%) scale(0.41);
-            }
-        }
-
-        .taser-device {
-            width: min(276px, 86vw);
-            background-color: rgba(252, 190, 0, 0.82);
-            background-image:
-                linear-gradient(to bottom, rgba(28, 30, 36, 0.9) 0%, rgba(18, 20, 24, 0.9) 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
-                radial-gradient(rgba(17, 17, 17, 0.28) 1.3px, transparent 1.3px),
-                radial-gradient(rgba(17, 17, 17, 0.28) 1.3px, transparent 1.3px);
-            background-position: 0 0, 0 0, 6px 6px;
-            background-size: 100% 100%, 12px 12px, 12px 12px;
-            background-repeat: no-repeat, repeat, repeat;
-            border: 2px solid rgba(252, 190, 0, 0.85);
-            border-radius: 30px 30px 8px 8px;
-            padding-bottom: 6px;
-            position: relative;
-            z-index: 1020;
-            pointer-events: auto !important;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), inset 0 2px 8px rgba(255, 255, 255, 0.16);
-        }
-
-        .sights {
-            display: flex;
-            justify-content: center;
-            gap: 32px;
-            padding-top: 5px;
-        }
-        .sight-dot {
-            width: 7px;
-            height: 7px;
-            background-color: #ffffff;
-            border-radius: 50%;
-            box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.5);
-        }
-
-        .display-bezel {
-            background-color: rgba(16, 18, 22, 0.88);
-            margin: 4px auto 5px auto;
-            width: 152px;
-            height: 48px;
-            border-radius: 6px;
-            border: 3px solid rgba(0, 0, 0, 0.9);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .display-screen {
-            width: 138px;
-            height: 36px;
-            background-color: rgba(12, 14, 18, 0.92);
-            color: #ffff00;
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            font-weight: bold;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-radius: 4px;
-            text-align: center;
-            letter-spacing: 1px;
-            transition: all 0.2s;
-        }
-        .display-screen.dimmed { opacity: 0.25; }
-        .display-screen.oled-inverted,
-        .display-screen.funk-mode,
-        .display-screen.inverted {
-            background-color: #FCBE00 !important;
-            background: #FCBE00 !important;
-            color: #050505 !important;
-            text-shadow: none !important;
-            border: 1px solid rgba(0, 0, 0, 0.45);
-        }
-        .display-screen.oled-inverted *,
-        .display-screen.funk-mode *,
-        .display-screen.inverted * {
-            color: #050505 !important;
-            text-shadow: none !important;
-        }
-
-        .display-icons { display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px; }
-        .chamber-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-        .cassette-svg { width: 20px; height: 20px; display: block; }
-        .cassette-svg .box { fill: none; stroke: #ffff00; stroke-width: 2; }
-        .cassette-svg.active-bay .box { stroke-width: 2.8; }
-        .cassette-svg.fired .cross { stroke: #ffff00; stroke-width: 2.2; stroke-linecap: round; }
-        .cassette-svg.empty .box.dashed { stroke: #ffff00; stroke-dasharray: 4 2; opacity: 0.85; }
-        .cassette-svg.empty .slash { stroke: #ffff00; stroke-width: 2.2; stroke-linecap: round; }
-        .oled-inverted .cassette-svg .box,
-        .funk-mode .cassette-svg .box,
-        .oled-inverted .cassette-svg.fired .cross,
-        .funk-mode .cassette-svg.fired .cross,
-        .oled-inverted .cassette-svg.empty .slash,
-        .funk-mode .cassette-svg.empty .slash {
-            stroke: #050505 !important;
-        }
-
-        .icon-battery-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 4px; }
-        .batt-nub { width: 7px; height: 3px; background-color: transparent; }
-        .batt-body { width: 12px; height: 20px; border: 2px solid rgba(255, 255, 255, 0.15); border-radius: 1px; }
-        .icon-battery-wrap.full .batt-nub { background-color: #ffff00; }
-        .icon-battery-wrap.full .batt-body { background-color: #ffff00; border-color: #ffff00; }
-        .oled-inverted .icon-battery-wrap.full .batt-nub,
-        .funk-mode .icon-battery-wrap.full .batt-nub,
-        .oled-inverted .icon-battery-wrap.full .batt-body,
-        .funk-mode .icon-battery-wrap.full .batt-body {
-            background-color: #050505 !important;
-            border-color: #050505 !important;
-        }
-
-        .active-line { width: 24px; height: 3px; background-color: transparent; border-radius: 2px; }
-        .active-line.show { background-color: #ffff00; }
-        .oled-inverted .active-line.show,
-        .funk-mode .active-line.show { background-color: #050505 !important; }
-
-        .warning-btn-wrapper {
-            position: absolute;
-            top: 74px;
-            width: 22px;
-            height: 42px;
-            z-index: 1035;
-            pointer-events: auto !important;
-        }
-        .warning-btn-wrapper.left { left: -10px; }
-        .warning-btn-wrapper.right { right: -10px; }
-        .warning-btn {
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #444 0%, #222 100%);
-            border: 2px solid #000;
-            border-radius: 6px;
-            cursor: pointer;
-            pointer-events: auto !important;
-            touch-action: manipulation;
-        }
-        .warning-btn-wrapper.left .warning-btn { border-radius: 6px 0 0 6px; }
-        .warning-btn-wrapper.right .warning-btn { border-radius: 0 6px 6px 0; }
-        .warning-btn:active,
-        .warning-btn.active-press {
-            transform: scaleX(0.85);
-            background: #111;
-        }
-
-        .safety-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 2px;
-            position: relative;
-            z-index: 1030;
-            pointer-events: auto !important;
-        }
-        .safety-switch {
-            width: 68px;
-            height: 32px;
-            background-color: #27ae60;
-            border: 3px solid #000;
-            border-radius: 16px;
-            cursor: pointer;
-            position: relative;
-            z-index: 1035;
-            pointer-events: auto !important;
-            transition: background-color 0.25s;
-            box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6);
-            touch-action: manipulation;
-        }
-        .safety-switch::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 22px;
-            height: 22px;
-            background: linear-gradient(135deg, #fff 0%, #bdc3c7 100%);
-            border-radius: 50%;
-            transition: left 0.25s;
-            pointer-events: none;
-        }
-        .safety-switch.unsafe { background-color: #e74c3c; }
-        .safety-switch.unsafe::after { left: 38px; }
-        .safety-label {
-            text-align: center;
-            font-weight: 800;
-            margin-top: 2px;
-            color: #111;
-            font-size: 10px;
-            letter-spacing: 1px;
+            letter-spacing: 0.7px;
             text-transform: uppercase;
-            pointer-events: none;
-        }
-
-        /* Funktionskontroll gul kropp */
-        body.function-check-active .taser-device {
-            background-color: #FCBE00 !important;
-            border-color: #050505 !important;
-        }
-        body.function-check-active .sim-controls {
-            background: linear-gradient(180deg, #FCBE00 0%, #e6ad00 100%) !important;
-            border-color: #050505 !important;
-        }
-        body.function-check-active .sight-dot {
-            background-color: #050505 !important;
-        }
-
-        .sim-controls {
-            width: min(290px, 90vw);
-            position: relative;
-            z-index: 1010;
-            background: linear-gradient(180deg, rgba(24, 27, 33, 0.88) 0%, rgba(13, 15, 19, 0.94) 100%);
-            border: 1.5px solid rgba(252, 190, 0, 0.55);
-            border-bottom: none;
-            border-radius: 16px 16px 0 0;
-            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-            padding: 12px 8px 8px 8px;
-            margin-top: -10px;
-            pointer-events: auto !important;
-            touch-action: manipulation;
-        }
-
-        button.action-btn,
-        .btn {
-            width: 100%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            background: linear-gradient(180deg, #323844 0%, #1d2027 65%, #15171c 100%);
-            color: #eef2f6;
-            border: 1px solid #0d0f13;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.8);
-            padding: 5px 4px;
-            border-radius: 7px;
             cursor: pointer;
-            pointer-events: auto !important;
-            font-weight: 800;
-            font-size: 9px;
-            line-height: 1.15;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            min-height: 33px;
+            pointer-events: auto;
             touch-action: manipulation;
-            box-shadow: 0 3px 0 #090a0d, 0 5px 10px rgba(0, 0, 0, 0.55);
         }
-        button.action-btn:active,
-        button.action-btn.active-press,
-        .btn:active,
-        .btn.active-press {
-            transform: translateY(2px) !important;
-            box-shadow: 0 1px 0 #090a0d, inset 0 2px 5px rgba(0, 0, 0, 0.8) !important;
+        #vr-btn-menu:active {
+            transform: translateY(1px);
+            background: rgba(20, 26, 36, 0.92);
         }
-
-        .btn-grid-compact {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 5px;
-            margin-bottom: 5px;
-        }
-        .btn-grid-3 {
-            grid-template-columns: 1fr 1fr 1fr;
-        }
-
-        .btn-trigger {
-            background: linear-gradient(180deg, rgba(229, 57, 53, 0.95) 0%, rgba(183, 28, 28, 0.95) 55%, rgba(142, 21, 21, 0.98) 100%) !important;
-            border: 1px solid #ff6b6b !important;
-            color: #ffffff !important;
-            font-size: 13px !important;
-            font-weight: 900 !important;
-            min-height: 38px !important;
-            padding: 7px 8px !important;
-            margin-top: 2px !important;
-            margin-bottom: 5px !important;
-            letter-spacing: 1.4px;
-            box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55) !important;
-        }
-
-        .btn-warn {
-            background: linear-gradient(180deg, #3c3420 0%, #241f12 100%) !important;
-            border: 1px solid rgba(252, 190, 0, 0.65) !important;
-            color: #FCBE00 !important;
-        }
-        .btn-warn.active-funk {
-            background: linear-gradient(180deg, #ffd23f 0%, #FCBE00 60%, #d49b00 100%) !important;
-            border: 1.5px solid #050505 !important;
-            color: #050505 !important;
-        }
-
-        .btn-reset {
-            background: linear-gradient(180deg, #d9822b 0%, #b35c00 60%, #803f00 100%) !important;
-            border-color: #522900 !important;
-            color: #ffffff !important;
-        }
-
-        .btn-scenario {
-            background: linear-gradient(180deg, #d35400 0%, #9c3d00 100%) !important;
-            border-color: #e67e22 !important;
-            color: #ffffff !important;
-        }
-        .btn-scenario.active-attack {
-            background: linear-gradient(180deg, #c0392b 0%, #922b21 100%) !important;
-            border-color: #e74c3c !important;
-        }
-
-        .btn-voice {
-            background: linear-gradient(180deg, #1d3e38 0%, #122824 100%) !important;
-            border-color: #0b1a17 !important;
-            color: #79d7c4 !important;
-            min-height: 29px !important;
-        }
-        .btn-voice.listening {
-            background: linear-gradient(180deg, #27ae60 0%, #1e8449 100%) !important;
-            border-color: #145a32 !important;
-            color: #ffffff !important;
-        }
-
-        .btn-xr-move {
-            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%) !important;
-            border-color: #172554 !important;
-            color: #eff6ff !important;
-        }
-        .btn-xr-exit {
-            background: linear-gradient(180deg, #c0392b 0%, #922b21 100%) !important;
-            border-color: #4a120d !important;
-            color: #ffffff !important;
-        }
-
-        #webxr-grip-row,
-        #live-ar-grip-row {
-            display: none !important;
-            gap: 5px;
-            margin-top: 2px;
-            margin-bottom: 4px;
-        }
-
-        body.webxr-mode #webxr-grip-row,
-        body.ar-combat-mode #webxr-grip-row {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr;
-        }
-
-        body.live-ar-active #live-ar-grip-row,
-        body.live-ai-active #live-ar-grip-row {
-            display: grid !important;
-            grid-template-columns: 1fr;
-        }
-
-        /* Dölj Scenario/Angrepp & Röst i Live-AI läget för maximal kompakt vy */
-        body.live-ar-active #btn-scenario,
-        body.live-ai-active #btn-scenario,
-        body.live-ar-active #extra-toggles-row,
-        body.live-ai-active #extra-toggles-row {
+        body.vr-menu-open #vr-btn-menu,
+        body.vr-portrait-blocked #vr-btn-menu {
             display: none !important;
         }
 
-        .log-box,
-        .status-grid {
-            display: none;
-        }
-
-        /* Placering & 3D-Meny i VR */
-        body.xr-placing .main-container,
-        body.vr-menu-open .main-container,
-        body.vr-menu-open #btn-place-xr,
-        body.vr-menu-open #place-hint {
-            display: none !important;
-            pointer-events: none !important;
-        }
+        /* Fastställ placering-knapp (endast synlig i placeringsläge) */
         #btn-place-xr {
             display: none;
             position: fixed;
-            bottom: max(24px, env(safe-area-inset-bottom, 24px));
+            bottom: max(20px, env(safe-area-inset-bottom, 20px));
             left: 50%;
             transform: translateX(-50%);
-            z-index: 10015 !important;
-            pointer-events: auto !important;
+            z-index: 3;
+            pointer-events: auto;
             align-items: center;
             justify-content: center;
             gap: 6px;
             background: linear-gradient(180deg, #2ecc71 0%, #219653 100%);
             color: #050505;
             border: 2px solid #a3f7bf;
-            border-radius: 12px;
-            padding: 14px 26px;
-            font-size: 14px;
+            border-radius: 10px;
+            padding: 11px 22px;
+            font-size: 13px;
             font-weight: 900;
-            letter-spacing: 0.9px;
+            letter-spacing: 0.8px;
             text-transform: uppercase;
             cursor: pointer;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.85), 0 0 18px rgba(46, 204, 113, 0.55);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.8);
             touch-action: manipulation;
             white-space: nowrap;
         }
-        #btn-place-xr:active,
-        #btn-place-xr.active-press {
-            transform: translateX(-50%) translateY(2px);
+        body.xr-placing #btn-place-xr {
+            display: inline-flex;
+        }
+        body.vr-menu-open #btn-place-xr {
+            display: none !important;
         }
 
-        /* =========================================================
-           6. FAIL OVERLAY & SCENARIO MODAL
-           ========================================================= */
+        /* Kompakt 4-vals VR Start- & Pausmeny (speglad för båda ögonen) */
+        #vr-menu-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100dvh;
+            z-index: 3;
+            background: rgba(4, 7, 12, 0.64);
+            backdrop-filter: blur(4px);
+            flex-direction: row;
+            align-items: center;
+            pointer-events: auto;
+        }
+        body.vr-menu-open #vr-menu-overlay {
+            display: flex;
+        }
+
+        .vr-menu-eye {
+            width: 50vw;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+        }
+        body.vr-mono-mode .vr-menu-eye--right {
+            display: none;
+        }
+        body.vr-mono-mode .vr-menu-eye--left {
+            width: 100vw;
+        }
+
+        .vr-menu-card {
+            width: min(330px, 44vw);
+            background: rgba(10, 14, 20, 0.94);
+            border: 2px solid #FCBE00;
+            border-radius: 12px;
+            padding: 14px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        body.vr-mono-mode .vr-menu-card {
+            width: min(380px, 88vw);
+        }
+
+        .vr-menu-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(252, 190, 0, 0.28);
+            padding-bottom: 8px;
+            margin-bottom: 2px;
+        }
+        .vr-menu-title {
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.9px;
+            color: #FCBE00;
+            text-transform: uppercase;
+        }
+        .vr-menu-resume {
+            display: none;
+            padding: 4px 9px;
+            border-radius: 5px;
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            background: rgba(30, 41, 59, 0.9);
+            color: #e2e8f0;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        body.vr-menu-paused .vr-menu-resume {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .vr-menu-list {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .vr-menu-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 11px 12px;
+            border-radius: 8px;
+            border: 1.5px solid rgba(148, 163, 184, 0.35);
+            background: linear-gradient(180deg, #1b222d 0%, #11161d 100%);
+            color: #f8fafc;
+            font-size: 12.5px;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            text-align: left;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: border-color 0.12s ease, background 0.12s ease, transform 0.08s ease;
+        }
+        .vr-menu-btn:active {
+            transform: scale(0.98);
+        }
+        .vr-menu-btn.is-selected {
+            border-color: #FCBE00;
+            background: linear-gradient(180deg, rgba(252, 190, 0, 0.24) 0%, rgba(42, 34, 8, 0.96) 100%);
+            color: #FCBE00;
+            box-shadow: 0 0 14px rgba(252, 190, 0, 0.28);
+        }
+        .vr-menu-btn[data-vr-action="exit"] {
+            border-color: rgba(231, 76, 60, 0.55);
+            color: #fca5a5;
+        }
+        .vr-menu-btn[data-vr-action="exit"].is-selected {
+            border-color: #ef4444;
+            background: linear-gradient(180deg, rgba(220, 38, 38, 0.3) 0%, rgba(45, 10, 10, 0.96) 100%);
+            color: #ffffff;
+        }
+
+        /* Diskreta feedback-meddelanden under övning (z-index: 3) */
+        #ar-hud-toast {
+            display: none;
+            position: fixed;
+            top: max(46px, calc(env(safe-area-inset-top, 10px) + 38px));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            pointer-events: none;
+            background: rgba(10, 12, 16, 0.9);
+            color: #FCBE00;
+            border: 1.5px solid #FCBE00;
+            border-radius: 7px;
+            padding: 5px 12px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        #subtitle-overlay {
+            display: none;
+            position: fixed;
+            bottom: max(56px, calc(env(safe-area-inset-bottom, 12px) + 44px));
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(180, 35, 35, 0.92);
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            padding: 5px 12px;
+            text-align: center;
+            z-index: 3;
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            pointer-events: none !important;
+            white-space: nowrap;
+        }
+
+        #nmi-overlay {
+            display: none;
+            position: fixed;
+            top: max(48px, calc(env(safe-area-inset-top, 10px) + 40px));
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(6, 10, 15, 0.92);
+            border: 2px solid #2ecc71;
+            border-radius: 8px;
+            padding: 7px 14px;
+            text-align: center;
+            z-index: 3;
+            min-width: 190px;
+            pointer-events: none !important;
+        }
+        #nmi-overlay.fail {
+            border-color: #e74c3c;
+        }
+        #nmi-title {
+            font-size: 12px;
+            font-weight: 900;
+            color: #2ecc71;
+            margin: 0 0 2px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+        }
+        #nmi-overlay.fail #nmi-title {
+            color: #e74c3c;
+        }
+        #nmi-details {
+            font-size: 10px;
+            color: #ecf0f1;
+            margin: 0;
+            line-height: 1.3;
+            font-family: ui-monospace, monospace;
+        }
+        .nmi-highlight {
+            font-weight: bold;
+            color: #FCBE00;
+        }
+
+        /* Fail overlay (< 0.8 m) */
         #fail-overlay {
             display: none;
             position: fixed;
             inset: 0;
             width: 100%;
             height: 100%;
-            z-index: 30000 !important;
-            pointer-events: auto !important;
-            background: radial-gradient(circle at center, rgba(160, 20, 20, 0.94) 0%, rgba(45, 5, 5, 0.97) 100%);
+            z-index: 3;
+            pointer-events: auto;
+            background: radial-gradient(circle at center, rgba(160, 20, 20, 0.92) 0%, rgba(35, 5, 5, 0.96) 100%);
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -1293,381 +563,210 @@
             touch-action: manipulation;
         }
         .fail-box {
-            background: rgba(18, 0, 0, 0.92);
-            border: 3px solid #ff3333;
+            background: rgba(15, 0, 0, 0.92);
+            border: 2px solid #ff4444;
             border-radius: 12px;
-            padding: 22px 20px;
-            max-width: 360px;
+            padding: 20px;
+            max-width: 340px;
             width: 90%;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.9);
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 10px;
         }
-        .fail-icon { font-size: 42px; }
         .fail-banner-text {
             color: #ff4d4d;
             font-size: 16px;
             font-weight: 900;
-            letter-spacing: 1.2px;
+            letter-spacing: 1.1px;
             text-transform: uppercase;
             margin: 0;
-        }
-        .fail-subtext {
-            color: #ffffff;
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-transform: uppercase;
         }
         .fail-desc {
             color: #fca5a5;
             font-size: 11px;
             line-height: 1.4;
             margin: 0;
-            font-family: 'Courier New', monospace;
+            font-family: ui-monospace, monospace;
         }
         .fail-reset-btn {
             background: linear-gradient(180deg, #ff4444 0%, #b31010 100%);
             color: #ffffff;
             border: 2px solid #ff7777;
             border-radius: 8px;
-            padding: 12px 20px;
+            padding: 11px 18px;
             font-size: 12px;
             font-weight: 800;
-            letter-spacing: 1px;
+            letter-spacing: 0.9px;
             text-transform: uppercase;
             cursor: pointer;
             width: 100%;
             touch-action: manipulation;
         }
 
-        .modal-overlay {
+        /* Liggande-läge fallback för porträttskärmar / iOS (z-index: 3, sist i DOM) */
+        #vr-landscape-prompt {
             display: none;
             position: fixed;
             inset: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            z-index: 30000 !important;
-            pointer-events: auto !important;
-            justify-content: center;
+            width: 100vw;
+            height: 100dvh;
+            z-index: 3;
+            background: rgba(5, 8, 14, 0.96);
+            flex-direction: column;
             align-items: center;
-            padding: 14px;
+            justify-content: center;
+            text-align: center;
+            padding: 28px;
+            gap: 16px;
+            pointer-events: auto;
             touch-action: manipulation;
         }
-        .modal-content {
-            background: #222b36;
-            width: 100%;
-            max-width: 420px;
-            max-height: 86vh;
-            border-radius: 10px;
-            border: 1.5px solid #f1c40f;
-            padding: 16px;
-            overflow-y: auto;
-            overscroll-behavior: contain;
-            touch-action: pan-y;
-            position: relative;
-            color: #ecf0f1;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
+        body.vr-portrait-blocked #vr-landscape-prompt {
+            display: flex;
         }
-        .modal-close {
-            position: absolute;
-            top: 8px;
-            right: 10px;
-            font-size: 24px;
-            color: #e74c3c;
-            cursor: pointer;
-            background: none;
-            border: none;
-            font-weight: bold;
-            padding: 4px 8px;
-            touch-action: manipulation;
+        .vr-rotate-icon {
+            width: 72px;
+            height: 72px;
+            color: #FCBE00;
+            animation: rotateHint 2.2s ease-in-out infinite;
         }
-        .modal-content h2 {
-            margin-top: 0;
-            color: #f1c40f;
-            border-bottom: 1px solid #161d24;
-            padding-bottom: 6px;
-            font-size: 14px;
+        @keyframes rotateHint {
+            0%, 20% { transform: rotate(0deg); }
+            55%, 80% { transform: rotate(-90deg); }
+            100% { transform: rotate(0deg); }
         }
-        .scenario-btn {
-            width: 100%;
-            padding: 11px 10px;
-            margin: 6px 0;
-            border-radius: 6px;
-            border: 1px solid #1a252f;
-            background: linear-gradient(to bottom, #34495e, #2c3e50);
-            color: #ffffff;
-            font-weight: bold;
-            cursor: pointer;
-            text-align: left;
-            touch-action: manipulation;
+        .vr-rotate-title {
+            font-size: 17px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            color: #FCBE00;
+            text-transform: uppercase;
+            margin: 0;
+            max-width: 320px;
+            line-height: 1.35;
         }
-        .scenario-btn.active-press,
-        .scenario-btn.is-loading {
-            border-color: #f1c40f;
-            box-shadow: 0 0 12px rgba(241, 196, 15, 0.45);
-        }
-        .scenario-btn span {
-            display: block;
-            font-size: 9.5px;
-            font-weight: normal;
+        .vr-rotate-sub {
+            font-size: 12px;
             color: #cbd5e1;
-            margin-top: 2px;
+            margin: 0;
+            max-width: 280px;
+            line-height: 1.45;
         }
     </style>
 </head>
 <body class="vr-headset-session vr-ar-passthrough camera-active">
 
-    <!-- KAMERA PASS-THROUGH (BOTTENLAGER) -->
+    <!-- LAGER 1: KAMERA PASS-THROUGH (z-index: 1) -->
     <div id="camera-container">
         <video id="camera-feed-left" class="camera-feed" autoplay playsinline muted></video>
         <video id="camera-feed-right" class="camera-feed" autoplay playsinline muted></video>
     </div>
 
-    <!-- HELSKÄRMS 3D + STEREO + 2D HUD VIEWPORT -->
+    <!-- LAGER 2: TRANSPARENT 3D THREE.JS + STEREO + 2D HUD CANVAS (z-index: 2) -->
     <div class="viewport" id="viewport">
         <div id="three-canvas"></div>
         <div id="vr-eye-divider"></div>
-
-        <!-- LIVE AI OVERLAY FÖR MONO-LÄGE (I STEREO RITAR #hud-canvas PER ÖGA) -->
-        <div id="live-target-overlay" class="live-target-overlay" style="display: none;">
-            <div class="hud-zone-head">
-                <span class="hud-brk tl"></span>
-                <span class="hud-brk tr"></span>
-                <span class="hud-brk bl"></span>
-                <span class="hud-brk br"></span>
-                <span class="hud-head-cross"></span>
-            </div>
-            <div class="hud-zone-torso">
-                <span class="hud-brk tl"></span>
-                <span class="hud-brk tr"></span>
-                <span class="hud-brk bl"></span>
-                <span class="hud-brk br"></span>
-            </div>
-            <div class="target-badge" id="target-badge">
-                <span class="target-pulse">●</span> <span id="target-live-dist">3.0 M</span>
-            </div>
-        </div>
-
         <canvas id="hud-canvas"></canvas>
-
         <div class="fixed-aim-layer">
             <div id="flashlight" class="flashlight-beam"></div>
             <div id="laser-green" class="laser-green"></div>
             <div id="laser-red" class="laser-red"></div>
-            <div id="lightning" class="lightning"></div>
         </div>
     </div>
 
-    <!-- TOP VR QUICK BAR -->
-    <div id="vr-top-bar" role="toolbar" aria-label="VR-kontroller">
-        <a href="./index.html?menu=1" id="vr-btn-exit-mode" class="vr-top-btn vr-back-link" aria-label="Avsluta VR och byt läge">⬅ AVSLUTA VR</a>
-        <button type="button" id="vr-btn-menu" class="vr-top-btn">📋 Meny</button>
-        <span id="vr-cam-status">📷 Initierar...</span>
-        <span id="vr-bt-status" title="Bluetooth-joystickstatus">🎮 BT: AV</span>
-        <button type="button" id="vr-btn-gamepad" class="vr-top-btn">🕹️ Mappa BT</button>
-        <button type="button" id="vr-btn-place" class="vr-top-btn">📍 Flytta mål</button>
-        <button type="button" id="vr-btn-stereo" class="vr-top-btn active-pill">🥽 Stereo: PÅ</button>
-        <button type="button" id="vr-btn-webxr" class="vr-top-btn">🌐 WebXR</button>
-        <button type="button" id="vr-btn-live-ai" class="vr-top-btn">🤖 Live AI</button>
-        <button type="button" id="vr-btn-voice" class="vr-top-btn">🎙️ Röst</button>
-        <button type="button" id="vr-btn-gyro" class="vr-top-btn">📱 Gyro</button>
-        <button type="button" id="vr-btn-hand" class="vr-top-btn">🤚 Hand: Auto</button>
-        <button type="button" id="vr-btn-weapon-mode" class="vr-top-btn">🎯 Vapenläge: Auto (Hand + Fallback)</button>
-        <button type="button" id="vr-btn-fullscreen" class="vr-top-btn">⛶ Helskärm</button>
-        <button type="button" id="vr-btn-hide-hud" class="vr-top-btn">👁️ Dölj HUD</button>
-    </div>
-
-    <!-- TELEMETRI HUD -->
-    <div class="hud-overlay" id="hud-overlay">
-        <div class="hud-row">
-            <div class="target-label" id="target-label">PERSON (3D VR)</div>
-            <div class="dist-label" id="dist-label">3.0 M</div>
-        </div>
-        <div class="hud-row">
-            <div class="spread-label" id="spread-label">SPRIDNING: -- CM</div>
-            <div class="hud-row-right">
-                <div class="warning-badge" id="hud-warning" style="display: none;">⚠️ VARNING DELGIVEN</div>
-                <div id="vr-weapon-mode-status" class="weapon-mode-badge fallback" aria-live="polite">🎯 FALLBACK-LÄGE</div>
+    <!-- LAGER 3: ULTRAREN SPEGLAD VR HUD (z-index: 3) -->
+    <div id="vr-minimal-hud" aria-live="polite">
+        <div class="vr-hud-eye vr-hud-eye--left">
+            <div class="vr-hud-strip">
+                <span id="hud-safety-left" class="vr-hud-safety safe">SÄKRING: SÄKRAD</span>
+                <span class="vr-hud-sep">|</span>
+                <span id="hud-dist-left" class="vr-hud-dist">AVSTÅND: 3.0 M</span>
+                <span class="vr-hud-sep">|</span>
+                <span id="hud-code-left" class="vr-hud-code">KOD: ----</span>
             </div>
         </div>
-        <div id="place-hint" class="place-hint">Klicka för att placera figuren</div>
+        <div class="vr-hud-eye vr-hud-eye--right" aria-hidden="true">
+            <div class="vr-hud-strip">
+                <span id="hud-safety-right" class="vr-hud-safety safe">SÄKRING: SÄKRAD</span>
+                <span class="vr-hud-sep">|</span>
+                <span id="hud-dist-right" class="vr-hud-dist">AVSTÅND: 3.0 M</span>
+                <span class="vr-hud-sep">|</span>
+                <span id="hud-code-right" class="vr-hud-code">KOD: ----</span>
+            </div>
+        </div>
     </div>
 
-    <!-- FEEDBACK & STATUS OVERLAYS -->
-    <div id="ar-hud-toast" role="status" aria-live="polite" style="display: none;"></div>
-    <div id="live-ar-room-badge" aria-live="polite">🔗 KOD: ----</div>
-    <div id="funk-status-pill" aria-live="polite">⚡ FUNKTIONSKONTROLL AKTIV</div>
-    <div id="vr-joystick-status" role="status" aria-live="polite">🎮 BT REDO</div>
-    <div id="vr-bt-debug-hud" role="status" aria-live="polite">BT: VÄNTAR PÅ SIGNAL...</div>
-    <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 FASTSTÄLL POSITION</button>
+    <button type="button" id="vr-btn-menu" aria-label="Öppna VR-meny">☰ MENY</button>
+    <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 FASTSTÄLL MÅL</button>
 
-    <div id="subtitle-overlay">MÅL: "VAD VILL DU?!"</div>
+    <div id="ar-hud-toast" role="status" aria-live="polite"></div>
+    <div id="subtitle-overlay"></div>
 
     <div id="nmi-overlay">
         <h2 id="nmi-title">NMI UPPNÅDD</h2>
         <p id="nmi-details">
             Avstånd: <span class="nmi-highlight" id="nmi-dist">3.0 M</span> |
             Spridning: <span class="nmi-highlight" id="nmi-spread">34 CM</span><br>
-            <span id="nmi-reason" style="font-style: italic; color: #bdc3c7; font-size: 9px;">Träff i godkänd zon.</span>
+            <span id="nmi-reason" style="font-style: italic; color: #cbd5e1; font-size: 9.5px;">Träff i godkänd zon.</span>
         </p>
     </div>
 
-    <!-- KOMPAKT PISTOL-HUD LÄNGST NER -->
-    <div class="main-container" id="main-container">
-        <div class="taser-device">
-            <div class="sights">
-                <div class="sight-dot"></div>
-                <div class="sight-dot"></div>
-            </div>
-            <div class="display-bezel">
-                <div id="taser-display" class="display-screen"></div>
-            </div>
-            <div class="warning-btn-wrapper left">
-                <button type="button" class="warning-btn" id="warn-left" aria-label="Vänster varningsknapp"></button>
-            </div>
-            <div class="warning-btn-wrapper right">
-                <button type="button" class="warning-btn" id="warn-right" aria-label="Höger varningsknapp"></button>
-            </div>
-            <div class="safety-container">
-                <div>
-                    <div id="safety-switch" class="safety-switch" role="button" tabindex="0" aria-label="Växla säkring"></div>
-                    <div id="safety-label" class="safety-label">SÄKRAD</div>
+    <!-- KOMPAKT 4-VALS START- & PAUSMENY (SPEGLAD FÖR BÅDA ÖGONEN) -->
+    <div id="vr-menu-overlay" role="dialog" aria-modal="true" aria-label="VR-meny">
+        <div class="vr-menu-eye vr-menu-eye--left">
+            <div class="vr-menu-card">
+                <div class="vr-menu-header">
+                    <span class="vr-menu-title" data-vr-menu-title>TASER 7 — VR MENY</span>
+                    <button type="button" class="vr-menu-resume" data-vr-resume>✕ Fortsätt</button>
+                </div>
+                <div class="vr-menu-list">
+                    <button type="button" class="vr-menu-btn is-selected" data-vr-idx="0" data-vr-action="free">1. Starta Fri Övning</button>
+                    <button type="button" class="vr-menu-btn" data-vr-idx="1" data-vr-action="scenario">2. Starta Scenario (Kniv / Motstånd)</button>
+                    <button type="button" class="vr-menu-btn" data-vr-idx="2" data-vr-action="place">3. Placera / Flytta 3D-mål</button>
+                    <button type="button" class="vr-menu-btn" data-vr-idx="3" data-vr-action="exit">4. Avsluta VR</button>
                 </div>
             </div>
         </div>
-
-        <div class="sim-controls">
-            <div class="status-grid">
-                <div id="stat-cassette" class="status-box ok">⏏️ Kassetter i</div>
-                <div id="stat-battery" class="status-box ok">🔋 Batteri i</div>
-                <div id="stat-stealth" class="status-box stealth">🥷 DOLT LÄGE</div>
+        <div class="vr-menu-eye vr-menu-eye--right" aria-hidden="true">
+            <div class="vr-menu-card">
+                <div class="vr-menu-header">
+                    <span class="vr-menu-title" data-vr-menu-title>TASER 7 — VR MENY</span>
+                    <button type="button" class="vr-menu-resume" data-vr-resume>✕ Fortsätt</button>
+                </div>
+                <div class="vr-menu-list">
+                    <button type="button" class="vr-menu-btn is-selected" data-vr-idx="0" data-vr-action="free">1. Starta Fri Övning</button>
+                    <button type="button" class="vr-menu-btn" data-vr-idx="1" data-vr-action="scenario">2. Starta Scenario (Kniv / Motstånd)</button>
+                    <button type="button" class="vr-menu-btn" data-vr-idx="2" data-vr-action="place">3. Placera / Flytta 3D-mål</button>
+                    <button type="button" class="vr-menu-btn" data-vr-idx="3" data-vr-action="exit">4. Avsluta VR</button>
+                </div>
             </div>
-            <button type="button" class="action-btn btn-trigger" id="btn-trigger">⚡ AVFYRA</button>
-
-            <div class="btn-grid-compact">
-                <button type="button" class="action-btn" id="btn-cassette">⏏️ Kassett</button>
-                <button type="button" class="action-btn" id="btn-battery">🔋 Batteri</button>
-            </div>
-
-            <div class="btn-grid-compact">
-                <button type="button" class="action-btn btn-warn" id="btn-warn">⚠️ Funk.</button>
-                <button type="button" class="action-btn btn-reset" id="btn-reset">♻️ Återställ</button>
-            </div>
-
-            <div id="webxr-grip-row" class="btn-grid-compact">
-                <button type="button" class="action-btn btn btn-xr-move" id="btn-xr-move-target">🔄 FLYTTA MÅL</button>
-                <button type="button" class="action-btn btn btn-xr-exit" id="btn-xr-exit">⛔ AVSLUTA WEBXR</button>
-            </div>
-
-            <div id="live-ar-grip-row" class="btn-grid-compact">
-                <button type="button" class="action-btn btn btn-xr-exit" id="btn-live-ar-exit">⛔ AVSLUTA LIVE AR</button>
-            </div>
-
-            <div id="extra-toggles-row" class="btn-grid-compact">
-                <button type="button" class="action-btn btn-scenario" id="btn-scenario">🚨 Angrepp</button>
-                <button type="button" class="action-btn btn-voice" id="btn-voice">🎙️ Röst: AV</button>
-            </div>
-
-            <div class="log-box" id="log"></div>
         </div>
     </div>
 
     <!-- FAIL OVERLAY (< 0.8 M) -->
-    <div id="fail-overlay" role="alertdialog" aria-modal="true" style="display: none;">
+    <div id="fail-overlay" role="alertdialog" aria-modal="true">
         <div class="fail-box">
-            <div class="fail-icon">🚨</div>
+            <div style="font-size: 38px;">🚨</div>
             <h2 class="fail-banner-text">ÖVNING AVBRUTEN</h2>
-            <div class="fail-subtext">ANGRIPAREN NÅDDE FRAM</div>
             <p class="fail-desc">
-                Avstånd: &lt; 0.8 M<br>
-                Taser ej avfyrad i tid. Avtryckaren har spärrats för din säkerhet.
+                Angriparen nådde fram (&lt; 0.8 M).<br>
+                Avtryckaren har spärrats.
             </p>
             <button type="button" id="btn-fail-reset" class="fail-reset-btn">♻️ ÅTERSTÄLL ÖVNING</button>
         </div>
     </div>
 
-    <!-- WEBXR / LIVE AI SCENARIO MODAL -->
-    <div id="scenario-modal" class="modal-overlay">
-        <div class="modal-content">
-            <button type="button" class="modal-close" id="btn-close-scenario">×</button>
-            <h2>Välj VR / AR Träningsläge</h2>
-            <p style="font-size: 11px; color: #cbd5e1; margin-bottom: 10px;">Välj mellan verklig person via Live AI-kamera eller virtuell 3D-figur i WebXR.</p>
-            <button type="button" id="btn-start-real-person-xr" class="scenario-btn" style="border: 2px solid #2ecc71; background: rgba(46, 204, 113, 0.16);">
-                🤖 1. STARTA MED VERKLIG PERSON (LIVE AI)
-                <span style="color: #82e0aa;">Ingen 3D-figur! Läser av en verklig person &amp; skickar träffar till Markörens mobil.</span>
-            </button>
-            <button type="button" class="scenario-btn" id="btn-xr-static">
-                2. VIRTUELL FIGUR (STATISKT MÅL)
-                <span>Placerar den gröna 3D-figuren stillastående på golvet i WebXR.</span>
-            </button>
-            <button type="button" class="scenario-btn" id="btn-xr-moving">
-                3. VIRTUELL FIGUR (RÖRLIGT MÅL)
-                <span>Den gröna 3D-figuren rör sig i sidled i rummet.</span>
-            </button>
-            <button type="button" class="scenario-btn" id="btn-xr-charging">
-                4. VIRTUELL FIGUR (ANSTORMNING)
-                <span>Den gröna 3D-figuren rusar aggressivt mot din position!</span>
-            </button>
-            <button type="button" class="action-btn" id="btn-cancel-scenario" style="margin-top: 10px; background: #c0392b;">Avbryt</button>
-        </div>
-    </div>
-
-    <!-- BLUETOOTH GAMEPAD KALIBRERING & MAPPA KNAPPAR MODAL -->
-    <div id="gamepad-modal" class="modal-overlay">
-        <div class="modal-content">
-            <button type="button" class="modal-close" id="btn-close-gamepad">×</button>
-            <h2>🕹️ Bluetooth-kontroll &amp; Mappa Knappar</h2>
-
-            <div class="gp-debug-box">
-                <div id="vr-bt-debug-live">BT INPUT: VÄNTAR PÅ TRYCK...</div>
-                <div id="vr-bt-debug-axes" class="gp-debug-sub">Spak: Ax0=0.00 | Ax1=0.00 — Status: Ej ansluten</div>
-            </div>
-
-            <label class="gp-debug-toggle">
-                <input type="checkbox" id="chk-bt-debug-hud" checked />
-                <span>Visa diskret BT Input-fönster i VR-vyn</span>
-            </label>
-
-            <p style="font-size: 10.5px; color: #cbd5e1; margin: 0 0 8px 0;">
-                Tryck på en funktion nedan och tryck sedan på valfri knapp på din Bluetooth-joystick för att spara ny mappning:
-            </p>
-
-            <div class="gp-map-list" id="gamepad-map-list">
-                <button type="button" class="gp-map-row" data-map-action="fire">
-                    <span>⚡ Avfyra / Elchock (Knapp 0)</span>
-                    <span class="gp-map-badge" id="gp-badge-fire">KNAPP 0</span>
-                </button>
-                <button type="button" class="gp-map-row" data-map-action="safety">
-                    <span>🔒 Osäkra / Säkra (Knapp 1)</span>
-                    <span class="gp-map-badge" id="gp-badge-safety">KNAPP 1</span>
-                </button>
-                <button type="button" class="gp-map-row" data-map-action="cassette">
-                    <span>⏏️ Byt kassett / Ladda om (Knapp 2)</span>
-                    <span class="gp-map-badge" id="gp-badge-cassette">KNAPP 2</span>
-                </button>
-                <button type="button" class="gp-map-row" data-map-action="arc">
-                    <span>⚡ Ljusbågscykel / Arc (Enter / Knapp 3)</span>
-                    <span class="gp-map-badge" id="gp-badge-arc">KNAPP 3</span>
-                </button>
-                <button type="button" class="gp-map-row" data-map-action="confirm">
-                    <span>📍 Fastställ mål (Spakklick L3 / Space)</span>
-                    <span class="gp-map-badge" id="gp-badge-confirm">KNAPP 10, 11</span>
-                </button>
-                <button type="button" class="gp-map-row" data-map-action="reset">
-                    <span>♻️ Återställ skott &amp; trådar (Knapp 9)</span>
-                    <span class="gp-map-badge" id="gp-badge-reset">KNAPP 9</span>
-                </button>
-            </div>
-
-            <div class="btn-grid-compact">
-                <button type="button" class="action-btn btn-reset" id="btn-gp-reset-map">♻️ Återställ standard</button>
-                <button type="button" class="action-btn" id="btn-close-gamepad-footer">✅ Klar</button>
-            </div>
-        </div>
+    <!-- LANDSCAPE FALLBACK (VISAS VID PORTRÄTTLÄGE) -->
+    <div id="vr-landscape-prompt" role="alertdialog" aria-modal="true">
+        <svg class="vr-rotate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="7" y="2" width="10" height="20" rx="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            <path d="M2 12a10 10 0 0 1 4-8"></path>
+            <polyline points="2 6 2 12 8 12"></polyline>
+        </svg>
+        <p class="vr-rotate-title">VRID MOBILEN TILL LIGGANDE LÄGE (LANDSCAPE)</p>
+        <p class="vr-rotate-sub">Stereoskopiskt VR-läge kräver liggande skärm. Tryck på skärmen för att försöka låsa liggande läge automatiskt.</p>
     </div>
 
     <!-- Three.js Importmap -->
@@ -1741,7 +840,7 @@
       };
     </script>
 
-    <!-- Fristående VR/AR Applikationsmotor -->
+    <!-- Fristående VR Applikationsmotor -->
     <script type="module" src="./js/vr.js"></script>
 </body>
 </html>

@@ -3167,16 +3167,9 @@
         window.__taserShowLauncherOverlay = showLauncherOverlay;
         window.__taserBindInstantAction = bindInstantAction;
 
-        let vrXRSupported = false;
         let lastInputTime = 0;
         const DEBOUNCE_MS = 300;
         const prevGamepadButtons = new Array(16).fill(false);
-
-        if (navigator.xr && typeof navigator.xr.isSessionSupported === 'function') {
-          navigator.xr.isSessionSupported('immersive-vr')
-            .then((supported) => { vrXRSupported = supported; })
-            .catch(() => { vrXRSupported = false; });
-        }
 
         function attachStreamToCameraFeeds(stream) {
           if (cameraFeedLeftEl) {
@@ -3607,6 +3600,9 @@
           stopCameraPassThrough();
 
           if (window.taserApp) {
+            if (window.taserApp.xr && window.taserApp.xr.xrSession) {
+              window.taserApp.xr.endXRSession().catch(() => {});
+            }
             window.taserApp.disableStereoVR();
             if (window.taserApp.scene) {
               window.taserApp.scene.disableARMode();

@@ -174,8 +174,12 @@ export class TaserVRApp {
 
     const viewportEl = document.getElementById('three-canvas');
     this.scene = new TaserScene(viewportEl);
+    this.ensureTransparentWebGLRenderer(viewportEl);
     this.vrFov = VR_CAMERA_FOV;
     this.applyVRCameraProjection();
+    this._webglContextLost = false;
+    this._activeXRSessionMode = null;
+    this._lastWeaponArcGeoTs = 0;
 
     this.xr = new TaserXR(this.scene, {
       onSessionStart: this.onXRSessionStart.bind(this),
@@ -183,8 +187,12 @@ export class TaserVRApp {
     });
     this.scene.xrManager = this.xr;
 
-    // Force transparent WebGL passthrough from frame 0
+    // Force transparent WebGL passthrough from frame 0 and disable immersive WebXR hijack
     this.scene.enableARMode();
+    if (this.scene.renderer && this.scene.renderer.xr) {
+      this.scene.renderer.xr.enabled = false;
+    }
+    this.setupWebGLContextHandlers();
 
     // AI-Based Person Pose & Dynamic Hitbox Engine (Live AI)
     this.aiPose = new TaserAIPose(this.scene, this.scene.camera, {
@@ -383,18 +391,22 @@ export class TaserVRApp {
     // Ready weapon hardware state for immediate VR operation
     this.ensureReadyHardware();
     this.ensureLiveARRoomCode();
+    this._firebaseSessionCreatedForCode = null;
+    this.createFirebaseSessionIfNeeded();
 
     this.initDOM();
     this.initFSMSubscriptions();
     this.initInputs();
     this.initTaser3DWeapon();
     this.initStereoVRMode();
+    this.updatePortraitFallbackPrompt();
+    this.lockLandscapeOrientation();
     this.startRenderLoop();
 
     // Auto-start rear camera passthrough immediately on load
     this.startCameraPassThrough();
 
-    this.log("VR/AR Headset Simulator v7.47 initierad. <span style='color:#2ecc71;'>Kamera pass-through & Stereo 3D aktiv.</span>");
+    this.log("VR Headset Simulator initierad. Kamera pass-through, Stereo 3D & Landscape-stöd aktivt.");
   }
 
   ensureReadyHardware() {
@@ -432,24 +444,98 @@ export class TaserVRApp {
   }
 
   // =========================================================================
-  // 1. CAMERA PASSTHROUGH (FIXED TRANSPARENCY + FALLBACKS)
+  // 1. CAMERA PASSTHROUGH (GETUSERMEDIA + TRANSPARENT WEBGL + LANDSCAPE)
   // =========================================================================
-  attachStreamToCameraFeeds(stream) {
+  ensureTransparentWebGLRenderer(viewportEl) {
+    if (!this.scene || !this.scene.renderer) return;
+    let renderer = this.scene.renderer;
+    let hasAlpha = true;
+    try {
+      const attrs = renderer.getContextAttributes ? renderer.getContextAttributes() : null;
+      if (attrs && attrs.alpha === false) hasAlpha = false;
+    } catch (_) {}
+
+    if (!hasAlpha && viewportEl) {
+      try {
+        const oldDom = renderer.domElement;
+        if (oldDom && oldDom.parentNode) oldDom.parentNode.removeChild(oldDom);
+        renderer.dispose();
+      } catch (_) {}
+      renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+      const w = viewportEl.clientWidth || window.innerWidth || 320;
+      const h = viewportEl.clientHeight || window.innerHeight || 240;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(w, h, true);
+      viewportEl.appendChild(renderer.domElement);
+      this.scene.renderer = renderer;
+    }
+
+    renderer.autoClear = true;
+    renderer.setClearColor(0x000000, 0);
+    if (renderer.domElement) {
+      renderer.domElement.style.background = 'transparent';
+      renderer.domElement.style.backgroundColor = 'transparent';
+    }
+    if (this.scene.scene) {
+      this.scene.scene.background = null;
+    }
+  }
+
+  async lockLandscapeOrientation() {
+    try {
+      if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.lock === 'function') {
+        await screen.orientation.lock('landscape');
+      }
+    } catch (_) {
+      // Ignored cleanly when iOS/browser blocks programmatic orientation lock
+    }
+    this.updatePortraitFallbackPrompt();
+  }
+
+  updatePortraitFallbackPrompt() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    document.body.classList.toggle('vr-portrait-blocked', isPortrait);
+    document.documentElement.classList.toggle('vr-portrait-blocked', isPortrait);
+  }
+
+  async attachStreamToCameraFeeds(stream) {
     const leftEl = document.getElementById('camera-feed-left');
     const rightEl = document.getElementById('camera-feed-right');
     const container = document.getElementById('camera-container');
     if (container) container.style.display = 'flex';
 
-    [leftEl, rightEl].forEach((el) => {
+    const bindVideoElement = async (el) => {
       if (!el) return;
+      el.muted = true;
+      el.defaultMuted = true;
+      el.playsInline = true;
+      el.autoplay = true;
+      el.setAttribute('playsinline', '');
+      el.setAttribute('autoplay', '');
+      el.setAttribute('muted', '');
       if (el.srcObject !== stream) {
         el.srcObject = stream;
       }
-      el.setAttribute('playsinline', '');
-      el.setAttribute('autoplay', '');
-      el.muted = true;
-      el.play().catch(() => {});
-    });
+      const tryPlay = async () => {
+        try {
+          await el.play();
+        } catch (_) {}
+      };
+      el.onloadedmetadata = () => {
+        tryPlay();
+      };
+      await tryPlay();
+    };
+
+    await Promise.all([bindVideoElement(leftEl), bindVideoElement(rightEl)]);
 
     document.documentElement.classList.add('camera-active');
     document.body.classList.add('camera-active');
@@ -458,16 +544,20 @@ export class TaserVRApp {
 
   applyVRCameraProjection() {
     if (!this.scene || !this.scene.camera || !this.scene.renderer) return;
-    const width = this.scene.container?.clientWidth || window.innerWidth || 1;
-    const height = this.scene.container?.clientHeight || window.innerHeight || 1;
+    const width = Math.max(1, this.scene.container?.clientWidth || window.innerWidth || 1);
+    const height = Math.max(1, this.scene.container?.clientHeight || window.innerHeight || 1);
     const targetFov = this.vrFov || VR_CAMERA_FOV;
 
     this.scene.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.scene.renderer.setSize(width, height, true);
     if (this.scene.camera.fov !== targetFov) {
       this.scene.camera.fov = targetFov;
     }
-    this.scene.camera.aspect = width / Math.max(1, height);
+    this.scene.camera.aspect = width / height;
     this.scene.camera.updateProjectionMatrix();
+    if (this.stereoEffect) {
+      this.stereoEffect.setSize(width, height);
+    }
   }
 
   async resetCameraWideAngle(stream) {
@@ -479,7 +569,6 @@ export class TaserVRApp {
       if (capabilities && capabilities.zoom !== undefined) {
         const minZoom = (typeof capabilities.zoom === 'object' ? capabilities.zoom.min : capabilities.zoom) || 1.0;
         await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
-        this.log(`<span style='color:#2ecc71;'>📷 Kamera vidvinkel-zoom: ${Number(minZoom).toFixed(1)}x</span>`);
       }
     } catch (err) {
       console.warn('[VR CAMERA] Kunde inte återställa min-zoom:', err);
@@ -487,12 +576,10 @@ export class TaserVRApp {
   }
 
   async startCameraPassThrough() {
-    if (this.xr && this.xr.xrSession) return null;
-
     const leftEl = document.getElementById('camera-feed-left');
     if (this.passthroughStream && this.passthroughStream.active) {
       await this.resetCameraWideAngle(this.passthroughStream);
-      this.attachStreamToCameraFeeds(this.passthroughStream);
+      await this.attachStreamToCameraFeeds(this.passthroughStream);
       if (!this.isLiveAIRunning()) this.startHandTracking(leftEl);
       return this.passthroughStream;
     }
@@ -504,24 +591,21 @@ export class TaserVRApp {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: 'environment',
+            facingMode: { ideal: 'environment' },
             width: { ideal: 1920 },
             height: { ideal: 1080 }
           },
           audio: false
         });
-      } catch (errEnv) {
-        console.warn('[VR CAMERA] Bakre 1080p-kamera nekad/ej tillgänglig, provar generell 1080p-kamera:', errEnv);
+      } catch (errIdeal) {
+        console.warn('[VR CAMERA] Ideal bakre 1080p-kamera ej tillgänglig, provar standard bakre kamera:', errIdeal);
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
-            },
+            video: { facingMode: 'environment' },
             audio: false
           });
-        } catch (errHD) {
-          console.warn('[VR CAMERA] HD-kamera nekad/ej tillgänglig, provar standardkamera:', errHD);
+        } catch (errEnv) {
+          console.warn('[VR CAMERA] Bakre kamera nekad/ej tillgänglig, provar valfri kamera:', errEnv);
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           } catch (errAny) {
@@ -545,13 +629,9 @@ export class TaserVRApp {
         this.xr.videoStream = stream;
         this.xr.isSimulatedCamera = this.isSyntheticPassthrough;
       }
-      this.attachStreamToCameraFeeds(stream);
+      await this.attachStreamToCameraFeeds(stream);
       if (!this.isLiveAIRunning()) {
         this.startHandTracking(leftEl);
-      }
-      const badge = document.getElementById('vr-cam-status');
-      if (badge) {
-        badge.textContent = this.isSyntheticPassthrough ? '📷 Kamera: Demo' : '📷 Kamera: LIVE';
       }
     }
     return stream;
@@ -559,13 +639,15 @@ export class TaserVRApp {
 
   stopCameraPassThrough() {
     this.stopHandTracking();
+    this._handVideoEl = null;
     const leftEl = document.getElementById('camera-feed-left');
     const rightEl = document.getElementById('camera-feed-right');
 
     [leftEl, rightEl].forEach((el) => {
       if (!el) return;
       try { el.pause(); } catch (_) {}
-      el.srcObject = null;
+      try { el.srcObject = null; } catch (_) {}
+      try { el.removeAttribute('src'); } catch (_) {}
     });
 
     if (this.passthroughStream) {
@@ -584,6 +666,7 @@ export class TaserVRApp {
       }
       this.xr.videoStream = null;
       this.xr.useCamera = false;
+      this.xr.isSimulatedCamera = false;
     }
 
     const container = document.getElementById('camera-container');
@@ -606,6 +689,7 @@ export class TaserVRApp {
     this.openVRStartMenu();
     this.updateDisplay();
     this.updateAimVisuals();
+    this.updateMinimalHud();
   }
 
   toggleStereoSplit() {
@@ -931,6 +1015,7 @@ export class TaserVRApp {
       if (this.audio.silentAudioEl) {
         this.audio.silentAudioEl.play().catch(() => {});
       }
+      this.lockLandscapeOrientation();
       if (!this.xr.gyroEnabled) {
         this.initGyro(true);
       }
@@ -944,11 +1029,19 @@ export class TaserVRApp {
     };
     window.addEventListener('pointerdown', unlockSensorsAndAudio, { once: true });
 
-    // Touch aiming when gyro isn't driving orientation (plus pointer gaze fallback while 3D menu is open on desktop)
+    const landscapePrompt = document.getElementById('vr-landscape-prompt');
+    if (landscapePrompt) {
+      this.setupTactileButton(landscapePrompt, () => {
+        this.toggleFullscreenAndLandscape();
+        this.lockLandscapeOrientation();
+      }, { useClick: true });
+    }
+
+    // Touch aiming when gyro isn't driving orientation
     const viewport = document.getElementById('viewport');
     if (viewport) {
       const handleTouchAim = (touch) => {
-        if (this.xr.gyroEnabled || this.xr.placeMode || this.xr.xrSession || (this.isStereoVR && this.vrMenuState === 'closed')) return;
+        if (this.xr.gyroEnabled || this.xr.placeMode || (this.isStereoVR && this.vrMenuState === 'closed')) return;
         const rect = viewport.getBoundingClientRect();
         this.aimX = Math.max(5, Math.min(95, ((touch.clientX - rect.left) / rect.width) * 100));
         this.aimY = Math.max(5, Math.min(95, ((touch.clientY - rect.top) / rect.height) * 100));
@@ -960,32 +1053,11 @@ export class TaserVRApp {
       viewport.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches[0]) handleTouchAim(e.touches[0]);
       }, { passive: true });
-      viewport.addEventListener('pointermove', (e) => {
-        if (this.vrMenuState !== 'closed' && !this.xr.gyroEnabled && !this.xr.xrSession && e.pointerType === 'mouse') {
-          const rect = viewport.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            this.aimX = Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100));
-            this.aimY = Math.max(5, Math.min(95, ((e.clientY - rect.top) / rect.height) * 100));
-          }
-        }
-      }, { passive: true });
     }
 
-    // Compact weapon HUD bindings
-    this.setupTactileButton('btn-trigger', () => this.handleTrigger());
-    this.setupTactileButton('btn-cassette', () => window.toggleCassette());
-    this.setupTactileButton('btn-battery', () => window.toggleBattery());
-    this.setupTactileButton('btn-warn', () => this.toggleFunctionCheck());
-    this.setupTactileButton('btn-reset', () => this.resetSimulator());
-    this.setupTactileButton('btn-fail-reset', () => this.resetSimulator());
-    this.setupTactileButton('btn-voice', () => this.voice.toggle());
-    this.setupTactileButton('btn-scenario', () => this.toggleScenario());
-    this.setupTactileButton('warn-left', () => window.pressSingleWarning(), { preventDefaultOnDown: true });
-    this.setupTactileButton('warn-right', () => window.pressSingleWarning(), { preventDefaultOnDown: true });
-    this.setupTactileButton('safety-switch', () => window.toggleSafety(), { preventDefaultOnDown: true });
-
-    // Top VR quick-bar controls
+    // Discreet menu trigger & fail reset
     this.setupTactileButton('vr-btn-menu', () => {
+      this.lockLandscapeOrientation();
       if (this.vrMenuState === 'closed') {
         this.openVRPauseMenu();
       } else if (this.vrMenuState === 'pause') {
@@ -994,103 +1066,28 @@ export class TaserVRApp {
         this.openVRStartMenu();
       }
     }, { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-gamepad', () => this.openGamepadCalibration(), { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-place', () => {
-      if (this.isLiveAIRunning()) {
-        this.showHudToast('Avsluta Live AI först för att placera 3D-mål', '#f1c40f');
-        return;
-      }
-      if (this.isPlacementActive()) {
-        this.confirmPlacement();
-      } else {
-        this.togglePlaceMode();
-      }
-    }, { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-stereo', () => this.toggleStereoSplit(), { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-webxr', () => {
-      if (this.xr && this.xr.xrSession) {
-        this.xr.endXRSession();
-      } else {
-        this.openModal('scenario-modal');
-      }
-    }, { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-live-ai', () => {
-      if (this.isLiveAIRunning()) {
-        this.stopRealPersonAI();
-      } else {
-        this.startRealPersonAI();
-      }
-    }, { xrAction: true });
-    this.setupTactileButton('vr-btn-voice', () => this.voice.toggle(), { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-gyro', () => this.initGyro(), { preventDefaultOnDown: true });
-    this.setupTactileButton('vr-btn-hand', () => this.cycleHandPreference(), { preventDefaultOnDown: true });
-    this.updateHandPreferenceUI();
-    this.setupTactileButton('vr-btn-weapon-mode', () => this.toggleWeaponLockMode(), { preventDefaultOnDown: true });
-    this.updateWeaponModeUI();
-    this.updateWeaponTrackBadge();
-    this.setupTactileButton('vr-btn-fullscreen', () => this.toggleFullscreenAndLandscape(), { useClick: true });
-    this.setupTactileButton('vr-btn-hide-hud', () => this.toggleHudVisibility(), { preventDefaultOnDown: true });
 
-    // Bluetooth Gamepad Calibration ("MAPPA KNAPPAR") controls
-    this.setupTactileButton('btn-close-gamepad', () => this.closeModal('gamepad-modal'), { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-close-gamepad-footer', () => this.closeModal('gamepad-modal'), { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-gp-reset-map', () => this.resetGamepadMapping(), { preventDefaultOnDown: true });
-    document.querySelectorAll('#gamepad-map-list .gp-map-row').forEach((row) => {
-      this.setupTactileButton(row, () => {
-        const action = row.getAttribute('data-map-action');
-        this.startGamepadButtonListen(action);
+    this.setupTactileButton('btn-fail-reset', () => this.resetSimulator());
+    this.setupTactileButton('btn-place-xr', () => this.confirmPlacement(), { preventDefaultOnDown: true });
+
+    // Compact 4-choice VR Menu DOM buttons (mirrored left/right eye + resume header trigger)
+    document.querySelectorAll('#vr-menu-overlay [data-vr-action]').forEach((btn) => {
+      this.setupTactileButton(btn, () => {
+        this.lockLandscapeOrientation();
+        const idx = Number(btn.getAttribute('data-vr-idx'));
+        if (!Number.isNaN(idx)) {
+          this.vrMenuSelectedIndex = idx;
+          this.updateDOMVRMenuSelection();
+        }
+        this.activateVRMenuSelection(idx);
       }, { preventDefaultOnDown: true });
     });
-    const chkDebugHud = document.getElementById('chk-bt-debug-hud');
-    if (chkDebugHud) {
-      this._showBtDebugHud = chkDebugHud.checked;
-      chkDebugHud.addEventListener('change', () => {
-        this._showBtDebugHud = !!chkDebugHud.checked;
-        this.updateBluetoothStatusUI(this._getActiveGamepad());
-      });
-    }
-    this.updateGamepadMappingUI();
 
-    // WebXR & Live AI grip actions
-    this.setupTactileButton('btn-place-xr', () => this.confirmPlacement(), { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-xr-move-target', () => this.togglePlaceMode(), { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-xr-exit', () => {
-      if (this.xr && this.xr.xrSession) {
-        this.xr.endXRSession();
-      } else {
-        this.onXRSessionEnd();
-      }
-    }, { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-live-ar-exit', () => this.stopRealPersonAI(), { preventDefaultOnDown: true });
-
-    // Scenario Modal buttons
-    this.setupTactileButton('btn-close-scenario', () => this.closeModal('scenario-modal'), { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-cancel-scenario', () => this.closeModal('scenario-modal'), { preventDefaultOnDown: true });
-    this.setupTactileButton('btn-start-real-person-xr', () => this.startRealPersonAI(), {
-      xrAction: true,
-      loadingText: '⏳ STARTAR LIVE AI...'
-    });
-    this.setupTactileButton('btn-xr-static', () => this.startWebXR('static'), {
-      xrAction: true,
-      loadingText: '⏳ STARTAR AR...'
-    });
-    this.setupTactileButton('btn-xr-moving', () => this.startWebXR('moving'), {
-      xrAction: true,
-      loadingText: '⏳ STARTAR AR...'
-    });
-    this.setupTactileButton('btn-xr-charging', () => this.startWebXR('charging'), {
-      xrAction: true,
-      loadingText: '⏳ STARTAR AR...'
-    });
-
-    // Modal backdrop close
-    document.querySelectorAll('.modal-overlay').forEach((modal) => {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          if (performance.now() - (this._lastModalOpenAt || 0) < 420) return;
-          this.closeModal(modal.id);
-        }
-      });
+    document.querySelectorAll('#vr-menu-overlay [data-vr-resume]').forEach((btn) => {
+      this.setupTactileButton(btn, () => {
+        this.lockLandscapeOrientation();
+        this.closeVRMenu();
+      }, { preventDefaultOnDown: true });
     });
 
     // Floor placement tap
@@ -1099,43 +1096,36 @@ export class TaserVRApp {
       placementTarget.addEventListener('pointerdown', (e) => {
         if (!this.xr.isPlacing || !this.xr.placeMode) return;
         if (e.target && e.target.closest && e.target.closest('button')) return;
-        if (this.xr.xrSession) {
-          this.confirmPlacement();
-        } else {
-          const rect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-          const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-          const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-          const hits = this.scene.setPlacementFromScreen(x, y);
-          if (hits.length > 0 && this.scene.placementMarker) {
-            this.scene.placementMarker.position.copy(hits[0].point);
-            this.scene.placementMarker.position.y += 0.01;
-            this.scene.placementMarker.visible = true;
-          }
+        const rect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const hits = this.scene.setPlacementFromScreen(x, y);
+        if (hits.length > 0 && this.scene.placementMarker) {
+          this.scene.placementMarker.position.copy(hits[0].point);
+          this.scene.placementMarker.position.y += 0.01;
+          this.scene.placementMarker.visible = true;
         }
       });
     }
 
-    // Protect DOM overlay buttons from triggering WebXR scene select
-    document.addEventListener('beforexrselect', (e) => {
-      if (
-        e.target &&
-        e.target.closest &&
-        e.target.closest('#main-container, .taser-device, .sim-controls, #vr-top-bar, #btn-place-xr, .modal-overlay, #fail-overlay, button, .action-btn, .safety-switch, .warning-btn')
-      ) {
-        e.preventDefault();
-      }
-    }, true);
-
-    // Sync Three.js 78° FOV & sharp DPR on resize / orientation change
+    // Dynamic landscape check + Three.js projection / StereoEffect sync on resize & orientationchange
     const syncProjectionOnResize = () => {
+      this.updatePortraitFallbackPrompt();
       if (this.scene) this.scene.onResize();
       this.applyVRCameraProjection();
       this.updateProjectors();
+      this.updateMinimalHud();
     };
     window.addEventListener('resize', syncProjectionOnResize);
     window.addEventListener('orientationchange', () => {
       setTimeout(syncProjectionOnResize, 120);
+      setTimeout(syncProjectionOnResize, 360);
     });
+    if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.addEventListener === 'function') {
+      screen.orientation.addEventListener('change', () => {
+        setTimeout(syncProjectionOnResize, 80);
+      });
+    }
 
     // Bluetooth Gamepad status & Keyboard/VR Remote controls
     this.initBluetoothAndKeyboardInputs();
@@ -2273,8 +2263,8 @@ export class TaserVRApp {
         this.fsm.startCycle('NMI påbörjad...', 'DARTS');
 
         // Send live hit to connected Marker in Firestore
-        if (isLiveARActive && this.liveARRoomCode) {
-          this.sendFirebaseLiveHit('Markör-träff');
+        if (this.liveARRoomCode) {
+          this.sendFirebaseLiveHit(isLiveARActive ? 'Markör-träff' : 'VR NMI-träff');
         }
 
         if (this.threatInterval) clearInterval(this.threatInterval);
@@ -2704,6 +2694,35 @@ export class TaserVRApp {
     return combined;
   }
 
+  updateMinimalHud() {
+    const isSafe = !!(this.fsm && this.fsm.isSafe);
+    const safetyText = `SÄKRING: ${isSafe ? 'SÄKRAD' : 'OSÄKRAD'}`;
+    ['hud-safety-left', 'hud-safety-right'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = safetyText;
+      el.classList.toggle('safe', isSafe);
+      el.classList.toggle('unsafe', !isSafe);
+    });
+
+    const isLiveAR = this.isLiveAIRunning();
+    const activeDist = (isLiveAR && this.aiPose && this.aiPose.isPersonDetected && typeof this.aiPose.estimatedDistance === 'number')
+      ? this.aiPose.estimatedDistance
+      : (this.currentDistance || 3.0);
+    const distText = `AVSTÅND: ${Number(activeDist).toFixed(1)} M`;
+    ['hud-dist-left', 'hud-dist-right'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = distText;
+    });
+
+    const code = this.ensureLiveARRoomCode();
+    const codeText = `KOD: ${code}`;
+    ['hud-code-left', 'hud-code-right'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = codeText;
+    });
+  }
+
   updateAimVisuals() {
     const isLiveAR = this.isLiveAIRunning();
     const activeDist = (isLiveAR && this.aiPose && this.aiPose.isPersonDetected && typeof this.aiPose.estimatedDistance === 'number')
@@ -2733,6 +2752,7 @@ export class TaserVRApp {
       laserRed.style.left = `calc(50% + ${dx.toFixed(2)}px)`;
       laserRed.style.top = `calc(50% + ${dy.toFixed(2)}px)`;
     }
+    this.updateMinimalHud();
   }
 
   renderIconsHTML() {
@@ -2770,34 +2790,16 @@ export class TaserVRApp {
   updateDisplay() {
     if (this.fsm.cycleTimer) return;
     this.updateAimVisuals();
+    this.updateMinimalHud();
 
     if (window.state) {
       window.state.isSafe = !!this.fsm.isSafe;
       window.state.functionCheckMode = !!this.fsm.functionCheckMode;
     }
 
-    const dEl = document.getElementById('taser-display');
-    if (!dEl) return;
-
-    if (!this.fsm.hasBattery || this.fsm.isSafe) {
-      dEl.innerHTML = '';
-      dEl.className = 'display-screen';
-      document.body.classList.remove('function-check-active');
-      document.documentElement.classList.remove('function-check-active');
-      this.updateProjectors();
-      this.syncWeaponOverlays(this.fsm);
-      return;
-    }
-
-    dEl.classList.toggle('dimmed', this.fsm.stealthMode);
-    const isFunkMode = !!this.fsm.functionCheckMode;
+    const isFunkMode = !this.fsm.isSafe && this.fsm.hasBattery && !!this.fsm.functionCheckMode;
     document.body.classList.toggle('function-check-active', isFunkMode);
     document.documentElement.classList.toggle('function-check-active', isFunkMode);
-
-    dEl.classList.toggle('oled-inverted', isFunkMode);
-    dEl.classList.toggle('funk-mode', isFunkMode);
-    dEl.classList.toggle('inverted', isFunkMode);
-    dEl.innerHTML = this.renderIconsHTML();
 
     this.updateProjectors();
     this.syncWeaponOverlays(this.fsm);
@@ -3186,6 +3188,15 @@ export class TaserVRApp {
     return this.liveARRoomCode;
   }
 
+  createFirebaseSessionIfNeeded() {
+    const code = this.ensureLiveARRoomCode();
+    if (this._firebaseSessionCreatedForCode === code) return;
+    if (window.taserFirebase && typeof window.taserFirebase.createSession === 'function') {
+      this._firebaseSessionCreatedForCode = code;
+      window.taserFirebase.createSession(code).catch(() => {});
+    }
+  }
+
   async startRealPersonAI(options = {}) {
     this.closeModal('scenario-modal');
     if (this.vrMenuState !== 'closed') {
@@ -3329,15 +3340,409 @@ export class TaserVRApp {
   }
 
   // =========================================================================
-  // 9. WEBXR (IMMERSIVE-AR) SUPPORT & FLOOR PLACEMENT
+  // 9. SAFE WEBXR (IMMERSIVE-AR/VR), CONTEXT LOSS PROTECTION & FALLBACKS
   // =========================================================================
-  async startWebXR(type = 'static') {
-    this.stopHandTracking();
-    const res = await this.xr.startXR(type);
-    this.closeModal('scenario-modal');
-    if (res && res.success === false) {
-      this.startVirtualScenario(type);
+  setWebXRStatus(text, tone = 'info') {
+    const el = document.getElementById('vr-xr-status');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('xr-active', 'xr-fallback', 'xr-error');
+    if (tone === 'active') el.classList.add('xr-active');
+    else if (tone === 'fallback') el.classList.add('xr-fallback');
+    else if (tone === 'error') el.classList.add('xr-error');
+  }
+
+  setupWebGLContextHandlers() {
+    const dom = this.scene && this.scene.renderer && this.scene.renderer.domElement;
+    if (!dom || this._webglHandlersBound) return;
+    this._webglHandlersBound = true;
+
+    dom.addEventListener('webglcontextlost', (event) => {
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+      this._webglContextLost = true;
+      this.handSending = false;
+      this.setWebXRStatus('⚠️ WebGL återhämtar...', 'error');
+      this.log("<span style='color:#e74c3c;'>⚠️ WebGL-kontext förlorad — pausar rendering och återställer säkert.</span>");
+    }, false);
+
+    dom.addEventListener('webglcontextrestored', () => {
+      this._webglContextLost = false;
+      if (this.scene) {
+        this.scene.enableARMode();
+        this.applyVRCameraProjection();
+        const w = this.scene.container?.clientWidth || window.innerWidth || 1;
+        const h = this.scene.container?.clientHeight || window.innerHeight || 1;
+        if (this.stereoEffect && w > 0 && h > 0) {
+          this.stereoEffect.setSize(w, h);
+        }
+      }
+      this._cidLastKey = '';
+      this._vrGazeLastKey = '';
+      if (this.cidTexture) this.cidTexture.needsUpdate = true;
+      if (this.vrGazeReticleTexture) {
+        this.vrGazeReticleTexture.needsUpdate = true;
+        this.drawGazeReticleCanvas(0, false);
+      }
+      if (this.vrMenuHeaderRef) {
+        this.vrMenuHeaderRef.lastDrawKey = '';
+        this.drawVRHeaderPanel(this.vrMenuHeaderRef);
+        if (this.vrMenuHeaderRef.texture) this.vrMenuHeaderRef.texture.needsUpdate = true;
+      }
+      if (Array.isArray(this.vrMenuCardRefs)) {
+        this.vrMenuCardRefs.forEach((c, idx) => {
+          if (c) {
+            c.lastDrawKey = '';
+            this.drawVRCardPanel(c, idx === this.vrMenuSelectedIndex, 0);
+            if (c.texture) c.texture.needsUpdate = true;
+          }
+        });
+      }
+      this.syncWeaponOverlays(this.fsm, this._cidActiveCycleCount || 0);
+      this.setWebXRStatus('🌐 XR: Redo (Stereo + Gyro)', 'fallback');
+      this.log("<span style='color:#2ecc71;'>✅ WebGL-kontext återställd.</span>");
+    }, false);
+  }
+
+  disposeTransientXRResources() {
+    if (this.scene) {
+      try {
+        this.scene.clearWiresAndDarts();
+      } catch (_) {}
+      if (this.scene.placementMarker) {
+        this.scene.placementMarker.visible = false;
+        this.scene.placementMarker.scale.set(1, 1, 1);
+      }
+      if (this.scene.reticle) {
+        this.scene.reticle.visible = false;
+      }
     }
+    this.stopWeaponArcEffect();
+    this._lastWeaponArcGeoTs = 0;
+  }
+
+  async checkVRXRSupport() {
+    if (typeof navigator === 'undefined' || !navigator.xr || typeof navigator.xr.isSessionSupported !== 'function') {
+      this._xrSupportsAR = false;
+      this._xrSupportsVR = false;
+      if (this.xr) this.xr.xrSupported = false;
+      this.setWebXRStatus('🌐 XR: Ej tillgänglig (Stereo+Gyro)', 'fallback');
+      return { ar: false, vr: false };
+    }
+
+    let ar = false;
+    let vr = false;
+    try {
+      ar = await navigator.xr.isSessionSupported('immersive-ar');
+    } catch (_) {
+      ar = false;
+    }
+    try {
+      vr = await navigator.xr.isSessionSupported('immersive-vr');
+    } catch (_) {
+      vr = false;
+    }
+
+    this._xrSupportsAR = !!ar;
+    this._xrSupportsVR = !!vr;
+    if (this.xr) this.xr.xrSupported = !!(ar || vr);
+
+    if (ar) {
+      this.setWebXRStatus('🌐 XR: AR Redo', 'info');
+    } else if (vr) {
+      this.setWebXRStatus('🌐 XR: VR Redo', 'info');
+    } else {
+      this.setWebXRStatus('🌐 XR: Stereo + Gyro', 'fallback');
+    }
+    return { ar, vr };
+  }
+
+  installSafeVRWebXROverrides() {
+    if (!this.xr) return;
+    const origHandleXRFrame = this.xr.handleXRFrame ? this.xr.handleXRFrame.bind(this.xr) : null;
+
+    this.xr.checkXRSupport = async () => {
+      const res = await this.checkVRXRSupport();
+      return !!(res.ar || res.vr);
+    };
+
+    this.xr.startXR = async (scenario = 'static') => this.startSafeVRWebXR(scenario);
+    this.xr.endXRSession = async () => this.endSafeVRWebXR();
+    this.xr.onSessionEnded = () => this.handleSafeXRSessionEnded();
+
+    if (origHandleXRFrame) {
+      this.xr.handleXRFrame = (timestamp, frame, activeCamera) => {
+        if (!this.xr || !this.xr.xrSession || !frame || this._webglContextLost) return;
+        const renderer = this.scene && this.scene.renderer;
+        if (!renderer || !renderer.xr || !renderer.xr.isPresenting) return;
+
+        // Safe hit-test request with active session check (prevents unhandled rejection after session end)
+        if (!this.xr.hitTestSourceRequested) {
+          this.xr.hitTestSourceRequested = true;
+          this.xr.hasHitTestPose = false;
+          const activeSession = this.xr.xrSession;
+          if (typeof activeSession.requestReferenceSpace === 'function' && typeof activeSession.requestHitTestSource === 'function') {
+            activeSession.requestReferenceSpace('viewer')
+              .then((viewerSpace) => {
+                if (this.xr.xrSession !== activeSession) return null;
+                return activeSession.requestHitTestSource({ space: viewerSpace });
+              })
+              .then((source) => {
+                if (source && this.xr.xrSession === activeSession) {
+                  this.xr.xrHitTestSource = source;
+                } else if (source && typeof source.cancel === 'function') {
+                  try { source.cancel(); } catch (_) {}
+                }
+              })
+              .catch((err) => {
+                this.xr.xrHitTestSource = null;
+                this.xr.hasHitTestPose = false;
+                this.log(`<span style='color:#f39c12;'>ℹ️ WebXR hit-test ej stödd (${err?.message || 'fallback till D-pad'}).</span>`);
+              });
+          }
+        }
+
+        try {
+          origHandleXRFrame(timestamp, frame, activeCamera);
+        } catch (err) {
+          this.xr.xrHitTestSource = null;
+          this.xr.latestEnvHit = null;
+        }
+      };
+    }
+  }
+
+  activateStereoGyroFallback(scenario = 'static', reasonText = 'WebXR ej tillgänglig') {
+    this._activeXRSessionMode = null;
+    if (this.xr) {
+      this.xr.xrSession = null;
+      this.xr.xrHitTestSource = null;
+      this.xr.hitTestSourceRequested = false;
+      this.xr.latestEnvHit = null;
+    }
+    const renderer = this.scene && this.scene.renderer;
+    if (renderer && renderer.xr) {
+      try { renderer.xr.setSession(null); } catch (_) {}
+      renderer.xr.enabled = false;
+    }
+
+    document.body.classList.remove('webxr-mode', 'ar-combat-mode');
+    document.documentElement.classList.remove('webxr-mode', 'ar-combat-mode');
+
+    this.enableStereoVR();
+    this.scene.enableARMode();
+    this.initGyro(true);
+    this.startCameraPassThrough();
+    this.startVirtualScenario(scenario);
+
+    const shortReason = String(reasonText || 'Fallback').slice(0, 46);
+    this.setWebXRStatus(`🌐 XR Fallback: ${shortReason}`, 'fallback');
+    this.showHudToast(`🥽 Stereo + Gyro + Kamera aktiv (${shortReason})`, '#f1c40f');
+    this.log(`<span style='color:#f1c40f;'>ℹ️ WebXR-fallback till Stereo + Gyro + Kamera: ${shortReason}</span>`);
+  }
+
+  async bindSessionToRendererWithFallback(renderer, session) {
+    renderer.xr.enabled = true;
+    const refTypes = ['local-floor', 'local', 'viewer'];
+    let lastErr = null;
+    for (const refType of refTypes) {
+      try {
+        renderer.xr.setReferenceSpaceType(refType);
+        await renderer.xr.setSession(session);
+        return refType;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('Kunde inte binda WebXR-referensrymd');
+  }
+
+  async startSafeVRWebXR(scenario = 'static') {
+    if (this.xr) {
+      this.xr.scenario = scenario;
+      this.xr.resetScenarioState();
+    }
+
+    if (this._webglContextLost) {
+      this.activateStereoGyroFallback(scenario, 'WebGL återhämtas');
+      return { success: false, fallback: true, scenario, reason: 'webgl-context-lost' };
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.xr || typeof navigator.xr.requestSession !== 'function') {
+      this.activateStereoGyroFallback(scenario, 'WebXR saknas i webbläsaren');
+      return { success: false, fallback: true, scenario, reason: 'not-supported' };
+    }
+
+    // Stop Live AI & MediaPipe & getUserMedia tracks BEFORE requesting AR session to avoid camera HAL lock
+    if (this.aiPose && this.aiPose.isActive) {
+      try { this.aiPose.stop(); } catch (_) {}
+    }
+    this.stopHandTracking();
+    this.stopCameraPassThrough();
+    this.disposeTransientXRResources();
+
+    document.body.classList.remove('live-ai-active', 'live-ar-active');
+    document.documentElement.classList.remove('live-ai-active', 'live-ar-active');
+    const liveTargetEl = document.getElementById('live-target-overlay');
+    if (liveTargetEl) liveTargetEl.style.display = 'none';
+
+    if (this.xr && this.xr.xrSession) {
+      try {
+        this.xr.xrSession.end().catch(() => {});
+      } catch (_) {}
+      this.xr.xrSession = null;
+    }
+
+    // Use pre-cached support flags when available so transient user activation is never lost before requestSession
+    let arSupported = this._xrSupportsAR;
+    let vrSupported = this._xrSupportsVR;
+    if (arSupported === undefined || vrSupported === undefined) {
+      try {
+        arSupported = (typeof navigator.xr.isSessionSupported === 'function')
+          ? await navigator.xr.isSessionSupported('immersive-ar')
+          : false;
+      } catch (_) {
+        arSupported = false;
+      }
+      try {
+        vrSupported = (!arSupported && typeof navigator.xr.isSessionSupported === 'function')
+          ? await navigator.xr.isSessionSupported('immersive-vr')
+          : false;
+      } catch (_) {
+        vrSupported = false;
+      }
+    }
+
+    if (!arSupported && !vrSupported) {
+      this.activateStereoGyroFallback(scenario, 'Enhet saknar WebXR AR/VR');
+      return { success: false, fallback: true, scenario, reason: 'not-supported' };
+    }
+
+    const buildSessionOptions = (includeHitTest) => {
+      const optionalFeatures = ['local-floor', 'bounded-floor', 'local'];
+      if (includeHitTest) optionalFeatures.push('hit-test');
+      const opts = { optionalFeatures };
+      if (typeof document !== 'undefined' && document.body) {
+        optionalFeatures.push('dom-overlay');
+        opts.domOverlay = { root: document.body };
+      }
+      return opts;
+    };
+
+    let session = null;
+    let sessionMode = null;
+    let failureReason = '';
+
+    if (arSupported) {
+      try {
+        session = await navigator.xr.requestSession('immersive-ar', buildSessionOptions(true));
+        sessionMode = 'immersive-ar';
+      } catch (errAR) {
+        failureReason = errAR?.message || errAR?.name || 'immersive-ar nekad';
+      }
+    }
+
+    if (!session && vrSupported) {
+      try {
+        session = await navigator.xr.requestSession('immersive-vr', buildSessionOptions(false));
+        sessionMode = 'immersive-vr';
+      } catch (errVR) {
+        failureReason = errVR?.message || errVR?.name || failureReason || 'immersive-vr nekad';
+      }
+    }
+
+    if (!session) {
+      this.activateStereoGyroFallback(scenario, failureReason || 'Session nekad');
+      return { success: false, fallback: true, scenario, reason: failureReason || 'session-rejected' };
+    }
+
+    try {
+      this._activeXRSessionMode = sessionMode;
+      this.xr.xrSession = session;
+      this.xr.hitTestSourceRequested = false;
+      this.xr.xrHitTestSource = null;
+      this.xr.latestEnvHit = null;
+
+      this.scene.enableARMode();
+      const renderer = this.scene.renderer;
+      const boundRefSpace = await this.bindSessionToRendererWithFallback(renderer, session);
+
+      this._xrSessionEndedHandler = () => this.handleSafeXRSessionEnded();
+      session.addEventListener('end', this._xrSessionEndedHandler, { once: true });
+
+      this.setWebXRStatus(`🌐 XR: ${sessionMode === 'immersive-ar' ? 'AR' : 'VR'} (${boundRefSpace})`, 'active');
+      this.onXRSessionStart(session, scenario);
+      this.log(`<span style='color:#2ecc71;'>🌐 WebXR (${sessionMode}, ref=${boundRefSpace}) startad i scenario: ${scenario}</span>`);
+      return { success: true, session, scenario, refSpace: boundRefSpace };
+    } catch (bindErr) {
+      try { await session.end(); } catch (_) {}
+      this.activateStereoGyroFallback(scenario, bindErr?.message || 'WebXR bind-fel');
+      return { success: false, fallback: true, scenario, error: bindErr };
+    }
+  }
+
+  async endSafeVRWebXR() {
+    const sess = this.xr && this.xr.xrSession;
+    if (!sess) {
+      this.handleSafeXRSessionEnded();
+      return;
+    }
+    try {
+      await sess.end();
+    } catch (err) {
+      this.log(`<span style='color:#f39c12;'>ℹ️ WebXR avslutad (${err?.message || 'redan stängd'})</span>`);
+      this.handleSafeXRSessionEnded();
+    }
+  }
+
+  handleSafeXRSessionEnded() {
+    const prevSession = this.xr ? this.xr.xrSession : null;
+    if (prevSession) {
+      if (this._xrSelectStartBound) {
+        try { prevSession.removeEventListener('selectstart', this._xrSelectStartBound); } catch (_) {}
+      }
+      if (this._xrSqueezeStartBound) {
+        try { prevSession.removeEventListener('squeezestart', this._xrSqueezeStartBound); } catch (_) {}
+      }
+    }
+    this._xrSelectStartBound = null;
+    this._xrSqueezeStartBound = null;
+    this._activeXRSessionMode = null;
+
+    if (this.xr) {
+      if (this.xr.xrHitTestSource && typeof this.xr.xrHitTestSource.cancel === 'function') {
+        try { this.xr.xrHitTestSource.cancel(); } catch (_) {}
+      }
+      this.xr.xrSession = null;
+      this.xr.hitTestSourceRequested = false;
+      this.xr.xrHitTestSource = null;
+      this.xr.xrRefSpace = null;
+      this.xr.latestEnvHit = null;
+      this.xr.isPlacing = false;
+      this.xr.placeMode = false;
+      this.xr.figureLocked = true;
+    }
+
+    const renderer = this.scene && this.scene.renderer;
+    if (renderer && renderer.xr) {
+      try { renderer.xr.setSession(null); } catch (_) {}
+      renderer.xr.enabled = false;
+    }
+
+    this.disposeTransientXRResources();
+    this.onXRSessionEnd();
+  }
+
+  async startWebXR(type = 'static') {
+    // Använd alltid stabil kamera-passthrough + StereoEffect istället för kraschande immersive-ar
+    this.closeVRMenu();
+    this.enableStereoVR();
+    this.scene.enableARMode();
+    this.initGyro(true);
+    await this.startCameraPassThrough();
+    this.startVirtualScenario(type || 'static');
+    return { success: true, fallback: false, scenario: type };
   }
 
   startVirtualScenario(type = 'static', options = {}) {
@@ -3355,6 +3760,7 @@ export class TaserVRApp {
       savedRotY = this.scene.taserGroup.rotation.y;
     }
 
+    this.disposeTransientXRResources();
     this.scene.resetTarget();
     this.scene.set3DVisibility(true);
     this.scene.enableARMode();
@@ -3467,10 +3873,7 @@ export class TaserVRApp {
     this.xr.isPlacing = false;
     this.xr.placeMode = false;
     this.xr.figureLocked = true;
-    if (this.scene && this.scene.placementMarker) {
-      this.scene.placementMarker.visible = false;
-      this.scene.placementMarker.scale.set(1, 1, 1);
-    }
+    this.disposeTransientXRResources();
 
     const btnPlaceXr = document.getElementById('btn-place-xr');
     if (btnPlaceXr) btnPlaceXr.style.display = 'none';
@@ -3487,15 +3890,19 @@ export class TaserVRApp {
       btnWebXR.classList.remove('active-pill');
     }
 
-    this.scene.clearWiresAndDarts();
+    this.setWebXRStatus('🌐 XR: Stereo + Gyro', 'fallback');
     this.scene.resetTarget();
     this.stopScenario();
+    this.enableStereoVR();
+    this.initGyro(true);
     this.updateDisplay();
 
-    // Restore stereo passthrough camera after WebXR releases camera HAL
+    // Restore stereo passthrough camera cleanly after WebXR releases camera HAL
     setTimeout(() => {
-      this.startCameraPassThrough();
-      this.scene.enableARMode();
+      if (!this.xr?.xrSession && !this._webglContextLost) {
+        this.startCameraPassThrough();
+        this.scene.enableARMode();
+      }
     }, 250);
   }
 
@@ -4275,23 +4682,27 @@ export class TaserVRApp {
       return;
     }
 
-    const pts = this.weaponArcCurvePoints;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const t = i / (pts.length - 1);
-      pts[i].set(
-        -0.015 + 0.03 * t + (Math.random() - 0.5) * 0.0025,
-        (Math.random() - 0.5) * 0.007,
-        (Math.random() - 0.5) * 0.005
-      );
-    }
-    const curve = new THREE.CatmullRomCurve3(pts);
-    if (this.weaponArcTubeMesh) {
-      if (this.weaponArcTubeMesh.geometry) this.weaponArcTubeMesh.geometry.dispose();
-      this.weaponArcTubeMesh.geometry = new THREE.TubeGeometry(curve, 12, 0.0021, 6, false);
-    }
-    if (this.weaponArcCoreMesh) {
-      if (this.weaponArcCoreMesh.geometry) this.weaponArcCoreMesh.geometry.dispose();
-      this.weaponArcCoreMesh.geometry = new THREE.TubeGeometry(curve, 12, 0.0009, 6, false);
+    const now = performance.now();
+    if (now - (this._lastWeaponArcGeoTs || 0) >= 48) {
+      this._lastWeaponArcGeoTs = now;
+      const pts = this.weaponArcCurvePoints;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const t = i / (pts.length - 1);
+        pts[i].set(
+          -0.015 + 0.03 * t + (Math.random() - 0.5) * 0.0025,
+          (Math.random() - 0.5) * 0.007,
+          (Math.random() - 0.5) * 0.005
+        );
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      if (this.weaponArcTubeMesh) {
+        if (this.weaponArcTubeMesh.geometry) this.weaponArcTubeMesh.geometry.dispose();
+        this.weaponArcTubeMesh.geometry = new THREE.TubeGeometry(curve, 10, 0.0021, 5, false);
+      }
+      if (this.weaponArcCoreMesh) {
+        if (this.weaponArcCoreMesh.geometry) this.weaponArcCoreMesh.geometry.dispose();
+        this.weaponArcCoreMesh.geometry = new THREE.TubeGeometry(curve, 10, 0.0009, 5, false);
+      }
     }
     if (this.weaponArcLight) {
       this.weaponArcLight.intensity = 1.8 + Math.random() * 2.6;
@@ -4361,161 +4772,169 @@ export class TaserVRApp {
     this.syncWeaponOverlays(this.fsm, this._cidActiveCycleCount || 0);
   }
 
+  initHandsInstance() {
+    if (this.handsInstance || typeof window.Hands !== 'function') return;
+    try {
+      this.handsInstance = new window.Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      this.handsInstance.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.55,
+        minTrackingConfidence: 0.5
+      });
+      this.handsInstance.onResults((results) => {
+        if (this.isLiveAIRunning() || this.weaponLockMode === 'locked_fallback' || this._webglContextLost) {
+          this._consecutiveHandFrames = 0;
+          return;
+        }
+        const landmarksList = (results && Array.isArray(results.multiHandLandmarks)) ? results.multiHandLandmarks : [];
+        if (landmarksList.length > 0) {
+          const handednessList = Array.isArray(results.multiHandedness) ? results.multiHandedness : [];
+          let chosenIdx = 0;
+          if (this.handPreference === 'right' || this.handPreference === 'left') {
+            const want = this.handPreference === 'right' ? 'right' : 'left';
+            const matchIdx = handednessList.findIndex((h) => String(h?.label || '').toLowerCase() === want);
+            if (matchIdx >= 0) {
+              chosenIdx = matchIdx;
+            } else {
+              this._consecutiveHandFrames = 0;
+              return;
+            }
+          }
+
+          const lm = landmarksList[chosenIdx];
+          const hLabel = handednessList[chosenIdx]?.label;
+          if (hLabel) this.detectedHandedness = hLabel;
+
+          // 3 kritiska landmarks: handled (0), pekfingrets knoge (5), lillfingrets knoge (17)
+          const wrist = lm[0];
+          const indexMcp = lm[5];
+          const pinkyMcp = lm[17];
+          if (!wrist || !indexMcp || !pinkyMcp) {
+            this._consecutiveHandFrames = 0;
+            return;
+          }
+
+          // Projektion från 2D kamera-rymd (FOV 78°) till 3D-kamerans lokala koordinatsystem
+          const width = this.scene?.container?.clientWidth || window.innerWidth || 1;
+          const height = this.scene?.container?.clientHeight || window.innerHeight || 1;
+          const fullAspect = width / Math.max(1, height);
+          const activeAspect = (this.isStereoVR && !(this.scene?.renderer?.xr?.isPresenting))
+            ? Math.max(0.45, fullAspect * 0.5)
+            : fullAspect;
+          const tanHalfFov = Math.tan(THREE.MathUtils.degToRad((this.vrFov || VR_CAMERA_FOV) * 0.5));
+
+          const palmSpan = Math.hypot(indexMcp.x - wrist.x, indexMcp.y - wrist.y);
+          const knuckleSpan = Math.hypot(indexMcp.x - pinkyMcp.x, indexMcp.y - pinkyMcp.y);
+          const apparentSize = Math.max(0.06, Math.min(0.45, palmSpan * 0.7 + knuckleSpan * 0.6));
+          const targetZ = Math.max(-0.92, Math.min(-0.44, -0.78 + (apparentSize - 0.16) * 0.85));
+
+          const anchorX = wrist.x * 0.35 + indexMcp.x * 0.65;
+          const anchorY = wrist.y * 0.35 + indexMcp.y * 0.65;
+          const ndcX = (anchorX - 0.5) * 2.0;
+          const ndcY = -(anchorY - 0.5) * 2.0;
+
+          const distAbs = Math.abs(targetZ);
+          const halfH = distAbs * tanHalfFov;
+          const halfW = halfH * activeAspect;
+
+          this.handTargetPos.set(
+            THREE.MathUtils.clamp(ndcX * halfW, -0.58, 0.58),
+            THREE.MathUtils.clamp(ndcY * halfH - 0.04, -0.38, 0.28),
+            targetZ
+          );
+
+          // Beräkna full 3D-orientering (pitch, yaw, roll) från handled (0) -> pekfinger (5) & lillfinger (17)
+          const fwd = this._handFwd.set(
+            (indexMcp.x - wrist.x) * 1.45,
+            -(indexMcp.y - wrist.y) * 1.45,
+            -Math.max(0.24, 0.44 + ((wrist.z || 0) - (indexMcp.z || 0)) * 1.25)
+          );
+          if (fwd.lengthSq() < 0.0001) fwd.set(0, 0, -1);
+          fwd.normalize();
+
+          const upRaw = this._handUp.set(
+            indexMcp.x - pinkyMcp.x,
+            -(indexMcp.y - pinkyMcp.y),
+            -((indexMcp.z || 0) - (pinkyMcp.z || 0)) * 0.35
+          );
+          if (upRaw.lengthSq() < 0.002) upRaw.set(0, 1, 0);
+
+          const rightVec = this._handRight.crossVectors(fwd, upRaw);
+          if (rightVec.lengthSq() < 0.0001) {
+            rightVec.set(1, 0, 0);
+          } else {
+            rightVec.normalize();
+          }
+          const orthoUp = this._handUp.crossVectors(rightVec, fwd).normalize();
+          const backVec = this._handBack.copy(fwd).negate();
+
+          this._handBasis.makeBasis(rightVec, orthoUp, backVec);
+          this.handTargetQuat.setFromRotationMatrix(this._handBasis);
+
+          // Kräv minst 3 konsekutiva godkända frames vid återgång från FALLBACK_READY
+          this._consecutiveHandFrames = Math.min(this.HAND_REACQUIRE_FRAMES + 1, (this._consecutiveHandFrames || 0) + 1);
+          if (this.weaponTrackState === 'FALLBACK_READY') {
+            if (this._consecutiveHandFrames >= this.HAND_REACQUIRE_FRAMES) {
+              this.lastHandSeenTime = performance.now();
+              this.weaponTrackState = 'HAND_TRACKED';
+              this._returnBlendRemaining = 0.4;
+            }
+          } else {
+            this.lastHandSeenTime = performance.now();
+            this.weaponTrackState = 'HAND_TRACKED';
+          }
+        } else {
+          // Tappad hand i denna frame: nollställ bekräftelseräknaren; frys/fallback sköts av updateWeaponPose
+          this._consecutiveHandFrames = 0;
+        }
+      });
+    } catch (_) {
+      this.handsInstance = null;
+    }
+  }
+
   startHandTracking(videoEl) {
     if (this.isLiveAIRunning() || this.isSyntheticPassthrough || typeof window.Hands !== 'function') {
       this.stopHandTracking();
       return;
     }
-    if (this.handLoopActive) return;
+    this._handVideoEl = videoEl || document.getElementById('camera-feed-left');
+    this._handConsecutiveErrors = 0;
     this.handLoopActive = true;
+    this.initHandsInstance();
+  }
 
-    const pump = async (now) => {
-      if (!this.handLoopActive || this.isLiveAIRunning()) {
-        this.stopHandTracking();
-        return;
+  async tickHandTracking(nowPerf) {
+    if (!this.handLoopActive || this._webglContextLost) return;
+    if (this.isLiveAIRunning() || this.weaponLockMode === 'locked_fallback' || this.vrMenuState !== 'closed') return;
+    if (this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting) return;
+
+    const v = this._handVideoEl || document.getElementById('camera-feed-left');
+    if (!v || !v.srcObject || v.readyState < 2 || v.videoWidth <= 0 || v.videoHeight <= 0 || v.paused || v.ended) return;
+
+    if (!this.handsInstance) {
+      this.initHandsInstance();
+    }
+    if (!this.handsInstance || this.handSending || nowPerf - this.lastHandSendTime < 33) return;
+
+    this.handSending = true;
+    this.lastHandSendTime = nowPerf;
+    try {
+      await this.handsInstance.send({ image: v });
+      this._handConsecutiveErrors = 0;
+    } catch (_) {
+      this._handConsecutiveErrors = (this._handConsecutiveErrors || 0) + 1;
+      if (this._handConsecutiveErrors >= 6) {
+        this.handLoopActive = false;
+        this._consecutiveHandFrames = 0;
+        this.weaponTrackState = 'FALLBACK_READY';
       }
-      requestAnimationFrame(pump);
-
-      // Pausa inferens när användaren låst vapnet i höft-/siktläge
-      if (this.weaponLockMode === 'locked_fallback') return;
-
-      const v = videoEl || document.getElementById('camera-feed-left');
-      if (!v || v.readyState < 2 || v.videoWidth <= 0 || v.paused) return;
-
-      if (!this.handsInstance) {
-        try {
-          this.handsInstance = new window.Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-          });
-          this.handsInstance.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 0,
-            minDetectionConfidence: 0.55,
-            minTrackingConfidence: 0.5
-          });
-          this.handsInstance.onResults((results) => {
-            if (this.isLiveAIRunning() || this.weaponLockMode === 'locked_fallback') {
-              this._consecutiveHandFrames = 0;
-              return;
-            }
-            const landmarksList = (results && Array.isArray(results.multiHandLandmarks)) ? results.multiHandLandmarks : [];
-            if (landmarksList.length > 0) {
-              const handednessList = Array.isArray(results.multiHandedness) ? results.multiHandedness : [];
-              let chosenIdx = 0;
-              if (this.handPreference === 'right' || this.handPreference === 'left') {
-                const want = this.handPreference === 'right' ? 'right' : 'left';
-                const matchIdx = handednessList.findIndex((h) => String(h?.label || '').toLowerCase() === want);
-                if (matchIdx >= 0) {
-                  chosenIdx = matchIdx;
-                } else {
-                  this._consecutiveHandFrames = 0;
-                  return;
-                }
-              }
-
-              const lm = landmarksList[chosenIdx];
-              const hLabel = handednessList[chosenIdx]?.label;
-              if (hLabel) this.detectedHandedness = hLabel;
-
-              // 3 kritiska landmarks: handled (0), pekfingrets knoge (5), lillfingrets knoge (17)
-              const wrist = lm[0];
-              const indexMcp = lm[5];
-              const pinkyMcp = lm[17];
-              if (!wrist || !indexMcp || !pinkyMcp) {
-                this._consecutiveHandFrames = 0;
-                return;
-              }
-
-              // Projektion från 2D kamera-rymd (FOV 78°) till 3D-kamerans lokala koordinatsystem
-              const width = this.scene?.container?.clientWidth || window.innerWidth || 1;
-              const height = this.scene?.container?.clientHeight || window.innerHeight || 1;
-              const fullAspect = width / Math.max(1, height);
-              const activeAspect = (this.isStereoVR && !(this.scene?.renderer?.xr?.isPresenting))
-                ? Math.max(0.45, fullAspect * 0.5)
-                : fullAspect;
-              const tanHalfFov = Math.tan(THREE.MathUtils.degToRad((this.vrFov || VR_CAMERA_FOV) * 0.5));
-
-              const palmSpan = Math.hypot(indexMcp.x - wrist.x, indexMcp.y - wrist.y);
-              const knuckleSpan = Math.hypot(indexMcp.x - pinkyMcp.x, indexMcp.y - pinkyMcp.y);
-              const apparentSize = Math.max(0.06, Math.min(0.45, palmSpan * 0.7 + knuckleSpan * 0.6));
-              const targetZ = Math.max(-0.92, Math.min(-0.44, -0.78 + (apparentSize - 0.16) * 0.85));
-
-              const anchorX = wrist.x * 0.35 + indexMcp.x * 0.65;
-              const anchorY = wrist.y * 0.35 + indexMcp.y * 0.65;
-              const ndcX = (anchorX - 0.5) * 2.0;
-              const ndcY = -(anchorY - 0.5) * 2.0;
-
-              const distAbs = Math.abs(targetZ);
-              const halfH = distAbs * tanHalfFov;
-              const halfW = halfH * activeAspect;
-
-              this.handTargetPos.set(
-                THREE.MathUtils.clamp(ndcX * halfW, -0.58, 0.58),
-                THREE.MathUtils.clamp(ndcY * halfH - 0.04, -0.38, 0.28),
-                targetZ
-              );
-
-              // Beräkna full 3D-orientering (pitch, yaw, roll) från handled (0) -> pekfinger (5) & lillfinger (17)
-              const fwd = this._handFwd.set(
-                (indexMcp.x - wrist.x) * 1.45,
-                -(indexMcp.y - wrist.y) * 1.45,
-                -Math.max(0.24, 0.44 + ((wrist.z || 0) - (indexMcp.z || 0)) * 1.25)
-              );
-              if (fwd.lengthSq() < 0.0001) fwd.set(0, 0, -1);
-              fwd.normalize();
-
-              const upRaw = this._handUp.set(
-                indexMcp.x - pinkyMcp.x,
-                -(indexMcp.y - pinkyMcp.y),
-                -((indexMcp.z || 0) - (pinkyMcp.z || 0)) * 0.35
-              );
-              if (upRaw.lengthSq() < 0.002) upRaw.set(0, 1, 0);
-
-              const rightVec = this._handRight.crossVectors(fwd, upRaw);
-              if (rightVec.lengthSq() < 0.0001) {
-                rightVec.set(1, 0, 0);
-              } else {
-                rightVec.normalize();
-              }
-              const orthoUp = this._handUp.crossVectors(rightVec, fwd).normalize();
-              const backVec = this._handBack.copy(fwd).negate();
-
-              this._handBasis.makeBasis(rightVec, orthoUp, backVec);
-              this.handTargetQuat.setFromRotationMatrix(this._handBasis);
-
-              // Kräv minst 3 konsekutiva godkända frames vid återgång från FALLBACK_READY
-              this._consecutiveHandFrames = Math.min(this.HAND_REACQUIRE_FRAMES + 1, (this._consecutiveHandFrames || 0) + 1);
-              if (this.weaponTrackState === 'FALLBACK_READY') {
-                if (this._consecutiveHandFrames >= this.HAND_REACQUIRE_FRAMES) {
-                  this.lastHandSeenTime = performance.now();
-                  this.weaponTrackState = 'HAND_TRACKED';
-                  this._returnBlendRemaining = 0.4;
-                }
-              } else {
-                this.lastHandSeenTime = performance.now();
-                this.weaponTrackState = 'HAND_TRACKED';
-              }
-            } else {
-              // Tappad hand i denna frame: nollställ bekräftelseräknaren; frys/fallback sköts av updateWeaponPose
-              this._consecutiveHandFrames = 0;
-            }
-          });
-        } catch (_) {
-          this.handsInstance = null;
-        }
-      }
-
-      if (!this.handsInstance || this.handSending || now - this.lastHandSendTime < 33) return;
-      this.handSending = true;
-      this.lastHandSendTime = now;
-      try {
-        await this.handsInstance.send({ image: v });
-      } catch (_) {
-      } finally {
-        this.handSending = false;
-      }
-    };
-    requestAnimationFrame(pump);
+    } finally {
+      this.handSending = false;
+    }
   }
 
   stopHandTracking() {
@@ -4880,6 +5299,9 @@ export class TaserVRApp {
     const H = canvas.height;
     const status = this.getVRMenuStatusText();
     this._vrMenuStatusKey = status.key;
+    const cacheKey = `${title}|${subtitle}|${isPause ? 1 : 0}|${status.key}`;
+    if (ref.lastDrawKey === cacheKey) return;
+    ref.lastDrawKey = cacheKey;
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(8, 12, 18, 0.94)';
@@ -5037,13 +5459,18 @@ export class TaserVRApp {
     this.vrMenuGroup.updateMatrixWorld(true);
   }
 
-  openVRStartMenu() {
-    this.ensureVRMenuObjects();
-    this.disposeVRMenuMeshes();
+  updateDOMVRMenuSelection() {
+    const idx = Math.max(0, Math.min(3, Number(this.vrMenuSelectedIndex) || 0));
+    this.vrMenuSelectedIndex = idx;
+    document.querySelectorAll('#vr-menu-overlay [data-vr-action]').forEach((btn) => {
+      const bIdx = Number(btn.getAttribute('data-vr-idx'));
+      btn.classList.toggle('is-selected', bIdx === idx);
+    });
+  }
 
+  openVRStartMenu() {
     this.vrMenuState = 'start';
-    this.vrMenuSelectedIndex = Math.max(0, VR_SCENARIOS.findIndex((s) => s.id === this.selectedScenario));
-    if (this.vrMenuSelectedIndex < 0) this.vrMenuSelectedIndex = 0;
+    this.vrMenuSelectedIndex = 0;
     this.vrMenuGazeHoverIndex = -1;
     this.vrMenuGazeDwellSec = 0;
 
@@ -5051,8 +5478,8 @@ export class TaserVRApp {
       this.xr.isPlacing = false;
       this.xr.placeMode = false;
     }
-    document.body.classList.remove('xr-placing');
-    document.documentElement.classList.remove('xr-placing');
+    document.body.classList.remove('xr-placing', 'vr-menu-paused');
+    document.documentElement.classList.remove('xr-placing', 'vr-menu-paused');
     document.body.classList.add('vr-menu-open');
     document.documentElement.classList.add('vr-menu-open');
 
@@ -5060,252 +5487,32 @@ export class TaserVRApp {
       if (this.scene.placementMarker) this.scene.placementMarker.visible = false;
       this.scene.set3DVisibility(false);
     }
+    if (this.vrMenuGroup) this.vrMenuGroup.visible = false;
+    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = false;
 
-    // Header + statuspanel högst upp
-    const headerCanvas = document.createElement('canvas');
-    headerCanvas.width = 1024;
-    headerCanvas.height = 152;
-    const headerCtx = headerCanvas.getContext('2d');
-    const headerTex = new THREE.CanvasTexture(headerCanvas);
-    headerTex.colorSpace = THREE.SRGBColorSpace;
-    const headerMat = new THREE.MeshBasicMaterial({ map: headerTex, transparent: true, side: THREE.DoubleSide, toneMapped: false });
-    const headerMesh = new THREE.Mesh(this.createCurvedMenuPlaneGeometry(1.62, 0.24, 2.0), headerMat);
-    headerMesh.position.set(0, 0.56, 0);
-    headerMesh.renderOrder = 950;
-    this.vrMenuGroup.add(headerMesh);
-    this.vrMenuHeaderRef = {
-      canvas: headerCanvas,
-      ctx: headerCtx,
-      texture: headerTex,
-      title: 'VÄLJ ÖVNING – VR',
-      subtitle: '',
-      isPause: false
-    };
-    this.drawVRHeaderPanel(this.vrMenuHeaderRef);
-
-    // 4 övningskort i böjd båge i ögonhöjd
-    const cardYPositions = [0.27, 0.03, -0.21, -0.45];
-    VR_SCENARIOS.forEach((scen, idx) => {
-      const cCanvas = document.createElement('canvas');
-      cCanvas.width = 1024;
-      cCanvas.height = 136;
-      const cCtx = cCanvas.getContext('2d');
-      const cTex = new THREE.CanvasTexture(cCanvas);
-      cTex.colorSpace = THREE.SRGBColorSpace;
-      const cMat = new THREE.MeshBasicMaterial({ map: cTex, transparent: true, side: THREE.DoubleSide, toneMapped: false });
-      const mesh = new THREE.Mesh(this.createCurvedMenuPlaneGeometry(1.58, 0.21, 2.0), cMat);
-      mesh.position.set(0, cardYPositions[idx], 0);
-      mesh.renderOrder = 950;
-      mesh.userData = { menuIndex: idx, scenarioId: scen.id };
-
-      const cardRef = {
-        mesh,
-        canvas: cCanvas,
-        ctx: cCtx,
-        texture: cTex,
-        item: scen,
-        isCompact: false,
-        lastDrawKey: '',
-        onSelect: () => this.selectVRScenario(scen.id)
-      };
-      this.drawVRCardPanel(cardRef, idx === this.vrMenuSelectedIndex, 0);
-      this.vrMenuGroup.add(mesh);
-      this.vrMenuInteractiveMeshes.push(mesh);
-      this.vrMenuCardRefs.push(cardRef);
+    document.querySelectorAll('#vr-menu-overlay [data-vr-menu-title]').forEach((el) => {
+      el.textContent = 'TASER 7 — VR MENY';
     });
-
-    // Fotlist med styrguide
-    const footCanvas = document.createElement('canvas');
-    footCanvas.width = 1024;
-    footCanvas.height = 68;
-    const fCtx = footCanvas.getContext('2d');
-    fCtx.fillStyle = 'rgba(8, 12, 18, 0.88)';
-    fCtx.fillRect(0, 0, 1024, 68);
-    fCtx.strokeStyle = 'rgba(252, 190, 0, 0.55)';
-    fCtx.lineWidth = 3;
-    fCtx.strokeRect(3, 3, 1018, 62);
-    fCtx.fillStyle = '#e2e8f0';
-    fCtx.font = '800 22px monospace';
-    fCtx.textAlign = 'center';
-    fCtx.textBaseline = 'middle';
-    fCtx.fillText('🎮 D-PAD UPP/NER + L3/ENTER  •  👁️ FÄST BLICKEN 1.5s  •  🎙️ SÄG ÖVNING', 512, 34);
-    const footTex = new THREE.CanvasTexture(footCanvas);
-    footTex.colorSpace = THREE.SRGBColorSpace;
-    const footMesh = new THREE.Mesh(
-      this.createCurvedMenuPlaneGeometry(1.58, 0.10, 2.0),
-      new THREE.MeshBasicMaterial({ map: footTex, transparent: true, side: THREE.DoubleSide, toneMapped: false })
-    );
-    footMesh.position.set(0, -0.64, 0);
-    footMesh.renderOrder = 950;
-    this.vrMenuGroup.add(footMesh);
-
-    const activeCam = (this.scene?.renderer?.xr?.isPresenting)
-      ? this.scene.renderer.xr.getCamera(this.scene.camera)
-      : this.scene?.camera;
-    this.positionVRMenuInFrontOfCamera(activeCam);
-    this.vrMenuGroup.visible = true;
-    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = true;
-    this.drawGazeReticleCanvas(0, false);
+    this.updateDOMVRMenuSelection();
     this.updateProjectors();
   }
 
-  getPauseHandModeLabel() {
-    if (this.weaponLockMode === 'locked_fallback') return 'Låst i höft/siktläge';
-    if (this.handPreference === 'right') return 'Höger hand (Auto)';
-    if (this.handPreference === 'left') return 'Vänster hand (Auto)';
-    return 'Auto (Hand + Fallback)';
-  }
-
-  cyclePauseHandOrWeaponMode() {
-    if (this.weaponLockMode === 'locked_fallback') {
-      this.weaponLockMode = 'auto';
-      this.handPreference = 'auto';
-    } else if (this.handPreference === 'auto') {
-      this.handPreference = 'right';
-    } else if (this.handPreference === 'right') {
-      this.handPreference = 'left';
-    } else {
-      this.handPreference = 'auto';
-      this.weaponLockMode = 'locked_fallback';
-      this._consecutiveHandFrames = 0;
-      this.lastHandSeenTime = 0;
-      this.weaponTrackState = 'FALLBACK_READY';
-    }
-    this.saveWeaponLockMode(this.weaponLockMode);
-    this.updateHandPreferenceUI();
-    this.updateWeaponModeUI();
-    this.updateWeaponTrackBadge();
-    this.showHudToast(`🤚 ${this.getPauseHandModeLabel()}`, '#38bdf8');
-    if (this.vrMenuState === 'pause' && this.vrMenuCardRefs[3]) {
-      this.vrMenuCardRefs[3].item.title = `4. BYT HAND / VAPENLÄGE: ${this.getPauseHandModeLabel().toUpperCase()}`;
-      this.vrMenuCardRefs[3].lastDrawKey = '';
-      this.drawVRCardPanel(this.vrMenuCardRefs[3], this.vrMenuSelectedIndex === 3, 0);
-    }
-  }
-
   openVRPauseMenu() {
-    this.ensureVRMenuObjects();
-    this.disposeVRMenuMeshes();
-
     this.vrMenuState = 'pause';
     this.vrMenuSelectedIndex = 0;
     this.vrMenuGazeHoverIndex = -1;
     this.vrMenuGazeDwellSec = 0;
 
-    document.body.classList.add('vr-menu-open');
-    document.documentElement.classList.add('vr-menu-open');
+    document.body.classList.add('vr-menu-open', 'vr-menu-paused');
+    document.documentElement.classList.add('vr-menu-open', 'vr-menu-paused');
 
-    const headerCanvas = document.createElement('canvas');
-    headerCanvas.width = 1024;
-    headerCanvas.height = 132;
-    const headerCtx = headerCanvas.getContext('2d');
-    const headerTex = new THREE.CanvasTexture(headerCanvas);
-    headerTex.colorSpace = THREE.SRGBColorSpace;
-    const headerMesh = new THREE.Mesh(
-      this.createCurvedMenuPlaneGeometry(1.48, 0.19, 2.0),
-      new THREE.MeshBasicMaterial({ map: headerTex, transparent: true, side: THREE.DoubleSide, toneMapped: false })
-    );
-    headerMesh.position.set(0, 0.59, 0);
-    headerMesh.renderOrder = 950;
-    this.vrMenuGroup.add(headerMesh);
-    this.vrMenuHeaderRef = {
-      canvas: headerCanvas,
-      ctx: headerCtx,
-      texture: headerTex,
-      title: 'PAUSMENY – VR',
-      subtitle: 'D-PAD / BLICK 1.5s / RÖST • HÅLL START 1s ELLER SÄG "FORTSÄTT"',
-      isPause: true
-    };
-    this.drawVRHeaderPanel(this.vrMenuHeaderRef);
+    if (this.vrMenuGroup) this.vrMenuGroup.visible = false;
+    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = false;
 
-    const pauseOptions = [
-      {
-        title: '1. FORTSÄTT ÖVNING',
-        accent: '#2ecc71',
-        onSelect: () => this.closeVRMenu()
-      },
-      {
-        title: '2. ÅTERSTÄLL SKOTT & TRÅDAR',
-        accent: '#3498db',
-        onSelect: () => {
-          this.closeVRMenu();
-          this.resetSimulator();
-        }
-      },
-      {
-        title: this.isLiveAIRunning() ? '3. FLYTTA 3D-MÅL (EJ LIVE AI)' : '3. FLYTTA 3D-MÅL',
-        accent: '#f1c40f',
-        onSelect: () => {
-          this.closeVRMenu();
-          if (this.isLiveAIRunning()) {
-            this.showHudToast('Avsluta Live AI (Byt övning) för att placera 3D-mål', '#f1c40f');
-          } else {
-            this.togglePlaceMode();
-          }
-        }
-      },
-      {
-        title: `4. BYT HAND / VAPENLÄGE: ${this.getPauseHandModeLabel().toUpperCase()}`,
-        accent: '#38bdf8',
-        onSelect: () => this.cyclePauseHandOrWeaponMode()
-      },
-      {
-        title: '5. BYT ÖVNING (TILL VR-STARTMENYN)',
-        accent: '#FCBE00',
-        onSelect: () => {
-          if (this.isLiveAIRunning()) this.stopRealPersonAI(true);
-          this.stopScenario();
-          this.scene.clearWiresAndDarts();
-          this.openVRStartMenu();
-        }
-      },
-      {
-        title: '6. AVSLUTA VR (TILLBAKA TILL HUVUDMENY)',
-        accent: '#e74c3c',
-        onSelect: () => {
-          window.location.href = './index.html?menu=1';
-        }
-      }
-    ];
-
-    pauseOptions.forEach((opt, idx) => {
-      const cCanvas = document.createElement('canvas');
-      cCanvas.width = 1024;
-      cCanvas.height = 96;
-      const cCtx = cCanvas.getContext('2d');
-      const cTex = new THREE.CanvasTexture(cCanvas);
-      cTex.colorSpace = THREE.SRGBColorSpace;
-      const mesh = new THREE.Mesh(
-        this.createCurvedMenuPlaneGeometry(1.44, 0.142, 2.0),
-        new THREE.MeshBasicMaterial({ map: cTex, transparent: true, side: THREE.DoubleSide, toneMapped: false })
-      );
-      mesh.position.set(0, 0.37 - idx * 0.172, 0);
-      mesh.renderOrder = 950;
-      mesh.userData = { menuIndex: idx };
-
-      const cardRef = {
-        mesh,
-        canvas: cCanvas,
-        ctx: cCtx,
-        texture: cTex,
-        item: { title: opt.title, accent: opt.accent },
-        isCompact: true,
-        lastDrawKey: '',
-        onSelect: opt.onSelect
-      };
-      this.drawVRCardPanel(cardRef, idx === this.vrMenuSelectedIndex, 0);
-      this.vrMenuGroup.add(mesh);
-      this.vrMenuInteractiveMeshes.push(mesh);
-      this.vrMenuCardRefs.push(cardRef);
+    document.querySelectorAll('#vr-menu-overlay [data-vr-menu-title]').forEach((el) => {
+      el.textContent = 'PAUSMENY — VR';
     });
-
-    const activeCam = (this.scene?.renderer?.xr?.isPresenting)
-      ? this.scene.renderer.xr.getCamera(this.scene.camera)
-      : this.scene?.camera;
-    this.positionVRMenuInFrontOfCamera(activeCam);
-    this.vrMenuGroup.visible = true;
-    if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = true;
-    this.drawGazeReticleCanvas(0, false);
+    this.updateDOMVRMenuSelection();
     this.updateProjectors();
   }
 
@@ -5314,8 +5521,8 @@ export class TaserVRApp {
     this.vrMenuGazeHoverIndex = -1;
     this.vrMenuGazeDwellSec = 0;
     this._menuActionCooldownUntil = performance.now() + 340;
-    document.body.classList.remove('vr-menu-open');
-    document.documentElement.classList.remove('vr-menu-open');
+    document.body.classList.remove('vr-menu-open', 'vr-menu-paused');
+    document.documentElement.classList.remove('vr-menu-open', 'vr-menu-paused');
     if (this.vrMenuGroup) this.vrMenuGroup.visible = false;
     if (this.vrGazeReticleGroup) this.vrGazeReticleGroup.visible = false;
     if (this.scene && !this.isLiveAIRunning()) {
@@ -5325,14 +5532,13 @@ export class TaserVRApp {
   }
 
   navigateVRMenu(delta) {
-    if (this.vrMenuState === 'closed' || !this.vrMenuCardRefs.length) return;
-    const count = this.vrMenuCardRefs.length;
+    if (this.vrMenuState === 'closed') return;
+    const count = 4;
     const prevIdx = this.vrMenuSelectedIndex;
     this.vrMenuSelectedIndex = ((prevIdx + delta) % count + count) % count;
     this.vrMenuGazeDwellSec = 0;
     if (prevIdx !== this.vrMenuSelectedIndex) {
-      if (this.vrMenuCardRefs[prevIdx]) this.drawVRCardPanel(this.vrMenuCardRefs[prevIdx], false, 0);
-      if (this.vrMenuCardRefs[this.vrMenuSelectedIndex]) this.drawVRCardPanel(this.vrMenuCardRefs[this.vrMenuSelectedIndex], true, 0);
+      this.updateDOMVRMenuSelection();
       if (navigator.vibrate) {
         try { navigator.vibrate(10); } catch (_) {}
       }
@@ -5340,12 +5546,10 @@ export class TaserVRApp {
   }
 
   activateVRMenuSelection(explicitIdx = null) {
-    if (this.vrMenuState === 'closed' || !this.vrMenuCardRefs.length) return;
-    const idx = (typeof explicitIdx === 'number' && explicitIdx >= 0 && explicitIdx < this.vrMenuCardRefs.length)
+    if (this.vrMenuState === 'closed') return;
+    const idx = (typeof explicitIdx === 'number' && explicitIdx >= 0 && explicitIdx < 4)
       ? explicitIdx
-      : (this.vrMenuGazeHoverIndex >= 0 ? this.vrMenuGazeHoverIndex : this.vrMenuSelectedIndex);
-    const ref = this.vrMenuCardRefs[idx];
-    if (!ref || typeof ref.onSelect !== 'function') return;
+      : (this.vrMenuSelectedIndex >= 0 && this.vrMenuSelectedIndex < 4 ? this.vrMenuSelectedIndex : 0);
 
     this.playPlacementConfirmSound();
     if (navigator.vibrate) {
@@ -5353,7 +5557,44 @@ export class TaserVRApp {
     }
     this.vrMenuGazeDwellSec = 0;
     this._menuActionCooldownUntil = performance.now() + 360;
-    ref.onSelect();
+
+    if (idx === 0) {
+      // 1. Starta Fri Övning
+      this.closeVRMenu();
+      if (this.xr) {
+        this.xr.isPlacing = false;
+        this.xr.placeMode = false;
+        this.xr.figureLocked = true;
+      }
+      document.body.classList.remove('xr-placing');
+      document.documentElement.classList.remove('xr-placing');
+      this.startVirtualScenario('static', { preservePosition: true });
+    } else if (idx === 1) {
+      // 2. Starta Scenario (Kniv / Motstånd)
+      this.closeVRMenu();
+      if (this.xr) {
+        this.xr.isPlacing = false;
+        this.xr.placeMode = false;
+        this.xr.figureLocked = true;
+      }
+      document.body.classList.remove('xr-placing');
+      document.documentElement.classList.remove('xr-placing');
+      this.startVirtualScenario('charging', { preservePosition: true });
+      if (this.voice && this.voice.isSupported) {
+        try {
+          if (!this.voice.isListening) this.voice.start({ autoFromXR: true });
+          else this.voice.ensureActive();
+        } catch (_) {}
+      }
+    } else if (idx === 2) {
+      // 3. Placera / Flytta 3D-mål
+      this.closeVRMenu();
+      this.togglePlaceMode();
+    } else if (idx === 3) {
+      // 4. Avsluta VR
+      this.stopCameraPassThrough();
+      window.location.href = './index.html?menu=1';
+    }
   }
 
   async selectVRScenario(scenarioId) {
@@ -5376,82 +5617,15 @@ export class TaserVRApp {
     this.scene.resetTarget();
     this.stopScenario();
     this.closeVRMenu();
-    this.togglePlaceMode();
-
-    const scenObj = VR_SCENARIOS.find((s) => s.id === id);
-    if (scenObj) {
-      this.showHudToast(`${scenObj.title} — Placera mål & tryck L3 / Space`, scenObj.accent || '#2ecc71');
-    }
+    this.startVirtualScenario(id, { preservePosition: true });
   }
 
-  updateVRMenu(dt, activeCamera) {
-    if (this.vrMenuState === 'closed' || !this.vrMenuGroup || !this.vrMenuGroup.visible || !activeCamera) {
-      if (this.vrGazeReticleGroup && this.vrGazeReticleGroup.visible) {
-        this.vrGazeReticleGroup.visible = false;
-      }
-      return;
+  updateVRMenu() {
+    if (this.vrMenuGroup && this.vrMenuGroup.visible) {
+      this.vrMenuGroup.visible = false;
     }
-
-    // Uppdatera centrerad 3D-siktespunkt / Gaze-Reticle framför kameran i världskoordinater (syns i båda ögonen)
-    activeCamera.getWorldPosition(this._reticlePos);
-    this._reticleFwd.set(0, 0, -1).applyQuaternion(activeCamera.quaternion).normalize();
-    if (this.vrGazeReticleGroup) {
-      this.vrGazeReticleGroup.visible = true;
-      this.vrGazeReticleGroup.position.copy(this._reticlePos).addScaledVector(this._reticleFwd, 1.85);
-      this.vrGazeReticleGroup.quaternion.copy(activeCamera.quaternion);
-    }
-
-    // Uppdatera toppstatus i startmenyn när BT / Handspårning / Kod ändras
-    const now = performance.now();
-    if (this.vrMenuState === 'start' && this.vrMenuHeaderRef && now - (this._vrMenuStatusCheckAt || 0) > 250) {
-      this._vrMenuStatusCheckAt = now;
-      const st = this.getVRMenuStatusText();
-      if (st.key !== this._vrMenuStatusKey) {
-        this.drawVRHeaderPanel(this.vrMenuHeaderRef);
-      }
-    }
-
-    // Raycast längs blickriktningen mot de böjda 3D-korten (1.5s dwell)
-    this._menuOrigin.copy(this._reticlePos);
-    this._menuDir.copy(this._reticleFwd);
-    this._menuRaycaster.set(this._menuOrigin, this._menuDir);
-    const hits = this._menuRaycaster.intersectObjects(this.vrMenuInteractiveMeshes, false);
-
-    if (hits.length > 0 && typeof hits[0].object?.userData?.menuIndex === 'number') {
-      const hitIdx = hits[0].object.userData.menuIndex;
-      if (hitIdx !== this.vrMenuGazeHoverIndex) {
-        const oldSelected = this.vrMenuSelectedIndex;
-        this.vrMenuGazeHoverIndex = hitIdx;
-        this.vrMenuSelectedIndex = hitIdx;
-        this.vrMenuGazeDwellSec = 0;
-        if (oldSelected !== hitIdx && this.vrMenuCardRefs[oldSelected]) {
-          this.drawVRCardPanel(this.vrMenuCardRefs[oldSelected], false, 0);
-        }
-      } else {
-        this.vrMenuGazeDwellSec += dt;
-      }
-
-      const progress = Math.min(1, this.vrMenuGazeDwellSec / this.VR_GAZE_DWELL_DURATION);
-      this.drawGazeReticleCanvas(progress, true);
-      if (this.vrMenuCardRefs[hitIdx]) {
-        this.drawVRCardPanel(this.vrMenuCardRefs[hitIdx], true, progress);
-      }
-
-      if (this.vrMenuGazeDwellSec >= this.VR_GAZE_DWELL_DURATION) {
-        this.activateVRMenuSelection(hitIdx);
-      }
-    } else {
-      if (this.vrMenuGazeHoverIndex !== -1) {
-        const oldHover = this.vrMenuGazeHoverIndex;
-        this.vrMenuGazeHoverIndex = -1;
-        this.vrMenuGazeDwellSec = 0;
-        if (this.vrMenuCardRefs[oldHover]) {
-          this.drawVRCardPanel(this.vrMenuCardRefs[oldHover], oldHover === this.vrMenuSelectedIndex, 0);
-        }
-      } else {
-        this.vrMenuGazeDwellSec = 0;
-      }
-      this.drawGazeReticleCanvas(0, false);
+    if (this.vrGazeReticleGroup && this.vrGazeReticleGroup.visible) {
+      this.vrGazeReticleGroup.visible = false;
     }
   }
 
@@ -5463,12 +5637,22 @@ export class TaserVRApp {
     const camera = this.scene.camera;
 
     renderer.setAnimationLoop((timestamp, frame) => {
+      if (this._webglContextLost) return;
+
       this.pollGamepad();
       if (renderer.xr.isPresenting && this.xr.xrSession) {
         this.handleWebXRControllers(this.xr.xrSession);
       }
 
-      const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
+      let activeCamera = camera;
+      if (renderer.xr.isPresenting) {
+        try {
+          activeCamera = renderer.xr.getCamera(camera) || camera;
+        } catch (_) {
+          activeCamera = camera;
+        }
+      }
+
       const nowPerf = performance.now();
       const rawDt = (nowPerf - (this._lastPlacementTickTs || nowPerf)) / 1000;
       this._lastPlacementTickTs = nowPerf;
@@ -5478,11 +5662,16 @@ export class TaserVRApp {
       const currentThreat = typeof window.threatLevel === 'number' ? window.threatLevel : this.threatLevel;
       const menuClosed = this.vrMenuState === 'closed';
 
-      this.scene.update(delta, {
-        isScenarioActive,
-        threatLevel: currentThreat,
-        threatWeapon: this.threatWeapon
-      });
+      // MediaPipe hand-tracking tick in unified setAnimationLoop (strictly guarded on readyState & WebGL)
+      this.tickHandTracking(nowPerf);
+
+      try {
+        this.scene.update(delta, {
+          isScenarioActive,
+          threatLevel: currentThreat,
+          threatWeapon: this.threatWeapon
+        });
+      } catch (_) {}
 
       const isPausedByVoice = !!(this.xr && nowPerf < (this.xr.targetPausedUntil || 0));
       const isSurrendered = !!(this.xr && this.xr.targetSurrendered);
@@ -5618,10 +5807,14 @@ export class TaserVRApp {
       // Uppdatera böjd 3D-meny & blickstyrning (1.5s dwell)
       this.updateVRMenu(moveDt, activeCamera);
 
-      if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
-        this.renderStereo(this.scene.scene, activeCamera);
-      } else {
-        renderer.render(this.scene.scene, activeCamera);
+      try {
+        if (this.isStereoVR && !renderer.xr.isPresenting && this.stereoEffect) {
+          this.renderStereo(this.scene.scene, activeCamera);
+        } else {
+          renderer.render(this.scene.scene, activeCamera);
+        }
+      } catch (renderErr) {
+        console.warn('[VR RENDER NOTICE]', renderErr?.message || renderErr);
       }
     });
   }
