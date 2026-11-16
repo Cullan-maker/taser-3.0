@@ -12,6 +12,7 @@ export class TaserVoice {
     this.isSupported = false;
     this.userExplicitStop = false;
     this.restartTimeout = null;
+    this._restartAttempts = 0;
 
     this.onCommand = options.onCommand || null;
     this.onStatusChange = options.onStatusChange || null;
@@ -39,6 +40,7 @@ export class TaserVoice {
       this.recognition.maxAlternatives = 3;
 
       this.recognition.onstart = () => {
+        this._restartAttempts = 0;
         this.notifyStatus(true, 'Lyssnar...');
       };
 
@@ -48,17 +50,18 @@ export class TaserVoice {
         const result = event.results[lastResultIndex];
         if (!result || !result[0]) return;
 
+        // Evaluera främsta alternativet (eller bästa matchning bland maxAlternatives)
         const transcript = result[0].transcript.trim();
         this.processTranscript(transcript);
       };
 
       this.recognition.onerror = (event) => {
-        // 'no-speech' and 'aborted' are routine timeouts in ambient environments, ignore and allow onend to recover
+        // 'no-speech' and 'aborted' are routine timeouts or WebXR audio transitions; allow onend to recover
         if (event.error === 'no-speech' || event.error === 'aborted') {
           return;
         }
 
-        if (event.error === 'not-allowed') {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           this.isListening = false;
           this.notifyStatus(false, 'Nekad');
           const inIframe = typeof window !== 'undefined' && window.self !== window.top;
@@ -73,33 +76,16 @@ export class TaserVoice {
         console.warn('[TaserVoice] SpeechRecognition error:', event.error);
         if (event.error === 'network') {
           this.log("<span style='color:#f39c12'>Röstigenkänning nätverksfel. Försöker igen...</span>");
+        } else if (event.error === 'audio-capture') {
+          // Under WebXR-start kan ljudenheten skifta kortvarigt — låt onend starta om automatiskt
+          this.log("<span style='color:#f39c12'>Ljudenhet upptagen/växlar under AR — återansluter röstigenkänning...</span>");
         }
       };
 
       this.recognition.onend = () => {
-        // Auto-restart if user still wants voice active (True Continuous Listening on Mobile)
+        // Auto-restart if user or active WebXR session wants voice active (True Continuous Listening on Mobile & AR)
         if (this.isListening && !this.userExplicitStop) {
-          if (this.restartTimeout) clearTimeout(this.restartTimeout);
-          this.restartTimeout = setTimeout(() => {
-            if (this.isListening && !this.userExplicitStop && this.recognition) {
-              try {
-                this.recognition.start();
-                this.notifyStatus(true, 'Lyssnar...');
-              } catch (e) {
-                // If browser audio session is still cycling, retry after a short breather
-                setTimeout(() => {
-                  if (this.isListening && !this.userExplicitStop && this.recognition) {
-                    try {
-                      this.recognition.start();
-                      this.notifyStatus(true, 'Lyssnar...');
-                    } catch (err) {
-                      // Already active
-                    }
-                  }
-                }, 300);
-              }
-            }
-          }, 150);
+          this.scheduleRestart();
         } else {
           this.notifyStatus(false, 'AV');
         }
@@ -110,42 +96,85 @@ export class TaserVoice {
     }
   }
 
-  async start() {
+  scheduleRestart() {
+    if (!this.isListening || this.userExplicitStop || !this.recognition) return;
+    if (this.restartTimeout) clearTimeout(this.restartTimeout);
+    const delays = [150, 300, 600, 1100, 1800];
+    const delay = delays[Math.min(this._restartAttempts, delays.length - 1)];
+    this._restartAttempts++;
+
+    this.restartTimeout = setTimeout(() => {
+      if (!this.isListening || this.userExplicitStop || !this.recognition) return;
+      try {
+        this.recognition.start();
+        this.notifyStatus(true, 'Lyssnar...');
+      } catch (e) {
+        // Om webbläsarens ljudsession fortfarande växlar (t.ex. under WebXR), försök igen med backoff
+        if (this._restartAttempts < 8) {
+          this.scheduleRestart();
+        }
+      }
+    }, delay);
+  }
+
+  ensureActive() {
+    if (!this.isSupported || !this.recognition) return false;
+    if (!this.isListening || this.userExplicitStop) return false;
+    try {
+      this.recognition.start();
+      this.notifyStatus(true, 'Lyssnar...');
+      return true;
+    } catch (e) {
+      // Redan aktiv eller startar via onend-schemaläggaren
+      return true;
+    }
+  }
+
+  async start(options = {}) {
     if (!this.isSupported || !this.recognition) {
       this.log("<span style='color:#e74c3c'>Web Speech API stöds inte i denna webbläsare. Använd Chrome eller Safari.</span>");
       return false;
     }
 
     this.userExplicitStop = false;
+    this._restartAttempts = 0;
 
-    // Explicit mobile microphone permission request before starting recognition
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    if (this.isListening) {
+      return this.ensureActive();
+    }
+
+    // Vid automatisk start inuti WebXR hoppar vi över extra getUserMedia-probe för att undvika
+    // ljudkonflikt / transient activation-tapp med WebXR-sessionen; SpeechRecognition begär själv behörighet.
+    if (!options.autoFromXR && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         this.notifyStatus(false, 'Begär mikrofon...');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Close probe stream immediately; recognition will manage its own audio
         stream.getTracks().forEach(t => t.stop());
       } catch (permErr) {
-        this.isListening = false;
-        this.notifyStatus(false, 'Nekad');
-        const inIframe = typeof window !== 'undefined' && window.self !== window.top;
-        if (inIframe) {
-          this.log("<span style='color:#f39c12; font-weight:bold;'>🔒 Preview-iframen blockerar mikrofonåtkomst</span> (Permissions-Policy). Öppna URL:en i en ny flik eller i mobilen!");
-        } else {
-          this.log("<span style='color:#e74c3c; font-weight:bold;'>Mikrofonåtkomst ej godkänd:</span> Tillåt mikrofon i webbläsaren.");
+        if (permErr && (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError')) {
+          this.isListening = false;
+          this.notifyStatus(false, 'Nekad');
+          const inIframe = typeof window !== 'undefined' && window.self !== window.top;
+          if (inIframe) {
+            this.log("<span style='color:#f39c12; font-weight:bold;'>🔒 Preview-iframen blockerar mikrofonåtkomst</span> (Permissions-Policy). Öppna URL:en i en ny flik eller i mobilen!");
+          } else {
+            this.log("<span style='color:#e74c3c; font-weight:bold;'>Mikrofonåtkomst ej godkänd:</span> Tillåt mikrofon i webbläsaren.");
+          }
+          return false;
         }
-        return false;
+        // Övriga probing-fel (t.ex. upptagen ljudenhet): fortsätt och låt SpeechRecognition starta direkt
       }
     }
 
     try {
       this.isListening = true;
       this.recognition.start();
-      this.log("🎙️ <span style='color:#2ecc71; font-weight:bold;'>Röststyrning aktiv ('sv-SE').</span> Ropa: <i>'Jag har ett elchockvapen!'</i>, <i>'Beredd att använda det!'</i>, <i>'Släpp kniven!'</i> eller <i>'Lägg dig ner!'</i>");
+      this.notifyStatus(true, 'Lyssnar...');
+      this.log("🎙️ <span style='color:#2ecc71; font-weight:bold;'>Röststyrning aktiv ('sv-SE').</span> Ropa: <i>'El, el, el!'</i>, <i>'Polis, stanna!'</i>, <i>'Släpp vapnet!'</i>, <i>'Backa!'</i>, <i>'Händerna upp!'</i>, <i>'Lägg dig ner!'</i> eller vapenkommandon (<i>'Osäkra'</i>, <i>'Säkra'</i>, <i>'Avfyra'</i>, <i>'Ladda om'</i>).");
       return true;
     } catch (e) {
-      // Already running
       this.isListening = true;
+      this.notifyStatus(true, 'Lyssnar...');
       return true;
     }
   }
@@ -153,6 +182,7 @@ export class TaserVoice {
   stop() {
     this.userExplicitStop = true;
     this.isListening = false;
+    this._restartAttempts = 0;
     if (this.restartTimeout) {
       clearTimeout(this.restartTimeout);
       this.restartTimeout = null;
@@ -182,25 +212,45 @@ export class TaserVoice {
     const lower = raw.toLowerCase();
     this.log(`🗣️ Polisen: <i>"${raw}"</i>`);
 
-    // --- REGEX & FUZZY MATCHERS FÖR SVENSKA TAKTISKA FRASER ---
-    // 1. Taktisk varning om elchockvapen ("Jag har ett elchockvapen")
-    // Fångar: "elchockvapen", "elchock vapen", "elchocks vapen", "el chock vapen", "el-chockvapen", "elvapen", "taser"
-    const regexElchock = /(?:jag\s+har\s+(?:ett\s+|en\s+)?)?(?:el[- ]?chock(?:s)?(?:[- ]?vapen)?|el[- ]?vapen|taser)/i;
+    // --- 1. VAPENKOMMANDON VIA RÖST (Osäkra, Säkra, Avfyra, Ladda om) ---
+    // Kontrollera "osäkra" FÖRE "säkra" så "osäkra" aldrig misstolkas som "säkra"
+    const isOsakra = /\b(?:osäkra|osäkrat|osäkra\s+vapnet|avlägsna\s+säkring)\b/i.test(lower);
+    const isSakra = !isOsakra && /\b(?:säkra|säkrat|säkra\s+vapnet|sätt\s+på\s+säkring)\b/i.test(lower);
+    const isAvfyra = /\b(?:avfyra|skjut|eld)\b/i.test(lower);
+    const isLaddaOm = /\b(?:ladda\s+om|omladda|omladdning|byt\s+kassett|ny\s+kassett)\b/i.test(lower) ||
+      (lower === 'ladda');
+
+    // --- 2. TAKTISKA SCENARIO TRIGGERS ---
+    const regexStartScenario = /(?:starta|påbörja|aktivera|kör)\s+(?:angrepp|scenario|anfall)|(?:kom\s+då|börja|kör\s+igång)/i;
+    const isStartScenario = regexStartScenario.test(lower) ||
+      lower.includes('starta angrepp') ||
+      lower.includes('starta scenario') ||
+      lower.includes('starta anfall');
+
+    const regexStopScenario = /(?:stoppa|avbryt|pausa)\s+(?:angrepp|scenario|anfall)|procedur(?:fas)?/i;
+    const isStopScenario = regexStopScenario.test(lower) ||
+      lower.includes('stoppa angrepp') ||
+      lower.includes('avbryt angrepp') ||
+      lower.includes('procedurfas');
+
+    // --- 3. VARNINGSROP FÖRE SKOTT (Svensk terminologi: "El, el, el!" + elchockvapen + beredd) ---
+    // Matchar upprepade eller fristående "el" med ordgräns (\bel\b) så vanliga ord som "eller"/"hela" inte falsktriggar
+    const isVarningEl = /\bel(?:\s*[,!.\-]+\s*el|\s+el)+\b/i.test(lower) ||
+      /^el[!.,\s]*$/i.test(lower) ||
+      /\bel\s*vapen\b/i.test(lower);
+
+    const regexElchock = /(?:jag\s+har\s+(?:ett\s+|en\s+)?)?(?:el[- ]?chock(?:s)?(?:[- ]?vapen)?|el[- ]?vapen)/i;
     const isElchockVapen = regexElchock.test(lower) ||
       lower.includes('elchock') ||
-      lower.includes('elvapen') ||
-      lower.includes('taser');
+      lower.includes('elvapen');
 
-    // 2. Taktisk varning om beredskap ("Jag är beredd att använda det")
-    // Fångar: "beredd", "berädd", "berad", "redo", kombinerat med "använda det/den" eller ensamt i varningskontext
     const regexBeredd = /(?:jag\s+är\s+)?(?:bered[dt]|berädd|berad|redo)(?:\s+(?:på|att))?(?:\s+använda)?(?:\s+(?:det|den))?/i;
     const isBeredd = (regexBeredd.test(lower) && (lower.includes('använda') || lower.includes('det') || lower.includes('den') || lower.includes('bered') || lower.includes('berädd'))) ||
       /(?:använda\s+(?:det|den))/i.test(lower) ||
       (lower.includes('beredd') && lower.includes('använda')) ||
       (lower.includes('redo') && lower.includes('använda'));
 
-    // 3. Formellt kommando "Lägg dig ner"
-    // Fångar: "lägg dig ner", "lägg dig", "ner på marken", "ligg ner", "på marken", "lagg dig ner"
+    // --- 4. BEFALLNINGAR SOM PÅVERKAR / STOPPAR SCENARIOT ---
     const regexLaggDig = /(?:lägg|lagg|ligg)\s+(?:dig|er)(?:\s+ner)?/i;
     const isLaggDigNer = regexLaggDig.test(lower) ||
       lower.includes('lägg dig') ||
@@ -209,43 +259,47 @@ export class TaserVoice {
       lower.includes('ligg ner') ||
       lower.includes('på marken');
 
-    // 4. Formellt kommando "Släpp kniven"
-    // Fångar: "släpp kniven", "slapp kniven", "släpp vapnet", "kasta kniven", "kasta vapnet", "släpp den"
-    const regexSlapp = /(?:släpp[a]?|slapp[a]?|kasta|lämna)\s+(?:kniven|vapnet|den|kniv)/i;
-    const isSlappKniven = regexSlapp.test(lower) ||
+    const isSlappVapnet = /(?:släpp[a]?|slapp[a]?|kasta|lämna)\s+(?:vapnet|tillhygget|batongen)\b/i.test(lower) ||
+      lower.includes('släpp vapnet') ||
+      lower.includes('kasta vapnet');
+
+    const isSlappKniven = /(?:släpp[a]?|slapp[a]?|kasta|lämna)\s+(?:kniven|kniv|den)\b/i.test(lower) ||
       lower.includes('släpp kniven') ||
       lower.includes('slapp kniven') ||
       lower.includes('kasta kniven') ||
-      lower.includes('släpp vapnet') ||
-      (lower.startsWith('släpp') && lower.length < 16);
+      (lower.startsWith('släpp') && !isSlappVapnet && lower.length < 18);
 
-    // 5. Kommando "Stanna"
-    const regexStanna = /(?:stanna|stopp|stå\s+still|halt)/i;
-    const isStanna = regexStanna.test(lower);
+    const isHandernaUpp = /\bhänderna\s+(?:upp|i\s+vädret)\b/i.test(lower) ||
+      /\bupp\s+med\s+händerna\b/i.test(lower) ||
+      /\bvisa\s+händerna\b/i.test(lower) ||
+      lower.includes('händerna upp');
 
-    // 6. Taktiskt Scenario Trigger ("Starta angrepp" / "Starta scenario")
-    const regexStartScenario = /(?:starta|påbörja|aktivera|kör)\s+(?:angrepp|scenario|anfall)|(?:kom\s+då|börja|kör\s+igång)/i;
-    const isStartScenario = regexStartScenario.test(lower) ||
-      lower.includes('starta angrepp') ||
-      lower.includes('starta scenario') ||
-      lower.includes('starta anfall');
+    const isBacka = /\b(?:backa|gå\s+bakåt|håll\s+avstånd|kom\s+inte\s+närmare)\b/i.test(lower);
 
-    // 7. Procedurfas Trigger ("Stoppa angrepp" / "Procedurfas")
-    const regexStopScenario = /(?:stoppa|avbryt|pausa)\s+(?:angrepp|scenario|anfall)|procedur(?:fas)?/i;
-    const isStopScenario = regexStopScenario.test(lower) ||
-      lower.includes('stoppa angrepp') ||
-      lower.includes('avbryt angrepp') ||
-      lower.includes('procedurfas');
+    const isPolisStanna = /\bpolis[,!.\s]+(?:stanna|stopp)\b/i.test(lower) ||
+      (lower.includes('polis') && /\b(?:stanna|stopp)\b/i.test(lower));
+
+    const isStanna = !isPolisStanna && /\b(?:stanna|stopp|stå\s+still|halt)\b/i.test(lower);
 
     let matchedCommand = null;
 
-    // Evaluera i prioriteringsordning
+    // Evaluera i tydlig prioriteringsordning
     if (isStartScenario) {
       matchedCommand = 'STARTA_ANGREPP';
     } else if (isStopScenario) {
       matchedCommand = 'STOPPA_ANGREPP';
+    } else if (isAvfyra) {
+      matchedCommand = 'VAPEN_AVFYRA';
+    } else if (isOsakra) {
+      matchedCommand = 'VAPEN_OSAKRA';
+    } else if (isSakra) {
+      matchedCommand = 'VAPEN_SAKRA';
+    } else if (isLaddaOm) {
+      matchedCommand = 'VAPEN_LADDA_OM';
     } else if (isElchockVapen && isBeredd) {
       matchedCommand = 'VARNING_FULL';
+    } else if (isVarningEl) {
+      matchedCommand = 'VARNING_EL';
     } else if (isElchockVapen) {
       matchedCommand = 'VARNING_ELCHOCKVAPEN';
     } else if (isBeredd) {
@@ -254,6 +308,14 @@ export class TaserVoice {
       matchedCommand = 'LAGG_DIG_NER';
     } else if (isSlappKniven) {
       matchedCommand = 'SLAPP_KNIVEN';
+    } else if (isSlappVapnet) {
+      matchedCommand = 'SLAPP_VAPNET';
+    } else if (isHandernaUpp) {
+      matchedCommand = 'HANDERNA_UPP';
+    } else if (isBacka) {
+      matchedCommand = 'BACKA';
+    } else if (isPolisStanna) {
+      matchedCommand = 'POLIS_STANNA';
     } else if (isStanna) {
       matchedCommand = 'STANNA';
     }

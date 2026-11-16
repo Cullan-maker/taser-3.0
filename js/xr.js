@@ -19,6 +19,8 @@ export class TaserXR {
     this.isPlacing = false;
     this.placeMode = false;
     this.figureLocked = true;
+    this.targetPausedUntil = 0;
+    this.targetSurrendered = false;
 
     // Camera video feed fallback
     this.useCamera = false;
@@ -66,6 +68,7 @@ export class TaserXR {
 
   async startXR(scenario = 'static') {
     this.scenario = scenario;
+    this.resetScenarioState();
     if (!this.isWebXRSupported() || this.xrSupported === false) {
       console.info('[WEBXR INFO] WebXR Immersive-AR stöds inte på denna enhet eller i denna webbläsare. Växlar till simulerat AR-scenario.');
       return { success: false, fallback: true, scenario, reason: 'not-supported' };
@@ -274,8 +277,16 @@ export class TaserXR {
 
     // Live Target Dynamic Scenarios
     const target = this.taserScene.taserGroup;
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const isScenarioHalted = this.targetSurrendered || this.taserScene.isTased || this.taserScene.figureFallen;
+    const isScenarioPaused = nowMs < (this.targetPausedUntil || 0);
+
     if (target && target.visible && !this.taserScene.figureFallen) {
-      if (this.scenario === 'moving') {
+      if (isScenarioHalted || isScenarioPaused) {
+        if (this.taserScene.actions && this.taserScene.activeAction === this.taserScene.actions['Walk']) {
+          this.taserScene.setAnimation('Idle', 0.35);
+        }
+      } else if (this.scenario === 'moving') {
         const startX = target.userData.startPos ? target.userData.startPos.x : 0;
         target.position.x = startX + Math.sin(timestamp * 0.001) * 1.2;
         this.taserScene.setAnimation('Walk', 0.8);
@@ -311,6 +322,38 @@ export class TaserXR {
         }
       }
     }
+  }
+
+  resetScenarioState() {
+    this.targetPausedUntil = 0;
+    this.targetSurrendered = false;
+  }
+
+  pauseScenario(durationMs = 3000) {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.targetPausedUntil = Math.max(this.targetPausedUntil || 0, nowMs + durationMs);
+  }
+
+  surrenderScenario() {
+    this.targetSurrendered = true;
+    this.targetPausedUntil = 0;
+  }
+
+  retreatTarget(meters = 0.75) {
+    if (!this.taserScene || !this.taserScene.taserGroup) return false;
+    const target = this.taserScene.taserGroup;
+    const renderer = this.taserScene.renderer;
+    const cam = (renderer && renderer.xr && renderer.xr.isPresenting)
+      ? renderer.xr.getCamera(this.taserScene.camera)
+      : this.taserScene.camera;
+    if (!cam) return false;
+    const away = this.taserScene._v1.subVectors(target.position, cam.position);
+    away.y = 0;
+    if (away.lengthSq() < 0.001) away.set(0, 0, -1);
+    away.normalize();
+    target.position.addScaledVector(away, meters);
+    this.pauseScenario(3200);
+    return true;
   }
 
   // --- Fallback Camera AR (WebRTC Mixed Reality) ---

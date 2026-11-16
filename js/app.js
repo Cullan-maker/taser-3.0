@@ -9,14 +9,14 @@ if (typeof window !== 'undefined') {
   window.THREE = THREE;
   window.StereoEffect = StereoEffect;
 }
-import { TaserFSM, ChamberState } from './fsm.js';
-import { TaserAudio } from './audio.js';
-import { TaserBallistics } from './ballistics.js?v=8';
-import { TaserScene } from './scene.js?v=8';
-import { TaserXR } from './xr.js?v=8';
-import { TaserPWA } from './pwa.js';
-import { TaserVoice } from './voice.js';
-import { TaserAIPose } from './pose.js?v=8';
+import { TaserFSM, ChamberState } from './fsm.js?v=9';
+import { TaserAudio } from './audio.js?v=9';
+import { TaserBallistics } from './ballistics.js?v=9';
+import { TaserScene } from './scene.js?v=9';
+import { TaserXR } from './xr.js?v=9';
+import { TaserPWA } from './pwa.js?v=9';
+import { TaserVoice } from './voice.js?v=9';
+import { TaserAIPose } from './pose.js?v=9';
 
 export class TaserApp {
   constructor() {
@@ -130,8 +130,17 @@ export class TaserApp {
     };
     window.toggleCartridge = () => this.toggleCartridge();
     window.toggleSafety = () => {
+      if (!this.fsm.hasBattery) {
+        this.showHudToast('🔋 Sätt i batteri först!', '#f1c40f');
+      }
       const res = this.fsm.toggleSafety();
       this.updateDisplay();
+      if (res) {
+        this.showHudToast(
+          this.fsm.isSafe ? '🔒 SÄKRAD' : (this.fsm.functionCheckMode ? '⚠️ OSÄKRAD (FUNK. KONTROLL)' : '🔓 OSÄKRAD'),
+          this.fsm.isSafe ? '#2ecc71' : '#f1c40f'
+        );
+      }
       return res;
     };
     window.toggleFunctionCheck = () => this.toggleFunctionCheck();
@@ -143,10 +152,18 @@ export class TaserApp {
     window.stopScenario = () => this.stopScenario();
     window.pressSingleWarning = () => {
       this.animateWarningButtons();
+      if (!this.fsm.hasBattery) {
+        this.showHudToast('🔋 Sätt i batteri först!', '#f1c40f');
+      } else if (this.fsm.isSafe && !this.fsm.isFunkLocked && this.fsm.displayState !== 'FUNK_MODE') {
+        this.showHudToast('🔓 Osäkra eller aktivera Funk. Kontroll först!', '#f1c40f');
+      }
       return this.fsm.pressSingleWarning();
     };
     window.pressDualWarning = () => {
       this.animateWarningButtons();
+      if (!this.fsm.hasBattery) {
+        this.showHudToast('🔋 Sätt i batteri först!', '#f1c40f');
+      }
       return this.fsm.pressDualWarning();
     };
     window.pressTrigger = () => this.handleTrigger();
@@ -434,9 +451,18 @@ export class TaserApp {
     this.setupTactileButton('webxr-btn', toggleWebXRModalOrEnd, { preventDefaultOnDown: true });
     this.setupTactileButton('btn-place', () => this.togglePlaceMode(), { preventDefaultOnDown: true });
     this.setupTactileButton('btn-info', () => this.openModal('info-modal'), { preventDefaultOnDown: true });
-    this.setupTactileButton('warn-left', () => window.pressSingleWarning());
-    this.setupTactileButton('warn-right', () => window.pressSingleWarning());
-    this.setupTactileButton('safety-switch', () => window.toggleSafety());
+    this.setupTactileButton('warn-left', () => window.pressSingleWarning(), { preventDefaultOnDown: true });
+    this.setupTactileButton('warn-right', () => window.pressSingleWarning(), { preventDefaultOnDown: true });
+    this.setupTactileButton('safety-switch', () => window.toggleSafety(), { preventDefaultOnDown: true });
+    const safetySwitchEl = document.getElementById('safety-switch');
+    if (safetySwitchEl) {
+      safetySwitchEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          window.toggleSafety();
+        }
+      });
+    }
     this.setupTactileButton('btn-place-xr', () => this.confirmPlacement(), { preventDefaultOnDown: true });
     this.setupTactileButton('btn-xr-move-target', () => this.togglePlaceMode(), { preventDefaultOnDown: true });
     this.setupTactileButton('btn-xr-exit', () => {
@@ -497,6 +523,20 @@ export class TaserApp {
         }
       });
     }
+
+    // Hindra WebXR DOM-overlay från att fånga tryck på vapnets knappar som XR-scen-select
+    if (!this._beforeXrSelectBound && typeof document !== 'undefined') {
+      this._beforeXrSelectBound = true;
+      document.addEventListener('beforexrselect', (e) => {
+        if (
+          e.target &&
+          e.target.closest &&
+          e.target.closest('#main-container, .taser-device, .sim-controls, #btn-place-xr, #btn-back-menu, .modal-overlay, #fail-overlay, #tactical-error-banner, button, .action-btn, .safety-switch, .warning-btn')
+        ) {
+          e.preventDefault();
+        }
+      }, true);
+    }
   }
 
   setupTactileButton(elementOrId, callback, options = {}) {
@@ -507,6 +547,7 @@ export class TaserApp {
     const useClick = !!options.useClick || options.triggerOn === 'click';
     const preventDefaultOnDown = !!options.preventDefaultOnDown;
     let lastActionTs = 0;
+    let lastPointerDownAt = 0;
 
     if (!el.dataset.origHtml) {
       el.dataset.origHtml = el.innerHTML;
@@ -619,7 +660,7 @@ export class TaserApp {
 
     const fireAction = (e) => {
       const now = Date.now();
-      if (now - lastActionTs < 220) {
+      if (now - lastActionTs < 200) {
         return;
       }
       lastActionTs = now;
@@ -642,16 +683,19 @@ export class TaserApp {
       }
     };
 
-    // Enhetlig touch/pointerdown-hanterare: reagerar direkt på första touchen utan 300ms eller scroll-fördröjning
+    // Enhetlig touch/pointerdown-hanterare + click-fallback om WebXR DOM-overlay sväljer pointerdown
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       if (preventDefaultOnDown && e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      lastPointerDownAt = performance.now();
       fireAction(e);
     });
 
-    // Endast tangentbord / programmatiskt click() (e.detail === 0) körs via click
     el.addEventListener('click', (e) => {
-      if (e.detail === 0) {
+      e.stopPropagation();
+      const sinceDown = performance.now() - lastPointerDownAt;
+      if (e.detail === 0 || sinceDown > 1200) {
         fireAction(e);
       }
     });
@@ -666,8 +710,27 @@ export class TaserApp {
       if (typeof this.audio.playClickSound === 'function') {
         this.audio.playClickSound();
       }
+      this.showHudToast('⛔ Avtryckare spärrad — tryck Återställ', '#e74c3c');
       this.log("<span style='color:#e74c3c; font-weight:bold;'>AVTRYCKARE SPÄRRAD:</span> Angriparen har nått fram (< 0.8 m)! Tryck på Återställ för att börja om.");
       return;
+    }
+    if (!this.fsm.hasBattery) {
+      this.audio.init();
+      this.showHudToast('🔋 Sätt i batteri först!', '#f1c40f');
+      this.log("<span style='color:#e74c3c'>Sätt i batteri först!</span>");
+      return;
+    }
+    if (this.fsm.isSafe) {
+      this.audio.init();
+      this.showHudToast('🔒 Osäkra vapnet före avfyring!', '#f1c40f');
+      this.log("<span style='color:#e74c3c'>Vapnet är säkrat. Osäkra vapnet först!</span>");
+      return;
+    }
+    const chState = this.fsm.activeChamber === 1 ? this.fsm.chamber1 : this.fsm.chamber2;
+    if (chState === ChamberState.EMPTY) {
+      this.audio.init();
+      if (typeof this.audio.playClickSound === 'function') this.audio.playClickSound();
+      this.showHudToast('⏏️ Ladda kassett först!', '#f1c40f');
     }
     this.audio.init();
     const result = this.fsm.pressTrigger((firedChamber) => {
@@ -852,7 +915,32 @@ export class TaserApp {
       window.state.functionCheckMode = active;
     }
     this.updateDisplay();
+    if (active) {
+      if (!this.fsm.hasBattery) {
+        this.showHudToast('⚠️ Funk. Kontroll vald (Sätt i batteri & osäkra)', '#FCBE00');
+      } else if (this.fsm.isSafe) {
+        this.showHudToast('⚠️ Funk. Kontroll vald — osäkra vapnet!', '#FCBE00');
+      } else {
+        this.showHudToast('⚡ FUNKTIONSKONTROLL AKTIV', '#FCBE00');
+      }
+    } else {
+      this.showHudToast('Funktionskontroll AV', '#bdc3c7');
+    }
     return active;
+  }
+
+  showHudToast(message, accentColor = '#f1c40f') {
+    if (typeof document === 'undefined') return;
+    const toast = document.getElementById('ar-hud-toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.style.borderColor = accentColor;
+    toast.style.color = accentColor;
+    toast.style.display = 'inline-flex';
+    if (this._hudToastTimer) clearTimeout(this._hudToastTimer);
+    this._hudToastTimer = setTimeout(() => {
+      toast.style.display = 'none';
+    }, 2200);
   }
 
   toggleCartridge() {
@@ -1750,7 +1838,61 @@ export class TaserApp {
   }
 
   handleVoiceCommand(cmd, transcript) {
-    // Taktiska scenario triggers
+    // --- 1. VAPENKOMMANDON VIA RÖST (Fungerar alltid oavsett målets status) ---
+    if (cmd === 'VAPEN_OSAKRA') {
+      if (!this.fsm.hasBattery) {
+        this.showHudToast('🔋 Sätt i batteri först!', '#f1c40f');
+        this.log("<span style='color:#e74c3c'>Röstkommando 'Osäkra': Sätt i batteri först!</span>");
+        return;
+      }
+      if (!this.fsm.isSafe) {
+        this.showHudToast('Vapnet är redan osäkrat', '#f1c40f');
+        this.log('Vapnet är redan osäkrat.');
+        return;
+      }
+      window.toggleSafety();
+      this.log("<span style='color:#2ecc71; font-weight:bold;'>🎙️ RÖSTKOMMANDO: Osäkra!</span>");
+      return;
+    }
+
+    if (cmd === 'VAPEN_SAKRA') {
+      if (!this.fsm.hasBattery) {
+        this.showHudToast('🔋 Vapnet saknar batteri', '#bdc3c7');
+        return;
+      }
+      if (this.fsm.isSafe) {
+        this.showHudToast('Vapnet är redan säkrat', '#bdc3c7');
+        this.log('Vapnet är redan säkrat.');
+        return;
+      }
+      window.toggleSafety();
+      this.log("<span style='color:#2ecc71; font-weight:bold;'>🎙️ RÖSTKOMMANDO: Säkra!</span>");
+      return;
+    }
+
+    if (cmd === 'VAPEN_AVFYRA') {
+      this.showHudToast('🎙️ Röst: AVFYRA!', '#e74c3c');
+      this.log("<span style='color:#e74c3c; font-weight:bold;'>🎙️ RÖSTKOMMANDO: Avfyra!</span>");
+      this.handleTrigger();
+      return;
+    }
+
+    if (cmd === 'VAPEN_LADDA_OM') {
+      if (this.fsm.chamber1 !== ChamberState.LOADED || this.fsm.chamber2 !== ChamberState.LOADED) {
+        this.fsm.toggleCassette();
+        this.updateDisplay();
+        this.showHudToast('📥 Röst: Kassetter omladdade (2/2)', '#2ecc71');
+      } else if (!this.fsm.isSafe && this.fsm.hasBattery) {
+        this.toggleCartridge();
+        this.showHudToast(`🔄 Röst: Växlat till K${this.fsm.activeChamber}`, '#3498db');
+      } else {
+        this.showHudToast('📥 Kassetter redan laddade (2/2)', '#2ecc71');
+        this.log('Kassetter är redan fulladdade (2/2).');
+      }
+      return;
+    }
+
+    // --- 2. TAKTISKA SCENARIO TRIGGERS ---
     if (cmd === 'STARTA_ANGREPP') {
       this.startScenario();
       return;
@@ -1760,68 +1902,91 @@ export class TaserApp {
       return;
     }
 
+    // --- 3. VARNINGSROP FÖRE SKOTT ("El, el, el!" + elchockvapen + beredd) ---
+    if (cmd === 'VARNING_EL' || cmd === 'VARNING_FULL' || cmd === 'VARNING_ELCHOCKVAPEN' || cmd === 'VARNING_BEREDD') {
+      const wasWarned = this.warningGiven;
+      this.warningGiven = true;
+      this.updateWarningUI();
+
+      if (cmd === 'VARNING_EL') {
+        this.showHudToast('📢 VARNING DELGIVEN: "El, el, el!"', '#f1c40f');
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"El, el, el!\"</i>");
+      } else if (cmd === 'VARNING_FULL') {
+        this.showHudToast('📢 VARNING DELGIVEN (Elchockvapen)', '#f1c40f');
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag har ett elchockvapen, jag är beredd att använda det!\"</i>");
+      } else if (cmd === 'VARNING_ELCHOCKVAPEN') {
+        this.showHudToast('📢 VARNING DELGIVEN (Elchockvapen)', '#f1c40f');
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag har ett elchockvapen!\"</i>");
+      } else {
+        this.showHudToast('📢 VARNING DELGIVEN (Beredd)', '#f1c40f');
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag är beredd att använda det!\"</i>");
+      }
+
+      if (!this.scene.figureFallen) {
+        if (this.threatLevel >= 3 || (this.xr && this.xr.xrSession && (this.xr.scenario === 'moving' || this.xr.scenario === 'charging'))) {
+          if (!wasWarned) {
+            this.suspectSpeak(Math.random() < 0.5 ? 'Tror du jag bryr mig om ditt elvapen?!' : 'Kom inte närmare, jag menar allvar!');
+          } else {
+            this.suspectSpeak('Jag hörde dig! Stick sa jag!');
+          }
+        } else {
+          this.suspectSpeak('Vadå elchockvapen?! Ta det lugnt!');
+        }
+      }
+      return;
+    }
+
     if (this.scene.figureFallen) {
       this.log("<span style='color:#bdc3c7'>Målet är redan neutraliserat / på marken.</span>");
       return;
     }
 
-    // --- TAKTISK VARNING: ELCHOCKVAPEN & BEREDD ATT ANVÄNDA DET ---
-    if (cmd === 'VARNING_FULL' || cmd === 'VARNING_ELCHOCKVAPEN' || cmd === 'VARNING_BEREDD') {
-      const wasWarned = this.warningGiven;
-      this.warningGiven = true;
-      this.updateWarningUI();
+    const isXRActiveScenario = !!(this.xr && this.xr.xrSession && (this.xr.scenario === 'moving' || this.xr.scenario === 'charging') && !this.xr.targetSurrendered);
+    const isThreatActive = this.threatLevel >= 3 || isXRActiveScenario;
+    const isArmed = isThreatActive || (this.scene.knifeMesh && this.scene.knifeMesh.visible) || (this.scene.batonMesh && this.scene.batonMesh.visible) || (this.threatWeapon === 'FISTS');
 
-      if (cmd === 'VARNING_FULL') {
-        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag har ett elchockvapen, jag är beredd att använda det!\"</i>");
-      } else if (cmd === 'VARNING_ELCHOCKVAPEN') {
-        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag har ett elchockvapen!\"</i>");
-      } else {
-        this.log("<span style='color:#f1c40f; font-weight:bold;'>📢 TAKTISK VARNING DELGIVEN:</span> <i>\"Jag är beredd att använda det!\"</i>");
+    const applySurrenderStop = (labelText) => {
+      if (this.threatInterval) {
+        clearInterval(this.threatInterval);
+        this.threatInterval = null;
       }
-
-      if (this.threatLevel >= 3) {
-        if (!wasWarned) {
-          this.suspectSpeak(Math.random() < 0.5 ? 'Tror du jag bryr mig om ditt elvapen?!' : 'Kom inte närmare, jag menar allvar!');
-        } else {
-          this.suspectSpeak('Jag hörde dig! Stick sa jag!');
+      this.threatLevel = 0;
+      if (typeof window !== 'undefined') window.threatLevel = 0;
+      this.isScenarioActive = false;
+      this.fsm.isScenarioActive = false;
+      if (this.xr && typeof this.xr.surrenderScenario === 'function') {
+        this.xr.surrenderScenario();
+      }
+      if (this.scene) {
+        this.scene.armOverrideWeight = 0;
+        if (typeof this.scene.updateWeaponVisibility === 'function') {
+          this.scene.updateWeaponVisibility();
         }
-      } else {
-        this.suspectSpeak('Vadå elchockvapen?! Ta det lugnt!');
+        this.scene.setAnimation('Idle', 0.4);
       }
-      return;
-    }
+      const tLabel = document.getElementById('target-label');
+      if (tLabel) {
+        tLabel.textContent = labelText || 'PERSON: GAV UPP';
+        tLabel.classList.remove('armed');
+      }
+    };
 
-    // --- KOMMANDO: SLÄPP KNIVEN / VAPNET ---
-    if (cmd === 'SLAPP_KNIVEN') {
-      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible) || (this.scene.batonMesh && this.scene.batonMesh.visible) || (this.threatWeapon === 'FISTS');
+    // --- 4. BEFALLNINGAR SOM PÅVERKAR / STOPPAR SCENARIOT ---
+    if (cmd === 'SLAPP_KNIVEN' || cmd === 'SLAPP_VAPNET') {
+      const cmdDesc = cmd === 'SLAPP_VAPNET' ? 'Släpp vapnet!' : 'Släpp kniven!';
       if (isArmed) {
-        // Taktisk sannolikhetsbedömning: 30% chans att målet lyder och släpper vapnet / sänker garden
-        const obeys = Math.random() < 0.30;
+        const obeyChance = this.warningGiven ? 0.50 : 0.35;
+        const obeys = Math.random() < obeyChance;
         if (obeys) {
-          if (this.threatInterval) clearInterval(this.threatInterval);
-          this.threatLevel = 0;
-          if (typeof window !== 'undefined') window.threatLevel = 0;
-
-          // Sänk garden / släpp vapen och återgå mjukt till stillastående
-          if (this.scene) {
-            this.scene.armOverrideWeight = 0;
-            this.scene.updateWeaponVisibility();
-            this.scene.setAnimation('Idle', 0.4);
-          }
-
-          const tLabel = document.getElementById('target-label');
-          if (tLabel) {
-            tLabel.textContent = 'PERSON: GAV UPP';
-            tLabel.classList.remove('armed');
-          }
-
-          const weaponName = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'garden');
-          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES (30% chans):</span> Målet släpper ${weaponName} och kapitulerar!`);
+          applySurrenderStop('PERSON: GAV UPP');
+          const weaponName = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'vapnet');
+          this.showHudToast(`✅ Målet lyder: "${cmdDesc}"`, '#2ecc71');
+          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES:</span> Målet släpper ${weaponName} och kapitulerar!`);
           this.suspectSpeak(this.threatWeapon === 'FISTS' ? 'Okej! Skjut inte, jag ger upp!' : `Okej! Skjut inte, jag släpper ${weaponName}!`);
         } else {
-          // 70% risk: Målet vägrar och eskalerar
           const weaponName = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'angreppet');
-          this.log(`<span style='color:#e74c3c; font-weight:bold;'>⚠️ KOMMANDO IGNORERADES (70% risk):</span> Målet vägrar avbryta ${weaponName}! Fortsätter anfallet!`);
+          this.showHudToast('⚠️ Målet vägrar släppa!', '#e74c3c');
+          this.log(`<span style='color:#e74c3c; font-weight:bold;'>⚠️ KOMMANDO IGNORERADES:</span> Målet vägrar avbryta ${weaponName}! Fortsätter anfallet!`);
           this.suspectSpeak('Aldrig i livet! Kom hit då!');
           this.scene.setAnimation('Walk', 0.3);
         }
@@ -1829,70 +1994,105 @@ export class TaserApp {
         this.suspectSpeak('Jag har inget vapen! Vad glor du på?!');
         this.log("<span style='color:#f39c12'>Målet har ännu inte dragit något vapen.</span>");
       }
-    } else if (cmd === 'STANNA') {
-      if (this.threatLevel >= 3) {
-        const pauses = Math.random() < 0.25;
-        if (pauses) {
+    } else if (cmd === 'HANDERNA_UPP') {
+      if (isThreatActive) {
+        const obeyChance = this.warningGiven ? 0.45 : 0.25;
+        if (Math.random() < obeyChance) {
+          applySurrenderStop('PERSON: HÄNDERNA UPPE');
+          this.showHudToast('✅ Målet stannar & ger upp!', '#2ecc71');
+          this.log("<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES (\"Händerna upp!\"):</span> Målet avbryter och visar händerna!");
+          this.suspectSpeak('Okej, mina händer är uppe! Skjut inte!');
+        } else {
+          if (this.xr && typeof this.xr.pauseScenario === 'function') this.xr.pauseScenario(1600);
+          this.showHudToast('⚠️ Målet tvekar!', '#f1c40f');
+          this.suspectSpeak('Gå bort från mig!');
+          this.log("<span style='color:#e74c3c'>Målet tvekar kort men lyder inte ordern fullt ut.</span>");
+        }
+      } else {
+        this.showHudToast('✅ Målet visar händerna', '#2ecc71');
+        this.suspectSpeak('Okej, jag har händerna uppe!');
+        this.log("<span style='color:#2ecc71'>Målet står stilla och håller upp händerna.</span>");
+      }
+    } else if (cmd === 'BACKA') {
+      if (this.xr && typeof this.xr.retreatTarget === 'function') {
+        this.xr.retreatTarget(0.8);
+      } else if (this.scene && this.scene.taserGroup) {
+        this.scene.taserGroup.position.z -= 0.7;
+        this.currentDistance = Math.min(7.5, (this.currentDistance || 3.0) + 0.7);
+        this.updateAimVisuals();
+      }
+      if (isThreatActive) {
+        this.scene.setAnimation('Idle', 0.35);
+        this.showHudToast('⏸️ Målet backar & tvekar!', '#f1c40f');
+        this.suspectSpeak('Okej, jag tar det lugnt! Skjut inte!');
+        this.log("<span style='color:#f1c40f; font-weight:bold;'>⏸️ KOMMANDO (\"Backa!\"):</span> Målet backar undan och tvekar tillfälligt.");
+        setTimeout(() => {
+          if (!this.scene.figureFallen && this.threatLevel >= 3 && !(this.xr && this.xr.targetSurrendered)) {
+            this.scene.setAnimation('Walk', 0.4);
+          }
+        }, 3200);
+      } else {
+        this.showHudToast('↩️ Målet backar', '#2ecc71');
+        this.suspectSpeak('Okej, jag backar!');
+      }
+    } else if (cmd === 'POLIS_STANNA' || cmd === 'STANNA') {
+      const isPoliceCmd = cmd === 'POLIS_STANNA';
+      if (isThreatActive) {
+        const fullStopChance = isPoliceCmd ? (this.warningGiven ? 0.55 : 0.35) : 0.20;
+        const roll = Math.random();
+        if (roll < fullStopChance) {
+          applySurrenderStop('PERSON: STANNADE');
+          this.showHudToast(`✅ Målet stannar (${isPoliceCmd ? 'Polis, stanna!' : 'Stanna!'})`, '#2ecc71');
+          this.suspectSpeak('Okej polis, jag stannar! Skjut inte!');
+          this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ KOMMANDO LYCKADES:</span> Målet lyder "${isPoliceCmd ? 'Polis, stanna!' : 'Stanna!'}" och avbryter framryckningen!`);
+        } else if (roll < fullStopChance + 0.45) {
+          if (this.xr && typeof this.xr.pauseScenario === 'function') this.xr.pauseScenario(3000);
           this.suspectSpeak('Vad vill du mig?!');
           this.scene.setAnimation('Idle', 0.3);
           setTimeout(() => {
-            if (!this.scene.figureFallen && this.threatLevel >= 3) {
+            if (!this.scene.figureFallen && this.threatLevel >= 3 && !(this.xr && this.xr.targetSurrendered)) {
               this.scene.setAnimation('Walk', 0.4);
             }
-          }, 2500);
+          }, 3000);
+          this.showHudToast('⏸️ Målet tvekar och stannar kort!', '#f1c40f');
           this.log("<span style='color:#f1c40f; font-weight:bold;'>Målet tvekar och stannar tillfälligt!</span>");
         } else {
+          this.showHudToast('⚠️ Målet ignorerar stanna-order!', '#e74c3c');
           this.suspectSpeak('Stoppa mig om du kan!');
           this.log("<span style='color:#e74c3c'>Målet ignorerar stanna-ordern.</span>");
         }
       } else {
+        this.showHudToast('Målet står stilla', '#2ecc71');
         this.suspectSpeak('Jag står ju still!');
       }
     } else if (cmd === 'LAGG_DIG_NER') {
-      const isArmed = this.threatLevel >= 3 || (this.scene.knifeMesh && this.scene.knifeMesh.visible) || (this.scene.batonMesh && this.scene.batonMesh.visible) || (this.threatWeapon === 'FISTS');
       if (isArmed) {
-        // Taktisk eskalering med sannolikhetslogik:
-        // Utan varning (warningGiven == false): endast 10% chans att figuren ger upp
-        // Efter varning (warningGiven == true): ökar chansen till 40% att figuren avbryter anfallet
-        const surrenderChance = this.warningGiven ? 0.40 : 0.10;
+        const surrenderChance = this.warningGiven ? 0.45 : 0.15;
         const obeys = Math.random() < surrenderChance;
 
         if (obeys) {
-          if (this.threatInterval) clearInterval(this.threatInterval);
-          this.threatLevel = 0;
-          if (typeof window !== 'undefined') window.threatLevel = 0;
-
-          // Målet lägger sig ner på marken och släpper hot
+          applySurrenderStop('PERSON: GAV UPP');
           if (this.scene) {
-            this.scene.armOverrideWeight = 0;
-            this.scene.updateWeaponVisibility();
             this.scene.collapseTarget();
           }
 
-          const tLabel = document.getElementById('target-label');
-          if (tLabel) {
-            tLabel.textContent = 'PERSON: GAV UPP';
-            tLabel.classList.remove('armed');
-          }
-
-          const chanceInfo = this.warningGiven ? '40% chans efter formell varning' : '10% chans utan varning';
+          const chanceInfo = this.warningGiven ? 'efter formell varning' : 'utan varning';
           const weaponDesc = this.threatWeapon === 'BATON' ? 'batongen' : (this.threatWeapon === 'KNIFE' ? 'kniven' : 'garden');
+          this.showHudToast('✅ Målet lägger sig ner!', '#2ecc71');
           this.log(`<span style='color:#2ecc71; font-weight:bold;'>✅ MÅLET GER UPP (${chanceInfo})!</span> Målet släpper ${weaponDesc} och lägger sig platt på marken.`);
           this.suspectSpeak('Okej! Jag lägger mig ner, skjut inte!');
         } else {
-          const failInfo = this.warningGiven ? '60% risk trots delgiven varning' : '90% risk utan varning';
+          const failInfo = this.warningGiven ? 'trots delgiven varning' : 'utan varning';
+          this.showHudToast('⚠️ Målet vägrar lägga sig!', '#e74c3c');
           this.log(`<span style='color:#e74c3c; font-weight:bold;'>⚠️ MÅLET VÄGRAR (${failInfo})!</span> Målet vägrar lägga sig ner och fortsätter anfallet!`);
           this.suspectSpeak(this.warningGiven ? 'Ditt elvapen skrämmer mig inte! Kom hit då!' : 'Aldrig i livet! Jag lägger mig inte!');
           this.scene.setAnimation('Walk', 0.3);
         }
       } else {
+        applySurrenderStop('PERSON: PÅ MARKEN');
         this.suspectSpeak('Okej, jag lägger mig ner!');
         this.scene.collapseTarget();
-        const tLabel = document.getElementById('target-label');
-        if (tLabel) {
-          tLabel.textContent = 'PERSON: PÅ MARKEN';
-          tLabel.classList.remove('armed');
-        }
+        this.showHudToast('✅ Målet på marken', '#2ecc71');
         this.log("<span style='color:#2ecc71; font-weight:bold;'>Målet lyder och lägger sig ner på marken.</span>");
       }
     }
@@ -2223,6 +2423,16 @@ export class TaserApp {
 
     this.updateProjectors();
     this.togglePlaceMode();
+
+    // Aktivera röstigenkänning automatiskt i WebXR-läget med full svensk terminologi
+    if (this.voice && this.voice.isSupported) {
+      if (!this.voice.isListening) {
+        this.voice.start({ autoFromXR: true });
+      } else {
+        this.voice.ensureActive();
+      }
+    }
+
     this.log(`WebXR startad i scenario: ${scenario}`);
   }
 
@@ -2373,6 +2583,9 @@ export class TaserApp {
     }
     this.updateAimVisuals();
     this.updateDisplay();
+    if (this.voice && this.voice.isListening) {
+      this.voice.ensureActive();
+    }
   }
 
   handlePhysicalTilt(direction, gamma) {
@@ -2479,6 +2692,9 @@ export class TaserApp {
     this.liveWires = [];
     this.scene.clearWiresAndDarts();
     this.fsm.reset();
+    if (this.xr && typeof this.xr.resetScenarioState === 'function') {
+      this.xr.resetScenarioState();
+    }
 
     if (this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting && this.scene.taserGroup) {
       const xrCam = this.scene.renderer.xr.getCamera(this.scene.camera);

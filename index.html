@@ -748,7 +748,7 @@
         }
 
         /* AMBIDEXTROUS VARNINGSKNAPPAR (Symmetriska för enhands/tvåhandsgrepp) */
-        .warning-btn-wrapper { position: absolute; top: 96px; width: 22px; height: 52px; }
+        .warning-btn-wrapper { position: absolute; top: 96px; width: 22px; height: 52px; z-index: 1035; pointer-events: auto; }
         .warning-btn-wrapper.left { left: -10px; }
         .warning-btn-wrapper.right { right: -10px; }
 
@@ -759,6 +759,7 @@
             border: 2px solid #000;
             border-radius: 6px;
             cursor: pointer;
+            pointer-events: auto;
             box-shadow: 2px 0 4px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.05);
             transition: all 0.1s;
             touch-action: manipulation;
@@ -768,7 +769,7 @@
         .warning-btn:active, .warning-btn.active-press { transform: scaleX(0.85); background: #111; }
 
         /* SÄKRING (AMBIDEXTROUS TUMSWITCH) */
-        .safety-container { display: flex; justify-content: center; margin-top: 8px; }
+        .safety-container { display: flex; justify-content: center; margin-top: 8px; position: relative; z-index: 1030; pointer-events: auto; }
         .safety-switch {
             width: 72px;
             height: 36px;
@@ -777,6 +778,8 @@
             border-radius: 18px;
             cursor: pointer;
             position: relative;
+            z-index: 1035;
+            pointer-events: auto;
             transition: background-color 0.25s;
             box-shadow: inset 0 3px 6px rgba(0,0,0,0.6);
             touch-action: manipulation;
@@ -792,10 +795,11 @@
             border-radius: 50%;
             transition: left 0.25s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
         }
         .safety-switch.unsafe { background-color: #e74c3c; }
         .safety-switch.unsafe::after { left: 38px; }
-        .safety-label { text-align: center; font-weight: bold; margin-top: 4px; color: #111; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+        .safety-label { text-align: center; font-weight: bold; margin-top: 4px; color: #111; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; pointer-events: none; }
 
         /* KONTROLLPANEL (TUM-ZON FÖR STÅENDE GREPP - TASER 7 POLYMER-CHASSI) */
         .sim-controls {
@@ -808,7 +812,7 @@
             border: 2px solid #2c313a;
             border-top: 1px solid #101215;
             position: relative;
-            z-index: 101;
+            z-index: 1010;
             pointer-events: auto;
             flex-shrink: 0;
             user-select: none;
@@ -1379,7 +1383,7 @@
             width: 100% !important;
             max-width: 380px !important;
             padding-bottom: env(safe-area-inset-bottom, 15px) !important;
-            z-index: 500 !important;
+            z-index: 10005 !important;
             pointer-events: auto !important;
         }
 
@@ -1392,6 +1396,7 @@
             border: 1px solid rgba(241, 196, 15, 0.4) !important;
             border-bottom: none !important;
             border-radius: 14px 14px 0 0 !important;
+            pointer-events: auto !important;
         }
 
         body.ar-active .log-box,
@@ -1401,7 +1406,7 @@
             display: none !important;
         }
 
-        /* CLEAN & COMPACT AR UI (WebXR Active - Identisk skala och layout med Live AI: Behåll OLED, Säkring, Avfyra, Kassett, Funk. Kontroll, Återställ, Flytta Mål, Avsluta) */
+        /* CLEAN & COMPACT AR UI (WebXR Active - Identisk skala och layout med Live AI + Batteri, Vinkla, Funk. Kontroll & Röst) */
         body.ar-combat-mode .main-container,
         .main-container.ar-combat-mode {
             position: fixed !important;
@@ -1416,7 +1421,30 @@
             max-width: 340px !important;
             padding: 0 0 env(safe-area-inset-bottom, 4px) 0 !important;
             overflow: visible !important;
-            z-index: 500 !important;
+            z-index: 10005 !important;
+            pointer-events: auto !important;
+        }
+
+        body.webxr-mode #main-container,
+        body.ar-combat-mode #main-container,
+        body.webxr-mode .taser-device,
+        body.ar-combat-mode .taser-device,
+        body.webxr-mode .safety-container,
+        body.ar-combat-mode .safety-container,
+        body.webxr-mode #safety-switch,
+        body.ar-combat-mode #safety-switch,
+        body.webxr-mode .warning-btn-wrapper,
+        body.ar-combat-mode .warning-btn-wrapper,
+        body.webxr-mode .warning-btn,
+        body.ar-combat-mode .warning-btn,
+        body.webxr-mode .sim-controls,
+        body.ar-combat-mode .sim-controls,
+        body.webxr-mode #standard-controls,
+        body.ar-combat-mode #standard-controls,
+        body.webxr-mode .sim-controls .btn,
+        body.ar-combat-mode .sim-controls .btn,
+        body.webxr-mode .sim-controls .action-btn,
+        body.ar-combat-mode .sim-controls .action-btn {
             pointer-events: auto !important;
         }
 
@@ -1428,26 +1456,18 @@
         .main-container.ar-combat-mode #btn-webxr,
         body.ar-combat-mode #live-ar-grip-row,
         .main-container.ar-combat-mode #live-ar-grip-row,
-        body.ar-combat-mode #extra-toggles-row,
-        .main-container.ar-combat-mode #extra-toggles-row,
         body.ar-combat-mode #info-btn-row,
         .main-container.ar-combat-mode #info-btn-row,
         body.ar-combat-mode .btn-clothing,
         body.ar-combat-mode #btn-clothing,
-        body.ar-combat-mode .btn-voice,
-        body.ar-combat-mode #btn-voice,
         body.ar-combat-mode .btn-gyro,
         body.ar-combat-mode #btn-gyro,
         body.ar-combat-mode .btn-info,
         body.ar-combat-mode #btn-info,
-        body.ar-combat-mode .btn-tilt,
-        body.ar-combat-mode #btn-tilt,
         body.ar-combat-mode .btn-place,
         body.ar-combat-mode #btn-place,
         body.ar-combat-mode .btn-stealth,
         body.ar-combat-mode #btn-stealth,
-        body.ar-combat-mode .btn-battery,
-        body.ar-combat-mode #btn-battery,
         body.ar-combat-mode .btn-scenario,
         body.ar-combat-mode #btn-scenario,
         body.ar-combat-mode .btn-kontaktstot,
@@ -1458,14 +1478,10 @@
         body.ar-combat-mode #log,
         body.ar-combat-mode .header-bar,
         .main-container.ar-combat-mode .btn-clothing,
-        .main-container.ar-combat-mode .btn-voice,
         .main-container.ar-combat-mode .btn-gyro,
         .main-container.ar-combat-mode .btn-info,
-        .main-container.ar-combat-mode .btn-tilt,
-        .main-container.ar-combat-mode #btn-tilt,
         .main-container.ar-combat-mode .btn-place,
         .main-container.ar-combat-mode .btn-stealth,
-        .main-container.ar-combat-mode .btn-battery,
         .main-container.ar-combat-mode .btn-scenario,
         .main-container.ar-combat-mode .btn-kontaktstot,
         .main-container.ar-combat-mode #btn-scenario-menu,
@@ -1476,14 +1492,14 @@
 
         body.ar-combat-mode .btn-grid-compact:has(#btn-cassette),
         .main-container.ar-combat-mode .btn-grid-compact:has(#btn-cassette) {
-            grid-template-columns: 1fr !important;
+            grid-template-columns: 1fr 1fr !important;
             gap: 5px !important;
             margin-bottom: 5px !important;
         }
 
         body.ar-combat-mode .btn-grid-compact:has(#btn-warn),
         .main-container.ar-combat-mode .btn-grid-compact:has(#btn-warn) {
-            grid-template-columns: 1fr 1fr !important;
+            grid-template-columns: 1fr 1fr 1fr !important;
             gap: 5px !important;
             margin-bottom: 5px !important;
         }
@@ -1494,25 +1510,49 @@
             grid-template-columns: 1fr 1fr !important;
             gap: 5px !important;
             margin-top: 2px !important;
+            margin-bottom: 4px !important;
+            visibility: visible !important;
+        }
+
+        body.ar-combat-mode #extra-toggles-row,
+        .main-container.ar-combat-mode #extra-toggles-row {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 4px !important;
+            margin-top: 0 !important;
             margin-bottom: 0 !important;
             visibility: visible !important;
         }
 
-        /* Behåll OLED, Säkring, Avfyra, Kassett, Funk. Kontroll, Återställ samt Flytta Mål / Avsluta WebXR synliga i greppet */
+        /* Behåll OLED, Säkring, Varningsknappar, Avfyra, Kassett, Batteri, Vinkla, Funk. Kontroll, Återställ, Röst samt Flytta Mål / Avsluta WebXR synliga och klickbara */
         body.ar-combat-mode #taser-display,
         body.ar-combat-mode .safety-container,
+        body.ar-combat-mode #safety-switch,
+        body.ar-combat-mode .warning-btn-wrapper,
+        body.ar-combat-mode #warn-left,
+        body.ar-combat-mode #warn-right,
         body.ar-combat-mode #btn-trigger,
         body.ar-combat-mode #btn-cassette,
+        body.ar-combat-mode #btn-battery,
+        body.ar-combat-mode #btn-tilt,
         body.ar-combat-mode #btn-warn,
         body.ar-combat-mode #btn-reset,
+        body.ar-combat-mode #btn-voice,
         body.ar-combat-mode #btn-xr-move-target,
         body.ar-combat-mode #btn-xr-exit,
         .main-container.ar-combat-mode #taser-display,
         .main-container.ar-combat-mode .safety-container,
+        .main-container.ar-combat-mode #safety-switch,
+        .main-container.ar-combat-mode .warning-btn-wrapper,
+        .main-container.ar-combat-mode #warn-left,
+        .main-container.ar-combat-mode #warn-right,
         .main-container.ar-combat-mode #btn-trigger,
         .main-container.ar-combat-mode #btn-cassette,
+        .main-container.ar-combat-mode #btn-battery,
+        .main-container.ar-combat-mode #btn-tilt,
         .main-container.ar-combat-mode #btn-warn,
         .main-container.ar-combat-mode #btn-reset,
+        .main-container.ar-combat-mode #btn-voice,
         .main-container.ar-combat-mode #btn-xr-move-target,
         .main-container.ar-combat-mode #btn-xr-exit {
             display: inline-flex !important;
@@ -1520,16 +1560,24 @@
         }
         body.ar-combat-mode #taser-display,
         body.ar-combat-mode .safety-container,
+        body.ar-combat-mode .warning-btn-wrapper,
         .main-container.ar-combat-mode #taser-display,
-        .main-container.ar-combat-mode .safety-container {
+        .main-container.ar-combat-mode .safety-container,
+        .main-container.ar-combat-mode .warning-btn-wrapper {
             display: flex !important;
+        }
+        body.ar-combat-mode #safety-switch,
+        .main-container.ar-combat-mode #safety-switch {
+            display: block !important;
         }
 
         /* KOMPAKT CHASSI I WEBXR (.ar-combat-mode) - EXAKT SAMMA SKALNING SOM LIVE AI */
         body.ar-combat-mode .taser-device,
         .main-container.ar-combat-mode .taser-device {
             width: min(276px, 86vw) !important;
-            padding-bottom: 5px !important;
+            padding-bottom: 8px !important;
+            position: relative !important;
+            z-index: 1020 !important;
             background-color: rgba(252, 190, 0, 0.78) !important;
             background-image:
                 linear-gradient(to bottom, rgba(28, 30, 36, 0.88) 0%, rgba(18, 20, 24, 0.88) 42%, rgba(252, 190, 0, 0) 42%, rgba(252, 190, 0, 0) 100%),
@@ -1565,6 +1613,8 @@
         body.ar-combat-mode .safety-container,
         .main-container.ar-combat-mode .safety-container {
             margin-top: 3px !important;
+            position: relative !important;
+            z-index: 1030 !important;
         }
 
         body.ar-combat-mode .safety-label,
@@ -1583,6 +1633,7 @@
         .main-container.live-ar-active .warning-btn-wrapper {
             top: 76px !important;
             height: 42px !important;
+            z-index: 1035 !important;
         }
 
         body.ar-combat-mode #taser-display.oled-inverted,
@@ -1598,6 +1649,8 @@
         .main-container.ar-combat-mode .sim-controls,
         .sim-controls.ar-combat-mode {
             width: min(290px, 90vw) !important;
+            position: relative !important;
+            z-index: 1010 !important;
             background: linear-gradient(180deg, rgba(24, 27, 33, 0.86) 0%, rgba(13, 15, 19, 0.92) 100%) !important;
             backdrop-filter: blur(4px) !important;
             -webkit-backdrop-filter: blur(4px) !important;
@@ -1606,18 +1659,22 @@
             border-radius: 16px 16px 0 0 !important;
             box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255,255,255,0.12) !important;
             padding: 12px 8px 8px 8px !important;
-            margin-top: -12px !important;
+            margin-top: -10px !important;
         }
 
         body.ar-combat-mode #btn-cassette,
-        .main-container.ar-combat-mode #btn-cassette {
+        body.ar-combat-mode #btn-battery,
+        body.ar-combat-mode #btn-tilt,
+        .main-container.ar-combat-mode #btn-cassette,
+        .main-container.ar-combat-mode #btn-battery,
+        .main-container.ar-combat-mode #btn-tilt {
             background: linear-gradient(180deg, #323844 0%, #1e222a 100%) !important;
             border: 1px solid #101216 !important;
             border-top: 1px solid rgba(255,255,255,0.22) !important;
             color: #f4f6f8 !important;
-            min-height: 34px !important;
+            min-height: 33px !important;
             padding: 5px 4px !important;
-            font-size: 9.5px !important;
+            font-size: 9px !important;
             font-weight: 800 !important;
         }
 
@@ -1627,9 +1684,9 @@
             border: 1px solid rgba(252, 190, 0, 0.65) !important;
             border-top: 1px solid rgba(252, 190, 0, 0.45) !important;
             color: #FCBE00 !important;
-            min-height: 34px !important;
+            min-height: 33px !important;
             padding: 5px 4px !important;
-            font-size: 9.5px !important;
+            font-size: 9px !important;
             font-weight: 800 !important;
         }
 
@@ -1641,9 +1698,17 @@
         .main-container.ar-combat-mode #btn-reset,
         .main-container.ar-combat-mode #btn-xr-move-target,
         .main-container.ar-combat-mode #btn-xr-exit {
-            min-height: 34px !important;
+            min-height: 33px !important;
             padding: 5px 4px !important;
-            font-size: 9.5px !important;
+            font-size: 9px !important;
+            font-weight: 800 !important;
+        }
+
+        body.ar-combat-mode #btn-voice,
+        .main-container.ar-combat-mode #btn-voice {
+            min-height: 29px !important;
+            padding: 4px 6px !important;
+            font-size: 9px !important;
             font-weight: 800 !important;
         }
 
@@ -1652,10 +1717,35 @@
             background: linear-gradient(180deg, rgba(229, 57, 53, 0.94) 0%, rgba(183, 28, 28, 0.94) 55%, rgba(142, 21, 21, 0.96) 100%) !important;
             border: 1px solid #ff6b6b !important;
             box-shadow: 0 4px 0 #420808, 0 0 18px rgba(231, 76, 60, 0.55), inset 0 1px 0 rgba(255,255,255,0.32) !important;
-            min-height: 40px !important;
-            padding: 8px 8px !important;
+            min-height: 38px !important;
+            padding: 7px 8px !important;
             margin-top: 2px !important;
             margin-bottom: 5px !important;
+        }
+
+        /* AR HUD TOAST FÖR SNABB FEEDBACK NÄR LOGGEN ÄR DOLD */
+        #ar-hud-toast {
+            display: none;
+            position: fixed;
+            top: 48px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 25000;
+            pointer-events: none;
+            background: rgba(10, 12, 16, 0.92);
+            color: #f1c40f;
+            border: 1.5px solid #f1c40f;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-align: center;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            max-width: 88vw;
+            white-space: nowrap;
         }
 
         /* COMPACT LIVE-AR UI (.live-ar-active / .live-ai-active): Behåll endast Taser-chassi (säkring), Avfyra, Kassett, Batteri, Vinkla, Återställ och Avsluta */
@@ -2562,6 +2652,8 @@
 
     <!-- FAST TILLBAKAKNAPP TILL HUVUDMENYN -->
     <button type="button" id="btn-back-menu" aria-label="Tillbaka till huvudmenyn">⬅ MENY</button>
+    <!-- AR HUD FEEDBACK TOAST -->
+    <div id="ar-hud-toast" role="status" aria-live="polite" style="display:none;"></div>
     <!-- LIVE AR MARKÖR-KOD BRICKA -->
     <div id="live-ar-room-badge" aria-live="polite">🔗 KOD: ----</div>
     <!-- STATUSPILL FÖR FUNKTIONSKONTROLL -->
@@ -2694,7 +2786,7 @@
                 <div class="warning-btn-wrapper right"><button class="warning-btn" id="warn-right"></button></div>
                 <div class="safety-container">
                     <div>
-                        <div id="safety-switch" class="safety-switch"></div>
+                        <div id="safety-switch" class="safety-switch" role="button" tabindex="0" aria-label="Växla säkring"></div>
                         <div id="safety-label" class="safety-label">SÄKRAD</div>
                     </div>
                 </div>
@@ -2834,7 +2926,7 @@
     </script>
 
     <!-- Huvudapplikation (Relativ sökväg för GitHub Pages subpath-kompatibilitet) -->
-    <script type="module" src="./js/app.js?v=8"></script>
+    <script type="module" src="./js/app.js?v=9"></script>
 
     <!-- HUVUDMENY / STARTMENY (VISAS INNAN APPEN STARTAR) -->
     <div id="main-menu" role="dialog" aria-modal="true" aria-labelledby="main-menu-title">
