@@ -318,11 +318,15 @@ export class TaserXR {
     this.placeMode = false;
 
     if (this.taserScene) {
-      if (this.taserScene.placementMarker) {
-        this.taserScene.placementMarker.visible = false;
-      }
-      if (this.taserScene.reticle) {
-        this.taserScene.reticle.visible = false;
+      if (typeof this.taserScene.hideAllPlacementMarkers === 'function') {
+        this.taserScene.hideAllPlacementMarkers();
+      } else {
+        if (this.taserScene.placementMarker) {
+          this.taserScene.placementMarker.visible = false;
+        }
+        if (this.taserScene.reticle) {
+          this.taserScene.reticle.visible = false;
+        }
       }
       this.taserScene.disableARMode();
     }
@@ -452,11 +456,17 @@ export class TaserXR {
       }
     } else {
       // Dölj alltid placement reticle helt efter placering
-      if (this.taserScene && this.taserScene.placementMarker && this.taserScene.placementMarker.visible) {
-        this.taserScene.placementMarker.visible = false;
-      }
-      if (this.taserScene && this.taserScene.reticle && this.taserScene.reticle.visible) {
-        this.taserScene.reticle.visible = false;
+      if (this.taserScene) {
+        if (typeof this.taserScene.hideAllPlacementMarkers === 'function') {
+          this.taserScene.hideAllPlacementMarkers();
+        } else {
+          if (this.taserScene.placementMarker && this.taserScene.placementMarker.visible) {
+            this.taserScene.placementMarker.visible = false;
+          }
+          if (this.taserScene.reticle && this.taserScene.reticle.visible) {
+            this.taserScene.reticle.visible = false;
+          }
+        }
       }
     }
 

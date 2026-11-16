@@ -426,6 +426,39 @@ export class TaserVRApp {
     this._reticlePos = new THREE.Vector3();
     this._reticleFwd = new THREE.Vector3();
 
+    // World-space spelarposition, 360° huvudspårning & steg-detektering (Zero-GC)
+    this.vrPlayerPos = new THREE.Vector3(0, 1.35, 3.0);
+    this.vrYawOffset = 0;
+    this._vrYawCalibrated = false;
+    this._hasLiveHeadOrientation = false;
+    this._headAlphaRad = 0;
+    this._headBetaRad = Math.PI * 0.5;
+    this._headGammaRad = 0;
+    this._screenOrientRad = 0;
+    this._headEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this._headRawQuat = new THREE.Quaternion();
+    this._headQuatTarget = new THREE.Quaternion();
+    this._headQuatCurrent = new THREE.Quaternion();
+    this._headQ1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+    this._headQScreen = new THREE.Quaternion();
+    this._headQYawOffset = new THREE.Quaternion();
+    this._vrZAxis = new THREE.Vector3(0, 0, 1);
+    this._vrUpAxis = new THREE.Vector3(0, 1, 0);
+    this._locoFwd = new THREE.Vector3();
+    this._locoRight = new THREE.Vector3();
+    this._desktopYaw = 0;
+    this._desktopPitch = 0;
+    this._desktopLookDragging = false;
+    this._desktopLookLastX = 0;
+    this._desktopLookLastY = 0;
+    this._gravityFilter = { x: 0, y: 0, z: 0, initialized: false };
+    this._stepArmed = true;
+    this._lastStepTs = 0;
+    this._stepStrideRemaining = 0;
+    this._activeMoveX = 0;
+    this._activeMoveY = 0;
+    this._headTrackingBound = false;
+
     // Ready weapon hardware state for immediate VR operation
     this.ensureReadyHardware();
     this.ensureLiveARRoomCode();
@@ -444,7 +477,7 @@ export class TaserVRApp {
     // Auto-start rear camera passthrough immediately on load
     this.startCameraPassThrough();
 
-    this.log("VR Headset Simulator initierad. Kamera pass-through, Stereo 3D & Landscape-stöd aktivt.");
+    this.log("VR Headset Simulator initierad. World-Space 3D-figur, 360° gyro & rörelse aktivt.");
   }
 
   ensureReadyHardware() {
@@ -801,10 +834,15 @@ export class TaserVRApp {
     document.body.classList.remove('vr-menu-open', 'vr-menu-paused');
     document.documentElement.classList.remove('vr-menu-open', 'vr-menu-paused');
 
+    this.vrPlayerPos.set(0, 1.35, 3.0);
+    this._stepStrideRemaining = 0;
     this.scene.resetTarget();
     if (this.scene.taserGroup) {
+      if (this.scene.taserGroup.parent !== this.scene.scene) {
+        this.scene.scene.add(this.scene.taserGroup);
+      }
       this.scene.taserGroup.position.set(0, 0, 0);
-      this.scene.taserGroup.lookAt(0, 0, 3.0);
+      this.scene.taserGroup.lookAt(this.vrPlayerPos.x, 0, this.vrPlayerPos.z);
       this.scene.taserGroup.userData.startPos = this.scene.taserGroup.position.clone();
       this.scene.taserGroup.visible = true;
     }
@@ -949,6 +987,7 @@ export class TaserVRApp {
     window.openVRStartMenu = () => this.openVRStartMenu();
     window.openVRPauseMenu = () => this.openVRPauseMenu();
     window.closeVRMenu = () => this.closeVRMenu();
+    window.recenterVRView = () => this.recenterVRView();
   }
 
   initFSMSubscriptions() {
@@ -1125,6 +1164,8 @@ export class TaserVRApp {
       this.xr.onPhysicalTilt = (dir, gamma) => this.handlePhysicalTilt(dir, gamma);
     }
 
+    this.initVRHeadAndMotionTracking(false);
+
     if (
       typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission !== 'function' &&
@@ -1139,6 +1180,7 @@ export class TaserVRApp {
         this.audio.silentAudioEl.play().catch(() => {});
       }
       this.lockLandscapeOrientation();
+      this.initVRHeadAndMotionTracking(true);
       if (!this.xr.gyroEnabled) {
         this.initGyro(true);
       }
@@ -1160,25 +1202,41 @@ export class TaserVRApp {
       }, { useClick: true });
     }
 
-    // Touch aiming when gyro isn't driving orientation
+    // Desktop/Fallback drag rotation around the 3D world when device gyro isn't active
     const viewport = document.getElementById('viewport');
     if (viewport) {
-      const handleTouchAim = (touch) => {
-        if (this.xr.gyroEnabled || this.xr.placeMode || (this.isStereoVR && this.vrMenuState === 'closed')) return;
-        const rect = viewport.getBoundingClientRect();
-        this.aimX = Math.max(5, Math.min(95, ((touch.clientX - rect.left) / rect.width) * 100));
-        this.aimY = Math.max(5, Math.min(95, ((touch.clientY - rect.top) / rect.height) * 100));
-        this.updateAimVisuals();
+      viewport.addEventListener('pointerdown', (e) => {
+        if (this._hasLiveHeadOrientation || this.isPlacementActive() || this.vrMenuState !== 'closed') return;
+        if (e.target && e.target.closest && e.target.closest('button')) return;
+        this._desktopLookDragging = true;
+        this._desktopLookLastX = e.clientX || 0;
+        this._desktopLookLastY = e.clientY || 0;
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!this._desktopLookDragging || this._hasLiveHeadOrientation) return;
+        const cx = e.clientX || 0;
+        const cy = e.clientY || 0;
+        const dx = cx - this._desktopLookLastX;
+        const dy = cy - this._desktopLookLastY;
+        this._desktopLookLastX = cx;
+        this._desktopLookLastY = cy;
+        this._desktopYaw -= dx * 0.0045;
+        this._desktopPitch = THREE.MathUtils.clamp(this._desktopPitch - dy * 0.0045, -1.15, 1.15);
+      }, { passive: true });
+      const endDesktopDrag = () => {
+        this._desktopLookDragging = false;
       };
-      viewport.addEventListener('touchmove', (e) => {
-        if (e.touches && e.touches[0]) handleTouchAim(e.touches[0]);
-      }, { passive: true });
-      viewport.addEventListener('touchstart', (e) => {
-        if (e.touches && e.touches[0]) handleTouchAim(e.touches[0]);
-      }, { passive: true });
+      window.addEventListener('pointerup', endDesktopDrag);
+      window.addEventListener('pointercancel', endDesktopDrag);
     }
 
-    // Discreet menu trigger & fail reset
+    // Discreet Recenter Yaw + Menu trigger & fail reset
+    this.setupTactileButton('vr-btn-center', () => {
+      this.lockLandscapeOrientation();
+      this.initVRHeadAndMotionTracking(true);
+      this.recenterVRView();
+    }, { preventDefaultOnDown: true });
+
     this.setupTactileButton('vr-btn-menu', () => {
       this.lockLandscapeOrientation();
       if (this.vrMenuState === 'closed') {
@@ -1490,10 +1548,10 @@ export class TaserVRApp {
     const isXR = !!(this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
     const camPos = isXR
       ? this.scene.renderer.xr.getCamera(this.scene.camera).position
-      : { x: 0, z: 3.0 };
+      : this.vrPlayerPos;
     const dist = Math.hypot(target.position.x - camPos.x, target.position.z - camPos.z);
-    if (!isNaN(dist) && dist > 0.1) {
-      this.currentDistance = Math.max(0.8, Math.min(10.0, dist));
+    if (!isNaN(dist) && dist > 0.05) {
+      this.currentDistance = Math.max(0.4, Math.min(18.0, dist));
     }
     return this.currentDistance;
   }
@@ -1923,17 +1981,12 @@ export class TaserVRApp {
         return;
       }
 
-      if (isUpKey) {
-        this.currentDistance = Math.max(1.5, Number(((this.currentDistance || 3.0) - 0.2).toFixed(2)));
-        this.markBtActive(`${rawSig} -> AVSTÅND`);
-        this.updateAimVisuals();
-        return;
-      }
-
-      if (isDownKey) {
-        this.currentDistance = Math.min(7.0, Number(((this.currentDistance || 3.0) + 0.2).toFixed(2)));
-        this.markBtActive(`${rawSig} -> AVSTÅND`);
-        this.updateAimVisuals();
+      if (isMoveKey) {
+        if (code) this._heldKeys.add(code);
+        if (key) this._heldKeys.add(key);
+        if (!e.repeat) {
+          this.markBtActive(`${rawSig} -> GÅ I RUMMET`);
+        }
         return;
       }
 
@@ -2177,6 +2230,8 @@ export class TaserVRApp {
     if (isPlacing) {
       this._gpMoveX = Math.max(-1, Math.min(1, stickX !== 0 ? stickX : dpadX));
       this._gpMoveY = Math.max(-1, Math.min(1, stickY !== 0 ? stickY : dpadY));
+      this._activeMoveX = 0;
+      this._activeMoveY = 0;
       if ((Math.abs(this._gpMoveX) > 0.05 || Math.abs(this._gpMoveY) > 0.05) && now - (this._lastMoveSignalLogTs || 0) > 380) {
         this._lastMoveSignalLogTs = now;
         this.markBtActive(`GP Ax0=${Number(axes[0] || 0).toFixed(2)} Ax1=${Number(axes[1] || 0).toFixed(2)} -> FLYTTA`, primaryGp);
@@ -2184,18 +2239,11 @@ export class TaserVRApp {
     } else {
       this._gpMoveX = 0;
       this._gpMoveY = 0;
-
-      const aimStepX = stickX !== 0 ? stickX * 1.15 : dpadX * 0.95;
-      const aimStepY = stickY !== 0 ? stickY * 1.15 : dpadY * 0.95;
-
-      if (aimStepX !== 0 || aimStepY !== 0) {
-        if (this.xr && this.xr.gyroEnabled) {
-          this._aimTrimX = Math.max(-40, Math.min(40, (this._aimTrimX || 0) + aimStepX));
-          this._aimTrimY = Math.max(-40, Math.min(40, (this._aimTrimY || 0) + aimStepY));
-        }
-        this.aimX = Math.max(5, Math.min(95, (this.aimX ?? 50) + aimStepX));
-        this.aimY = Math.max(5, Math.min(95, (this.aimY ?? 50) + aimStepY));
-        this.updateAimVisuals();
+      this._activeMoveX = Math.max(-1, Math.min(1, stickX !== 0 ? stickX : dpadX));
+      this._activeMoveY = Math.max(-1, Math.min(1, stickY !== 0 ? stickY : dpadY));
+      if ((Math.abs(this._activeMoveX) > 0.1 || Math.abs(this._activeMoveY) > 0.1) && now - (this._lastMoveSignalLogTs || 0) > 420) {
+        this._lastMoveSignalLogTs = now;
+        this.markBtActive(`GP SPAK -> GÅ RUNT`, primaryGp);
       }
     }
 
@@ -2283,27 +2331,40 @@ export class TaserVRApp {
       return;
     }
 
-    // Stereo / Mono VR (skytt förankrad på x=0, y=1.35, z=3.0)
-    const SHOOTER_Z = 3.0;
-    let nextX = target.position.x;
-    let nextZ = target.position.z;
+    // Stereo / Mono VR (world-space relativt skyttens position & aktuella synriktning)
+    const camPos = this.vrPlayerPos;
+    const camQuat = activeCamera ? activeCamera.quaternion : this._headQuatCurrent;
+    const fwd = this._xrFwdVec.set(0, 0, -1).applyQuaternion(camQuat);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
+    fwd.normalize();
+
+    const right = this._xrRightVecLocal.set(1, 0, 0).applyQuaternion(camQuat);
+    right.y = 0;
+    if (right.lengthSq() < 0.001) right.set(1, 0, 0);
+    right.normalize();
 
     if (hasMove) {
-      nextX += moveX * MOVE_SPEED * dt;
-      nextZ += moveY * MOVE_SPEED * dt;
+      target.position.addScaledVector(right, moveX * MOVE_SPEED * dt);
+      target.position.addScaledVector(fwd, -moveY * MOVE_SPEED * dt);
+
+      const relX = target.position.x - camPos.x;
+      const relZ = target.position.z - camPos.z;
+      const depth = Math.max(1.5, Math.min(7.0, relX * fwd.x + relZ * fwd.z));
+      const lateral = Math.max(-4.0, Math.min(4.0, relX * right.x + relZ * right.z));
+      target.position.x = camPos.x + fwd.x * depth + right.x * lateral;
+      target.position.z = camPos.z + fwd.z * depth + right.z * lateral;
     }
 
-    const clampedDistZ = Math.max(1.5, Math.min(7.0, SHOOTER_Z - nextZ));
-    nextZ = SHOOTER_Z - clampedDistZ;
-    nextX = Math.max(-4.0, Math.min(4.0, nextX));
-
-    target.position.set(nextX, 0, nextZ);
-    target.lookAt(0, 0, SHOOTER_Z);
+    target.position.y = 0;
+    target.lookAt(camPos.x, 0, camPos.z);
     if (marker) {
-      marker.position.set(nextX, 0.015, nextZ);
+      marker.position.set(target.position.x, 0.015, target.position.z);
+      marker.rotation.set(0, 0, 0);
+      marker.quaternion.identity();
     }
 
-    const dist = Math.hypot(nextX, nextZ - SHOOTER_Z);
+    const dist = Math.hypot(target.position.x - camPos.x, target.position.z - camPos.z);
     this.currentDistance = Math.max(1.5, Math.min(8.5, dist));
     this.updateAimVisuals();
   }
@@ -3077,7 +3138,7 @@ export class TaserVRApp {
           this.scene.taserGroup.userData.startPos = new THREE.Vector3(0, 0, 0);
         }
         this.scene.taserGroup.position.copy(this.scene.taserGroup.userData.startPos);
-        this.scene.taserGroup.lookAt(0, this.scene.taserGroup.position.y, 3.0);
+        this.scene.taserGroup.lookAt(this.vrPlayerPos.x, this.scene.taserGroup.position.y, this.vrPlayerPos.z);
         this.syncDistanceFromTarget();
         this.updateAimVisuals();
       }
@@ -4082,7 +4143,7 @@ export class TaserVRApp {
       if (!this.scene.figureFallen) {
         const camPos = (this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting)
           ? this.scene.renderer.xr.getCamera(this.scene.camera).position
-          : { x: 0, z: 3.0 };
+          : this.vrPlayerPos;
         this.scene.taserGroup.lookAt(camPos.x, this.scene.taserGroup.position.y, camPos.z);
       }
     }
@@ -4111,7 +4172,7 @@ export class TaserVRApp {
     const marker = this.scene.placementMarker;
     const isXR = !!(this.xr && this.xr.xrSession);
     const xrCam = isXR ? this.scene.renderer.xr.getCamera(this.scene.camera) : null;
-    const shooterPos = isXR && xrCam ? xrCam.position : { x: 0, y: 1.35, z: 3.0 };
+    const shooterPos = isXR && xrCam ? xrCam.position : this.vrPlayerPos;
 
     if (isXR) {
       if (!this._xrManualMoveUsed && marker && marker.visible && (this.xr.hasHitTestPose || marker.position.lengthSq() > 0.001)) {
@@ -4225,16 +4286,12 @@ export class TaserVRApp {
 
   initGyro(silent = false) {
     this.audio.init();
+    this.initVRHeadAndMotionTracking(!silent);
     this.xr.initGyro(
-      (aimX, aimY) => {
-        if (this.isLiveAIRunning()) {
-          this.aimX = Math.max(5, Math.min(95, 50 + (this._aimTrimX || 0)));
-          this.aimY = Math.max(5, Math.min(95, 50 + (this._aimTrimY || 0)));
-        } else {
-          this.aimX = Math.max(5, Math.min(95, aimX + (this._aimTrimX || 0)));
-          this.aimY = Math.max(5, Math.min(95, aimY + (this._aimTrimY || 0)));
-        }
-        this.updateAimVisuals();
+      () => {
+        // I world-space VR styrs huvudets riktning direkt via camera.quaternion — håll sikte i mitten
+        this.aimX = 50;
+        this.aimY = 50;
       },
       (direction, gamma) => this.handlePhysicalTilt(direction, gamma),
       (continuousRollDeg) => {
@@ -4256,6 +4313,227 @@ export class TaserVRApp {
         this.showHudToast('Gyro nekad i webbläsaren', '#e74c3c');
       }
     });
+  }
+
+  updateScreenOrientationRad() {
+    let angle = 0;
+    if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.angle === 'number') {
+      angle = screen.orientation.angle;
+    } else if (typeof window !== 'undefined' && typeof window.orientation === 'number') {
+      angle = window.orientation;
+    }
+    this._screenOrientRad = THREE.MathUtils.degToRad(angle || 0);
+  }
+
+  initVRHeadAndMotionTracking(requestPermissions = false) {
+    this.updateScreenOrientationRad();
+
+    if (
+      requestPermissions &&
+      typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function'
+    ) {
+      DeviceMotionEvent.requestPermission().catch(() => {});
+    }
+    if (
+      requestPermissions &&
+      typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function'
+    ) {
+      DeviceOrientationEvent.requestPermission().catch(() => {});
+    }
+
+    if (this._headTrackingBound) return;
+    this._headTrackingBound = true;
+
+    window.addEventListener('orientationchange', () => this.updateScreenOrientationRad());
+    if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.addEventListener === 'function') {
+      screen.orientation.addEventListener('change', () => this.updateScreenOrientationRad());
+    }
+
+    window.addEventListener('deviceorientation', (e) => this.handleVRDeviceOrientation(e));
+    window.addEventListener('devicemotion', (e) => this.handleVRDeviceMotion(e));
+  }
+
+  handleVRDeviceOrientation(event) {
+    if (!event || event.alpha === null || event.beta === null || event.gamma === null) return;
+    this.updateScreenOrientationRad();
+
+    this._headAlphaRad = THREE.MathUtils.degToRad(event.alpha);
+    this._headBetaRad = THREE.MathUtils.degToRad(event.beta);
+    this._headGammaRad = THREE.MathUtils.degToRad(event.gamma);
+
+    this._headEuler.set(this._headBetaRad, this._headAlphaRad, -this._headGammaRad, 'YXZ');
+    this._headRawQuat.setFromEuler(this._headEuler);
+    this._headRawQuat.multiply(this._headQ1);
+    this._headRawQuat.multiply(this._headQScreen.setFromAxisAngle(this._vrZAxis, -this._screenOrientRad));
+
+    if (!this._vrYawCalibrated) {
+      this._locoFwd.set(0, 0, -1).applyQuaternion(this._headRawQuat);
+      this.vrYawOffset = Math.atan2(this._locoFwd.x, -this._locoFwd.z);
+      this._vrYawCalibrated = true;
+      this._headQYawOffset.setFromAxisAngle(this._vrUpAxis, this.vrYawOffset);
+      this._headQuatTarget.copy(this._headQYawOffset).multiply(this._headRawQuat);
+      this._headQuatCurrent.copy(this._headQuatTarget);
+    }
+    this._hasLiveHeadOrientation = true;
+  }
+
+  handleVRDeviceMotion(event) {
+    if (!event) return;
+    if (this.vrAppState !== 'STATE_ACTIVE' || this.vrMenuState !== 'closed' || this.isPlacementActive()) return;
+
+    let lx = 0;
+    let ly = 0;
+    let lz = 0;
+    const acc = event.acceleration;
+    const accG = event.accelerationIncludingGravity;
+
+    if (acc && acc.x !== null && acc.y !== null && acc.z !== null && (Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z) > 0.001)) {
+      lx = acc.x;
+      ly = acc.y;
+      lz = acc.z;
+    } else if (accG && accG.x !== null && accG.y !== null && accG.z !== null) {
+      const gf = this._gravityFilter;
+      if (!gf.initialized) {
+        gf.x = accG.x;
+        gf.y = accG.y;
+        gf.z = accG.z;
+        gf.initialized = true;
+      } else {
+        const a = 0.82;
+        gf.x = a * gf.x + (1 - a) * accG.x;
+        gf.y = a * gf.y + (1 - a) * accG.y;
+        gf.z = a * gf.z + (1 - a) * accG.z;
+      }
+      lx = accG.x - gf.x;
+      ly = accG.y - gf.y;
+      lz = accG.z - gf.z;
+    } else {
+      return;
+    }
+
+    const linMag = Math.hypot(lx, ly, lz);
+    const rr = event.rotationRate;
+    const rotSpeed = rr ? (Math.abs(rr.alpha || 0) + Math.abs(rr.beta || 0) + Math.abs(rr.gamma || 0)) : 0;
+    // Ignorera ren handledsvridning utan förflyttningsstöt
+    if (rotSpeed > 260 && linMag < 2.6) return;
+
+    const now = performance.now();
+    if (this._stepArmed && linMag > 1.55 && (now - this._lastStepTs) > 340) {
+      this._stepArmed = false;
+      this._lastStepTs = now;
+      this._stepStrideRemaining = Math.min(1.25, this._stepStrideRemaining + 0.55);
+    } else if (!this._stepArmed && linMag < 0.85) {
+      this._stepArmed = true;
+    }
+  }
+
+  recenterVRView() {
+    this._desktopYaw = 0;
+    this._desktopPitch = 0;
+    if (this._hasLiveHeadOrientation) {
+      this._locoFwd.set(0, 0, -1).applyQuaternion(this._headRawQuat);
+      this.vrYawOffset = Math.atan2(this._locoFwd.x, -this._locoFwd.z);
+      this._vrYawCalibrated = true;
+      this._headQYawOffset.setFromAxisAngle(this._vrUpAxis, this.vrYawOffset);
+      this._headQuatTarget.copy(this._headQYawOffset).multiply(this._headRawQuat);
+      this._headQuatCurrent.copy(this._headQuatTarget);
+    } else {
+      this._headQuatTarget.identity();
+      this._headQuatCurrent.identity();
+    }
+    this.showHudToast('🎯 Vy centrerad framåt', '#38bdf8');
+  }
+
+  updateCameraHeadTracking(dt, camera) {
+    if (!camera) return;
+    if (this._hasLiveHeadOrientation) {
+      this._headQYawOffset.setFromAxisAngle(this._vrUpAxis, this.vrYawOffset);
+      this._headQuatTarget.copy(this._headQYawOffset).multiply(this._headRawQuat);
+      const slerpAlpha = 1 - Math.exp(-Math.min(0.05, dt || 0.016) * 22);
+      this._headQuatCurrent.slerp(this._headQuatTarget, slerpAlpha);
+    } else {
+      this._headEuler.set(this._desktopPitch, this._desktopYaw, 0, 'YXZ');
+      this._headQuatTarget.setFromEuler(this._headEuler);
+      const slerpAlpha = 1 - Math.exp(-Math.min(0.05, dt || 0.016) * 24);
+      this._headQuatCurrent.slerp(this._headQuatTarget, slerpAlpha);
+    }
+    camera.position.copy(this.vrPlayerPos);
+    camera.quaternion.copy(this._headQuatCurrent);
+    camera.updateMatrixWorld();
+  }
+
+  tickPlayerLocomotion(dt, activeCamera) {
+    if (this.vrAppState !== 'STATE_ACTIVE' || this.vrMenuState !== 'closed' || this.isPlacementActive() || this.isGameOver) {
+      this._stepStrideRemaining = 0;
+      return;
+    }
+    const renderer = this.scene && this.scene.renderer;
+    if (renderer && renderer.xr && renderer.xr.isPresenting) return;
+
+    const hidRight = this._heldKeys.has('ArrowRight') || this._heldKeys.has('KeyD') || this._heldKeys.has('d');
+    const hidLeft = this._heldKeys.has('ArrowLeft') || this._heldKeys.has('KeyA') || this._heldKeys.has('a');
+    const hidDown = this._heldKeys.has('ArrowDown') || this._heldKeys.has('KeyS') || this._heldKeys.has('s');
+    const hidUp = this._heldKeys.has('ArrowUp') || this._heldKeys.has('KeyW') || this._heldKeys.has('w');
+    const hidX = (hidRight ? 1 : 0) - (hidLeft ? 1 : 0);
+    const hidY = (hidDown ? 1 : 0) - (hidUp ? 1 : 0);
+
+    const moveX = Math.max(-1, Math.min(1, (this._activeMoveX || 0) + hidX));
+    const moveY = Math.max(-1, Math.min(1, (this._activeMoveY || 0) + hidY));
+    const hasManualMove = Math.abs(moveX) > 0.02 || Math.abs(moveY) > 0.02;
+    const hasStep = this._stepStrideRemaining > 0.001;
+    if (!hasManualMove && !hasStep) return;
+
+    const quat = activeCamera ? activeCamera.quaternion : this._headQuatCurrent;
+    this._locoFwd.set(0, 0, -1).applyQuaternion(quat);
+    this._locoFwd.y = 0;
+    if (this._locoFwd.lengthSq() < 0.0001) this._locoFwd.set(0, 0, -1);
+    else this._locoFwd.normalize();
+
+    this._locoRight.set(1, 0, 0).applyQuaternion(quat);
+    this._locoRight.y = 0;
+    if (this._locoRight.lengthSq() < 0.0001) this._locoRight.set(1, 0, 0);
+    else this._locoRight.normalize();
+
+    const MOVE_SPEED = 1.65;
+    if (hasManualMove) {
+      this.vrPlayerPos.addScaledVector(this._locoRight, moveX * MOVE_SPEED * dt);
+      this.vrPlayerPos.addScaledVector(this._locoFwd, -moveY * MOVE_SPEED * dt);
+    }
+
+    if (hasStep) {
+      const stepDelta = Math.min(this._stepStrideRemaining, 1.85 * dt);
+      this._stepStrideRemaining -= stepDelta;
+      this.vrPlayerPos.addScaledVector(this._locoFwd, stepDelta);
+    }
+
+    this.vrPlayerPos.y = 1.35;
+    const radial = Math.hypot(this.vrPlayerPos.x, this.vrPlayerPos.z);
+    if (radial > 12.0) {
+      const clampScale = 12.0 / radial;
+      this.vrPlayerPos.x *= clampScale;
+      this.vrPlayerPos.z *= clampScale;
+    }
+
+    // Förhindra att kameran kliver rakt igenom 3D-dummyn (behåll minst 0.45 m om inte scenario redan nått fail)
+    const target = this.scene && this.scene.taserGroup;
+    if (target && target.visible) {
+      const dx = this.vrPlayerPos.x - target.position.x;
+      const dz = this.vrPlayerPos.z - target.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.0001 && dist < 0.45) {
+        this.vrPlayerPos.x = target.position.x + (dx / dist) * 0.45;
+        this.vrPlayerPos.z = target.position.z + (dz / dist) * 0.45;
+      }
+    }
+
+    if (activeCamera) {
+      activeCamera.position.copy(this.vrPlayerPos);
+      activeCamera.updateMatrixWorld();
+    }
+    this.syncDistanceFromTarget();
+    this.updateAimVisuals();
   }
 
   resetSimulator() {
@@ -4284,6 +4562,14 @@ export class TaserVRApp {
     } else {
       this.scene.set3DVisibility(true);
     }
+
+    const startPos = this.scene.taserGroup && this.scene.taserGroup.userData.startPos;
+    const refX = startPos ? startPos.x : 0;
+    const refZ = startPos ? startPos.z : 0;
+    if (Math.hypot(this.vrPlayerPos.x - refX, this.vrPlayerPos.z - refZ) < 1.5) {
+      this.vrPlayerPos.set(refX, 1.35, refZ + 3.0);
+    }
+    this._stepStrideRemaining = 0;
 
     this.syncDistanceFromTarget();
     this.aimX = 50;
@@ -5585,14 +5871,8 @@ export class TaserVRApp {
     const renderer = this.scene?.renderer;
     const isXRPresenting = !!(renderer && renderer.xr && renderer.xr.isPresenting);
     if (!isXRPresenting) {
-      cam.position.set(0, 1.35, 3.0);
-      const aimSpanDist = Math.max(1.5, this.currentDistance || 3.0);
-      const lookTarget = this.scene._v2.set(
-        (this.aimX - 50) * 0.022 * aimSpanDist,
-        1.35 + (this.aimY - 50) * 0.022 * aimSpanDist,
-        3.0 - aimSpanDist
-      );
-      cam.lookAt(lookTarget);
+      cam.position.copy(this.vrPlayerPos);
+      cam.quaternion.copy(this._headQuatCurrent);
       cam.updateMatrixWorld(true);
     }
 
@@ -5819,6 +6099,16 @@ export class TaserVRApp {
       const currentThreat = typeof window.threatLevel === 'number' ? window.threatLevel : this.threatLevel;
       const menuClosed = this.vrMenuState === 'closed';
 
+      // Uppdatera 360° World-Space kameraorientering & spelarförflyttning (före scenario-AI & raycast)
+      if (!renderer.xr.isPresenting) {
+        if (camera.fov !== this.vrFov) {
+          camera.fov = this.vrFov;
+          camera.updateProjectionMatrix();
+        }
+        this.updateCameraHeadTracking(moveDt, camera);
+        this.tickPlayerLocomotion(moveDt, camera);
+      }
+
       // MediaPipe hand-tracking tick in unified setAnimationLoop (strictly guarded on readyState & WebGL)
       this.tickHandTracking(nowPerf);
 
@@ -5839,22 +6129,27 @@ export class TaserVRApp {
             if (this.scene.activeAction !== this.scene.actions['Walk']) {
               this.scene.setAnimation('Walk', 0.8);
             }
-            const startPos = this.scene.taserGroup.userData.startPos || { x: 0 };
+            const startPos = this.scene.taserGroup.userData.startPos || { x: 0, z: 0 };
             this.scene.taserGroup.position.x = startPos.x + Math.sin(nowPerf * 0.001) * 1.2;
-            this.scene.taserGroup.lookAt(0, this.scene.taserGroup.position.y, 3.0);
-            this.currentDistance = Math.max(0.4, Math.hypot(this.scene.taserGroup.position.x, this.scene.taserGroup.position.z - 3.0));
+            this.scene.taserGroup.lookAt(this.vrPlayerPos.x, this.scene.taserGroup.position.y, this.vrPlayerPos.z);
+            this.syncDistanceFromTarget();
             this.updateAimVisuals();
           } else if (currentThreat >= 3) {
             if (this.scene.activeAction !== this.scene.actions['Walk']) {
               this.scene.setAnimation('Walk', 0.8);
             }
-            const toShooter = this.scene._v1.set(0 - this.scene.taserGroup.position.x, 0, 3.0 - this.scene.taserGroup.position.z);
+            const toShooter = this.scene._v1.set(
+              this.vrPlayerPos.x - this.scene.taserGroup.position.x,
+              0,
+              this.vrPlayerPos.z - this.scene.taserGroup.position.z
+            );
             const distNow = toShooter.length();
             if (distNow > 0.4) {
               toShooter.normalize();
               const walkWeight = (this.scene.actions && this.scene.actions['Walk']) ? this.scene.actions['Walk'].getEffectiveWeight() : 0;
               this.scene.taserGroup.position.addScaledVector(toShooter, this.scene.walkSpeed * walkWeight * delta);
-              this.currentDistance = Math.max(0.4, Math.hypot(this.scene.taserGroup.position.x, this.scene.taserGroup.position.z - 3.0));
+              this.scene.taserGroup.lookAt(this.vrPlayerPos.x, this.scene.taserGroup.position.y, this.vrPlayerPos.z);
+              this.syncDistanceFromTarget();
               this.updateAimVisuals();
             }
           }
@@ -5865,11 +6160,15 @@ export class TaserVRApp {
         }
       }
 
-      // Fail check (< 0.8m)
-      if (menuClosed && !this.isPlacementActive() && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver) {
+      // Fail check (< 0.8m horisontellt mot förankrad 3D-figur)
+      if (menuClosed && !this.isPlacementActive() && !this.scene.figureFallen && !this.scene.isTased && !this.isTased && !this.isGameOver && this.scene.taserGroup && this.scene.taserGroup.visible) {
         if (!renderer.xr.isPresenting) {
-          if (this.currentDistance <= 0.8) this.triggerFailState();
-        } else if (this.xr.figureLocked && this.scene.taserGroup && this.scene.taserGroup.visible) {
+          const distToDummy = Math.hypot(
+            this.scene.taserGroup.position.x - this.vrPlayerPos.x,
+            this.scene.taserGroup.position.z - this.vrPlayerPos.z
+          );
+          if (distToDummy <= 0.8) this.triggerFailState();
+        } else if (this.xr.figureLocked) {
           const chestPos = this.scene._v1.set(this.scene.taserGroup.position.x, this.scene.taserGroup.position.y + 1.35, this.scene.taserGroup.position.z);
           if (activeCamera.position.distanceToSquared(chestPos) <= 0.64) this.triggerFailState();
         }
@@ -5899,19 +6198,8 @@ export class TaserVRApp {
       renderer.setClearColor(0x000000, 0);
 
       if (!renderer.xr.isPresenting) {
-        if (camera.fov !== this.vrFov) {
-          camera.fov = this.vrFov;
-          camera.updateProjectionMatrix();
-        }
-        // Skyttens fasta position (0, 1.35, 3.0) så att dummyn flyttar sig visuellt i X/Z
-        camera.position.set(0, 1.35, 3.0);
-        const aimSpanDist = Math.max(1.5, this.currentDistance || 3.0);
-        const lookTarget = this.scene._v2.set(
-          (this.aimX - 50) * 0.022 * aimSpanDist,
-          1.35 + (this.aimY - 50) * 0.022 * aimSpanDist,
-          3.0 - aimSpanDist
-        );
-        camera.lookAt(lookTarget);
+        camera.position.copy(this.vrPlayerPos);
+        camera.quaternion.copy(this._headQuatCurrent);
         camera.updateMatrixWorld();
       }
 
@@ -5964,7 +6252,7 @@ export class TaserVRApp {
         null
       );
 
-      if (menuClosed && laserHit && laserHit.hit && !isPlacingNow && !isLiveARLoop && (renderer.xr.isPresenting || hasActiveWeapon) && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
+      if (menuClosed && laserHit && laserHit.hit && !isPlacingNow && !isLiveARLoop && (renderer.xr.isPresenting || (hasActiveWeapon && laserHit.isDummyHit)) && !isNaN(laserHit.distance) && laserHit.distance > 0.1) {
         this.currentDistance = Math.max(0.4, laserHit.distance);
         this.updateAimVisuals();
       }

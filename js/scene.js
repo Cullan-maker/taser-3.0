@@ -357,12 +357,27 @@ export class TaserScene {
     this.scene.add(this.placementGround);
 
     // Rensa eventuell tidigare markörring så att endast EN enda reticle instansieras i scenen
-    if (this.placementMarker) {
-      this.scene.remove(this.placementMarker);
-      if (this.placementMarker.geometry) this.placementMarker.geometry.dispose();
-      if (this.placementMarker.material) this.placementMarker.material.dispose();
-      this.placementMarker = null;
+    const staleMarkers = [];
+    this.scene.traverse((obj) => {
+      if (
+        obj === this.placementMarker ||
+        obj === this.reticle ||
+        obj.name === 'PlacementMarker' ||
+        obj.name === 'PlacementRing' ||
+        obj.userData?.isPlacementMarker ||
+        (obj.isMesh && obj.geometry && obj.geometry.type === 'RingGeometry')
+      ) {
+        staleMarkers.push(obj);
+      }
+    });
+    for (const stale of staleMarkers) {
+      if (stale.parent) stale.parent.remove(stale);
+      else this.scene.remove(stale);
+      if (stale.geometry) stale.geometry.dispose();
+      if (stale.material) stale.material.dispose();
     }
+    this.placementMarker = null;
+    this.reticle = null;
 
     const reticleGeo = new THREE.RingGeometry(0.15, 0.21, 36);
     reticleGeo.rotateX(-Math.PI / 2);
@@ -376,11 +391,28 @@ export class TaserScene {
 
     this.placementMarker = new THREE.Mesh(reticleGeo, reticleMat);
     this.placementMarker.name = 'PlacementMarker';
+    this.placementMarker.userData.isPlacementMarker = true;
     this.placementMarker.renderOrder = 999;
     this.placementMarker.position.y = 0.015;
     this.placementMarker.visible = false;
     this.reticle = this.placementMarker;
     this.scene.add(this.placementMarker);
+  }
+
+  hideAllPlacementMarkers() {
+    if (this.placementMarker) this.placementMarker.visible = false;
+    if (this.reticle) this.reticle.visible = false;
+    if (!this.scene) return;
+    this.scene.traverse((obj) => {
+      if (
+        obj.name === 'PlacementMarker' ||
+        obj.name === 'PlacementRing' ||
+        obj.userData?.isPlacementMarker ||
+        (obj.isMesh && obj.geometry && obj.geometry.type === 'RingGeometry')
+      ) {
+        obj.visible = false;
+      }
+    });
   }
 
   setPlacementFromScreen(x, y) {
@@ -2291,7 +2323,10 @@ export class TaserScene {
       ? !!window.weaponGroup.visible
       : ((typeof window !== 'undefined' && window.weaponMesh) ? !!window.weaponMesh.visible : false);
 
-    if (!shouldShow || !(activeCartridge > 0) || !this.laserDotTop || !this.laserDotBottom) {
+    const isPlacingNow = !!(this.xrManager && (this.xrManager.isPlacing || this.xrManager.placeMode)) ||
+      (typeof window !== 'undefined' && !!window.isPlacing);
+
+    if (!shouldShow || isPlacingNow || !(activeCartridge > 0) || !this.laserDotTop || !this.laserDotBottom) {
       if (this.laserDotTop) this.laserDotTop.visible = false;
       if (this.laserDotBottom) this.laserDotBottom.visible = false;
       return null;

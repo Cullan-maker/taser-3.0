@@ -281,8 +281,34 @@
             background: rgba(20, 26, 36, 0.92);
         }
         body.vr-menu-open #vr-btn-menu,
-        body.vr-portrait-blocked #vr-btn-menu {
+        body.vr-portrait-blocked #vr-btn-menu,
+        body.vr-menu-open #vr-btn-center,
+        body.vr-portrait-blocked #vr-btn-center {
             display: none !important;
+        }
+
+        /* Diskret Centrera / Recenter Yaw-knapp bredvid menyknappen */
+        #vr-btn-center {
+            position: fixed;
+            bottom: max(12px, env(safe-area-inset-bottom, 12px));
+            right: max(106px, calc(env(safe-area-inset-right, 12px) + 94px));
+            z-index: 3;
+            padding: 7px 11px;
+            border-radius: 7px;
+            border: 1px solid rgba(56, 189, 248, 0.55);
+            background: rgba(8, 12, 18, 0.78);
+            color: #7dd3fc;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            cursor: pointer;
+            pointer-events: auto;
+            touch-action: manipulation;
+        }
+        #vr-btn-center:active {
+            transform: translateY(1px);
+            background: rgba(14, 34, 52, 0.92);
         }
 
         /* Steg 1: Placeringsinstruktion (speglad för båda ögonen, endast i xr-placing) */
@@ -771,6 +797,7 @@
     </div>
 
     <div id="vr-bt-sniffer" aria-live="off">BT SIGNAL: VÄNTAR...</div>
+    <button type="button" id="vr-btn-center" aria-label="Centrera vy framåt">🎯 CENTRERA</button>
     <button type="button" id="vr-btn-menu" aria-label="Öppna VR-meny">☰ MENY</button>
     <button type="button" id="btn-place-xr" aria-label="Fastställ position">📍 BEKRÄFTA MÅL</button>
 

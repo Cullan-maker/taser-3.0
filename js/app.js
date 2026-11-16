@@ -1052,11 +1052,17 @@ export class TaserApp {
     const isXRPresenting = !!(this.scene && this.scene.renderer && this.scene.renderer.xr && this.scene.renderer.xr.isPresenting);
     const isVRMode = !isLiveAR && (typeof window !== 'undefined') && (window.appMode === 'vr' || document.body.classList.contains('vr-active'));
 
+    const isPlacing = !!(this.xr && (this.xr.isPlacing || this.xr.placeMode)) ||
+      (typeof document !== 'undefined' && document.body.classList.contains('xr-placing'));
     const hasCartridge = (this.fsm.chamber1 === ChamberState.LOADED || this.fsm.chamber2 === ChamberState.LOADED);
     const flashlightOn = !this.fsm.isSafe && this.fsm.hasBattery && !this.fsm.stealthMode;
     const shouldShow = isLiveAR ? flashlightOn : (flashlightOn && hasCartridge);
 
-    if (isLiveAR && !isXRPresenting) {
+    if (isPlacing) {
+      if (flashlight) flashlight.style.display = 'none';
+      if (laserGreen) laserGreen.style.display = 'none';
+      if (laserRed) laserRed.style.display = 'none';
+    } else if (isLiveAR && !isXRPresenting) {
       // Live-AR: #hud-canvas (z-index: 9999) ritar ficklampa, grön/röd laser, trådar och träffblixtar ovanpå video och AI-spårning
       if (flashlight) flashlight.style.display = 'none';
       if (laserGreen) laserGreen.style.display = 'none';
@@ -1073,7 +1079,7 @@ export class TaserApp {
       if (laserRed) laserRed.style.display = shouldShow ? 'block' : 'none';
     }
 
-    this.drawHudCanvas(flashlightOn, shouldShow);
+    this.drawHudCanvas(!isPlacing && flashlightOn, !isPlacing && shouldShow);
   }
 
   drawHudCanvas(flashlightOn, lasersOn) {
@@ -1103,8 +1109,10 @@ export class TaserApp {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
+    const isPlacing = !!(this.xr && (this.xr.isPlacing || this.xr.placeMode)) ||
+      (typeof document !== 'undefined' && document.body.classList.contains('xr-placing'));
     const hasWires = Array.isArray(this.liveWires) && this.liveWires.length > 0;
-    if (!isLiveAR || isXRPresenting || (!flashlightOn && !lasersOn && !hasWires)) {
+    if (isPlacing || !isLiveAR || isXRPresenting || (!flashlightOn && !lasersOn && !hasWires)) {
       return;
     }
 
@@ -1615,7 +1623,12 @@ export class TaserApp {
         if (stdCtrl) stdCtrl.style.display = 'block';
         const hint = document.getElementById('place-hint');
         if (hint) hint.classList.remove('visible');
-        if (this.scene.placementMarker) this.scene.placementMarker.visible = false;
+        if (typeof this.scene.hideAllPlacementMarkers === 'function') {
+          this.scene.hideAllPlacementMarkers();
+        } else if (this.scene.placementMarker) {
+          this.scene.placementMarker.visible = false;
+        }
+        this.updateProjectors();
 
         const cam = this.scene.renderer.xr.getCamera(this.scene.camera);
         const camPos = cam.position;
@@ -2500,8 +2513,12 @@ export class TaserApp {
     this.xr.isPlacing = false;
     this.xr.placeMode = false;
     if (typeof window !== 'undefined') window.isPlacing = false;
-    if (this.scene && this.scene.placementMarker) {
-      this.scene.placementMarker.visible = false;
+    if (this.scene) {
+      if (typeof this.scene.hideAllPlacementMarkers === 'function') {
+        this.scene.hideAllPlacementMarkers();
+      } else if (this.scene.placementMarker) {
+        this.scene.placementMarker.visible = false;
+      }
     }
 
     const btnPlaceXr = document.getElementById('btn-place-xr');
@@ -2556,11 +2573,15 @@ export class TaserApp {
     if (btnPlaceXr) btnPlaceXr.style.display = 'inline-flex';
 
     this.scene.set3DVisibility(false);
+    if (typeof this.scene.hideAllPlacementMarkers === 'function') {
+      this.scene.hideAllPlacementMarkers();
+    }
     if (this.scene.placementMarker) {
       this.scene.placementMarker.rotation.set(0, 0, 0);
       this.scene.placementMarker.quaternion.identity();
       this.scene.placementMarker.visible = true;
     }
+    this.updateProjectors();
 
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
@@ -2632,8 +2653,13 @@ export class TaserApp {
     document.documentElement.classList.remove('xr-placing');
 
     this.scene.set3DVisibility(true);
-    if (marker) marker.visible = false;
-    if (this.scene.reticle) this.scene.reticle.visible = false;
+    if (typeof this.scene.hideAllPlacementMarkers === 'function') {
+      this.scene.hideAllPlacementMarkers();
+    } else {
+      if (marker) marker.visible = false;
+      if (this.scene.reticle) this.scene.reticle.visible = false;
+    }
+    this.updateProjectors();
 
     const hint = document.getElementById('place-hint');
     if (hint) hint.classList.remove('visible');
